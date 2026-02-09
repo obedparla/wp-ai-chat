@@ -1,0 +1,562 @@
+[
+  {
+    "category": "critical",
+    "description": "Fix fatal errors blocking chat functionality",
+    "steps": [
+      "Add guzzlehttp/guzzle to composer.json for PSR-18 HTTP client",
+      "Run composer install to update vendor",
+      "Verify wp_wpaic_conversations table created on activation",
+      "Verify wp_wpaic_messages table created on activation",
+      "If tables missing, add dbDelta migration in activation hook",
+      "Test chat endpoint returns streamed response without errors"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Plugin activates and creates default settings",
+    "steps": [
+      "Navigate to WP Admin > Plugins",
+      "Activate WP AI Chatbot plugin",
+      "Verify no activation errors",
+      "Check wpaic_settings option exists in database",
+      "Verify default values: empty API key, gpt-4o-mini model, greeting message, enabled=true"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Admin settings page allows configuration",
+    "steps": [
+      "Navigate to Settings > AI Chatbot",
+      "Enter OpenAI API key",
+      "Select model from dropdown",
+      "Edit greeting message",
+      "Toggle enabled/disabled",
+      "Save settings",
+      "Refresh page and verify values persisted"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Chat widget appears on frontend",
+    "steps": [
+      "Enable plugin in admin settings",
+      "Navigate to any frontend page",
+      "Verify floating chat button visible at bottom-right",
+      "Click chat button",
+      "Verify chat panel opens with greeting message"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "User can send message and receive streamed response",
+    "steps": [
+      "Open chat widget",
+      "Type message in input field",
+      "Click send or press Enter",
+      "Verify message appears in chat",
+      "Verify loading indicator shows",
+      "Verify response streams in real-time (character by character)",
+      "Verify loading indicator disappears when complete"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "User can stop generation mid-stream",
+    "steps": [
+      "Open chat widget",
+      "Send a message",
+      "While response is streaming, click stop button",
+      "Verify streaming stops",
+      "Verify partial response remains visible",
+      "Verify can send new message after stopping"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Bot searches products when asked",
+    "steps": [
+      "Open chat widget",
+      "Ask 'What products do you have?'",
+      "Verify bot calls search_products tool",
+      "Verify response contains product information",
+      "Verify product names and prices displayed"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Bot filters products by category",
+    "steps": [
+      "Open chat widget",
+      "Ask 'Show me products in [category name]'",
+      "Verify bot filters by category",
+      "Verify only products from that category returned"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Bot filters products by price range",
+    "steps": [
+      "Open chat widget",
+      "Ask 'Show me products under $50'",
+      "Verify bot uses price filter",
+      "Verify only products within price range returned"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Bot provides detailed product info",
+    "steps": [
+      "Open chat widget",
+      "Ask about specific product by name",
+      "Verify bot calls get_product_details tool",
+      "Verify response includes description, price, stock status",
+      "Verify product URL included in response"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Bot lists available categories",
+    "steps": [
+      "Open chat widget",
+      "Ask 'What categories do you have?'",
+      "Verify bot calls get_categories tool",
+      "Verify all WooCommerce categories listed"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Chat handles multi-turn conversation",
+    "steps": [
+      "Open chat widget",
+      "Ask about products",
+      "Follow up with related question",
+      "Verify bot maintains context from previous messages",
+      "Verify conversation flows naturally"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Chat widget closes and reopens with history",
+    "steps": [
+      "Open chat widget",
+      "Send a few messages",
+      "Close chat widget",
+      "Reopen chat widget",
+      "Verify previous messages still visible"
+    ],
+    "passes": true
+  },
+  {
+    "category": "ux",
+    "description": "Keyboard shortcuts work",
+    "steps": [
+      "Open chat widget",
+      "Type message and press Enter",
+      "Verify message sends",
+      "Press Escape",
+      "Verify chat widget closes"
+    ],
+    "passes": true
+  },
+  {
+    "category": "ux",
+    "description": "Chat auto-scrolls to latest message",
+    "steps": [
+      "Open chat widget",
+      "Send multiple messages to create scroll",
+      "Send another message",
+      "Verify chat scrolls to show newest message",
+      "Verify scroll follows streaming response"
+    ],
+    "passes": true
+  },
+  {
+    "category": "ux",
+    "description": "Chat widget is mobile responsive",
+    "steps": [
+      "Open site on mobile device or resize browser",
+      "Verify chat button visible and tappable",
+      "Open chat widget",
+      "Verify chat panel fits screen",
+      "Verify input and messages readable",
+      "Verify can type and send messages"
+    ],
+    "passes": true
+  },
+  {
+    "category": "error",
+    "description": "Graceful error when API key missing",
+    "steps": [
+      "Remove API key from admin settings",
+      "Open chat widget on frontend",
+      "Send a message",
+      "Verify user-friendly error message shown",
+      "Verify no PHP errors exposed"
+    ],
+    "passes": true
+  },
+  {
+    "category": "error",
+    "description": "Graceful error when OpenAI API fails",
+    "steps": [
+      "Set invalid API key in admin settings",
+      "Open chat widget",
+      "Send a message",
+      "Verify user-friendly error message shown",
+      "Verify chat remains usable after error"
+    ],
+    "passes": true
+  },
+  {
+    "category": "error",
+    "description": "Chat works when no products exist",
+    "steps": [
+      "Remove all WooCommerce products",
+      "Open chat widget",
+      "Ask about products",
+      "Verify bot responds appropriately (no products found)",
+      "Verify no errors thrown"
+    ],
+    "passes": true
+  },
+  {
+    "category": "security",
+    "description": "API key not exposed to frontend",
+    "steps": [
+      "View page source on frontend",
+      "Check wpaicConfig object",
+      "Verify API key not present in JavaScript",
+      "Check network requests",
+      "Verify API key not in request headers"
+    ],
+    "passes": true
+  },
+  {
+    "category": "security",
+    "description": "REST endpoint validates nonce",
+    "steps": [
+      "Make request to /wp-json/wpaic/v1/chat/stream without nonce",
+      "Verify request rejected or handled safely",
+      "Make request with valid nonce",
+      "Verify request succeeds"
+    ],
+    "passes": true
+  },
+  {
+    "category": "tooling",
+    "description": "PHPStan static analysis at level 6",
+    "steps": [
+      "composer require --dev phpstan/phpstan phpstan/extension-installer szepeviktor/phpstan-wordpress",
+      "Create phpstan.neon with level 6, WordPress stubs",
+      "Run phpstan analyze includes/",
+      "Fix type errors in all PHP classes",
+      "Add composer script: \"phpstan\": \"phpstan analyze\""
+    ],
+    "passes": true
+  },
+  {
+    "category": "tooling",
+    "description": "PHPCS with WordPress Coding Standards",
+    "steps": [
+      "composer require --dev squizlabs/php_codesniffer wp-coding-standards/wpcs dealerdirect/phpcodesniffer-composer-installer",
+      "Create .phpcs.xml.dist with WordPress-Extra ruleset",
+      "Run phpcs on includes/ and main plugin file",
+      "Fix code style violations",
+      "Add composer script: \"lint\": \"phpcs\""
+    ],
+    "passes": true
+  },
+  {
+    "category": "tooling",
+    "description": "PHPUnit tests for critical PHP components",
+    "steps": [
+      "composer require --dev phpunit/phpunit yoast/phpunit-polyfills",
+      "Create tests/ dir with bootstrap.php",
+      "Setup WP test environment",
+      "Write tests for WPAIC_Tools (product search)",
+      "Write tests for WPAIC_Chat (tool parsing)",
+      "Add composer script: \"test\": \"phpunit\""
+    ],
+    "passes": true
+  },
+  {
+    "category": "tooling",
+    "description": "ESLint for frontend TypeScript/React",
+    "steps": [
+      "cd frontend && npm install -D eslint @eslint/js typescript-eslint eslint-plugin-react-hooks",
+      "Create eslint.config.js with strict TS + React rules",
+      "Run eslint on src/",
+      "Fix linting errors",
+      "Add npm script: \"lint\": \"eslint src/\""
+    ],
+    "passes": true
+  },
+  {
+    "category": "tooling",
+    "description": "Prettier for frontend code formatting",
+    "steps": [
+      "cd frontend && npm install -D prettier eslint-config-prettier",
+      "Create .prettierrc with singleQuote, semi, tabWidth",
+      "Add prettier to eslint config (eslint-config-prettier)",
+      "Run prettier --write src/",
+      "Add npm script: \"format\": \"prettier --write src/\""
+    ],
+    "passes": true
+  },
+  {
+    "category": "tooling",
+    "description": "Vitest tests for frontend components",
+    "steps": [
+      "cd frontend && npm install -D vitest @testing-library/react @testing-library/jest-dom jsdom",
+      "Create vitest.config.ts with jsdom environment",
+      "Write tests for useChat hook",
+      "Write tests for ChatWidget component",
+      "Add npm script: \"test\": \"vitest\""
+    ],
+    "passes": true
+  },
+  {
+    "category": "tooling",
+    "description": "GitHub Actions CI/CD pipeline",
+    "steps": [
+      "Create .github/workflows/ci.yml",
+      "Add PHP job: composer install, phpstan, phpcs, phpunit",
+      "Add Frontend job: npm install, lint, test, build",
+      "Configure to run on push and PR to main",
+      "Verify all checks pass on test PR"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Admin can customize system prompt",
+    "steps": [
+      "Navigate to Settings > AI Chatbot",
+      "Find system prompt textarea",
+      "Edit system prompt to customize bot personality/behavior",
+      "Save settings",
+      "Open chat widget and verify bot behaves per new prompt"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Admin can view chat logs",
+    "steps": [
+      "Navigate to AI Chatbot > Chat Logs in admin",
+      "Verify list of recent conversations shown",
+      "Click conversation to expand full history",
+      "Verify timestamps and message content visible"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "User can clear chat history",
+    "steps": [
+      "Open chat widget",
+      "Send a few messages",
+      "Click clear/reset button",
+      "Verify all messages cleared",
+      "Verify greeting message reappears"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Plugin works without WooCommerce",
+    "steps": [
+      "Deactivate WooCommerce plugin",
+      "Open chat widget",
+      "Send a message",
+      "Verify bot responds (without product tools)",
+      "Verify no PHP errors",
+      "Ask about products, verify graceful 'no products available' response"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Frontend uses Vercel AI SDK for streaming",
+    "steps": [
+      "Install @ai-sdk/react and ai packages",
+      "Replace custom useChat hook with Vercel's useChat",
+      "Configure endpoint URL and nonce headers",
+      "Verify messages stream character-by-character",
+      "Verify loading state shows during streaming",
+      "Verify stop button aborts stream correctly"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Backend outputs Vercel AI data stream format",
+    "steps": [
+      "Add x-vercel-ai-data-stream header to SSE response",
+      "Change text chunks to format: 0:\"text\"",
+      "Change finish signal to format: d:{\"finishReason\":\"stop\"}",
+      "Change error format to: 3:\"error message\"",
+      "Verify frontend parses new format correctly"
+    ],
+    "passes": true
+  },
+  {
+    "category": "ux",
+    "description": "Tool calls show progress indicator to user",
+    "steps": [
+      "Stream tool call start events to frontend",
+      "Display 'Searching products...' when search_products called",
+      "Display 'Loading product details...' when get_product_details called",
+      "Display 'Loading categories...' when get_categories called",
+      "Hide indicator when tool completes and response streams"
+    ],
+    "passes": true
+  },
+  {
+    "category": "ux",
+    "description": "User can retry failed messages with reload button",
+    "steps": [
+      "Show reload icon on failed assistant messages",
+      "Click reload to resend the previous user message",
+      "Verify streaming restarts correctly",
+      "Verify reload button hidden on success"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Backend streams tool calls and results to frontend",
+    "steps": [
+      "Stream tool-call-start event with tool name and ID",
+      "Execute tool server-side",
+      "Stream tool-result event with result data",
+      "Continue streaming final response after tool completion",
+      "Verify multi-tool calls stream sequentially"
+    ],
+    "passes": true
+  },
+  {
+    "category": "ux",
+    "description": "Product display tool renders rich product cards",
+    "steps": [
+      "Create display_products tool or modify search_products response",
+      "Frontend component renders product cards with image, name, price",
+      "Each card links to product page on click",
+      "Handle tool response in chat stream to render cards vs plain text",
+      "Verify cards display correctly for product queries"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Admin can customize chatbot theme color",
+    "steps": [
+      "Add color picker field to Settings > AI Chatbot",
+      "Save color value to wpaic_settings option",
+      "Pass color to frontend via wpaicConfig",
+      "Apply color to chat widget header, buttons, accents",
+      "Verify color changes reflect on frontend"
+    ],
+    "passes": true
+  },
+  {
+    "category": "ux",
+    "description": "Modernize frontend chatbot UI",
+    "steps": [
+      "Redesign message bubbles with better typography and spacing",
+      "Add shadows, rounded corners, smooth transitions",
+      "Improve input field and send button styling",
+      "Add subtle animations for messages and state changes",
+      "Verify premium chat experience on desktop and mobile"
+    ],
+    "passes": true
+  },
+  {
+    "category": "fix",
+    "description": "Auto-scroll blocks user from scrolling up during response generation",
+    "steps": [
+      "Start a conversation with multiple messages",
+      "Ask a question that generates a long response",
+      "While response is streaming, try to scroll up in message history",
+      "Verify user can scroll freely during generation",
+      "Auto-scroll should only occur if user is already at bottom"
+    ],
+    "passes": true
+  },
+  {
+    "category": "fix",
+    "description": "Mobile: floating chatbot icon overlaps Send button when chat is open",
+    "steps": [
+      "Open site on mobile viewport",
+      "Open the chatbot widget",
+      "Verify floating icon disappears/hides when chat is open",
+      "Verify user can close chat via X button in header",
+      "Verify floating icon reappears after closing chat"
+    ],
+    "passes": true
+  },
+  {
+    "category": "fix",
+    "description": "Scrolling inside chatbot also scrolls the page body",
+    "steps": [
+      "Open chatbot on a page with scrollable content",
+      "Scroll within the chatbot message area",
+      "Verify page body does not scroll",
+      "Test at top and bottom of chat scroll bounds"
+    ],
+    "passes": true
+  },
+  {
+    "category": "fix",
+    "description": "Add to Cart button redirects to product page instead of adding to cart",
+    "steps": [
+      "Search for a product via chatbot",
+      "Click Add to Cart on a product card",
+      "Verify product is added to WooCommerce cart (AJAX)",
+      "Verify chatbot remains open",
+      "Verify user is NOT redirected",
+      "Verify cart count updates in header (if applicable)"
+    ],
+    "passes": true
+  },
+  {
+    "category": "feature",
+    "description": "Persist chat history across page navigation within session",
+    "steps": [
+      "Open chatbot and send a few messages",
+      "Navigate to a different page on the site",
+      "Verify chatbot can be reopened with same conversation history",
+      "Verify conversation continues seamlessly",
+      "History should persist until browser session ends or user clears it"
+    ],
+    "passes": true
+  },
+  {
+    "category": "feature",
+    "description": "Support WooCommerce variable products with attribute selection",
+    "steps": [
+      "Backend returns product_type field (simple, variable, grouped, external)",
+      "For variable products, backend returns attributes array with name and options",
+      "Simple variable products (1-2 attributes, <10 options each): show VariableProductCard with dropdowns",
+      "Complex variable products (3+ attributes OR 30+ variations): show 'Select options' button linking to product page",
+      "Bot offers to help with complex products: 'This product has several options. Want me to help you choose?'",
+      "When user selects all attributes, Add to Cart uses correct variation_id",
+      "Price updates when variation is selected (if variations have different prices)",
+      "Out-of-stock variations are disabled/indicated",
+      "Test with: simple product, variable with 2 attrs, variable with 5+ attrs"
+    ],
+    "passes": true
+  }
+]

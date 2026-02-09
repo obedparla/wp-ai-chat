@@ -1,0 +1,14 @@
+@import 'tailwindcss';
+
+/* Scan PHP admin templates for Tailwind classes */
+@source "../../includes/*.php";
+
+/* Admin-specific animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@theme inline {
+  --animate-spin: spin 1s linear infinite;
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "category": "low",
+    "description": "Email chat transcript",
+    "steps": [
+      "Add 'Email transcript' button in widget header",
+      "Create email input modal component",
+      "Add REST endpoint to send transcript email",
+      "Format conversation as HTML email",
+      "Use wp_mail() with proper headers",
+      "Add rate limiting to prevent spam"
+    ],
+    "passes": false
+  },
+  {
+    "category": "low",
+    "description": "Multi-language support",
+    "steps": [
+      "Translate UI strings using WP i18n",
+      "Create .pot file for translations",
+      "Test with RTL languages (Arabic, Hebrew)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "low",
+    "description": "Voice input support",
+    "steps": [
+      "Add microphone button next to text input",
+      "Use Web Speech API (SpeechRecognition)",
+      "Show recording indicator while listening",
+      "Transcribe speech to text input field",
+      "Handle browser compatibility (Chrome, Safari, Edge)",
+      "Add fallback message for unsupported browsers"
+    ],
+    "passes": false
+  }
+]

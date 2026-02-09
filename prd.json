@@ -1,0 +1,95 @@
+[
+  {
+    "category": "Documentation",
+    "description": "Root CLAUDE.md explains two-project structure and data flow",
+    "steps": [
+      "Verify CLAUDE.md exists at wp-ai/ root",
+      "Verify it describes wp-ai-chatbot as the user-facing chatbot plugin",
+      "Verify it describes wp-ai-provider as the middleman server plugin",
+      "Verify it explains data flow: frontend chatbot -> serverside chatbot -> provider (server only) -> OpenAI -> provider (server only) -> serverside chatbot -> frontend chatbot",
+      "Verify it references each sub-project's own CLAUDE.md for details"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Infrastructure",
+    "description": "Provider WordPress plugin scaffold with base files and activation hooks",
+    "steps": [
+      "Verify wp-ai-provider/ directory exists",
+      "Verify main plugin file (wp-ai-provider.php) exists with valid plugin header",
+      "Verify composer.json exists with openai-php/client dependency",
+      "Verify plugin activates without errors in WordPress admin",
+      "Verify plugin deactivates cleanly without errors",
+      "Verify autoloading works (composer dump-autoload succeeds)"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Functional",
+    "description": "Provider REST endpoint accepts chat messages from chatbot clients",
+    "steps": [
+      "Verify REST route registered under provider namespace",
+      "Send POST request with chat message payload to endpoint",
+      "Verify endpoint validates required fields (message, conversation history)",
+      "Verify endpoint returns 400 for malformed requests",
+      "Verify endpoint accepts requests from authenticated chatbot instances"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Functional",
+    "description": "Provider is a transparent OpenAI proxy — forwards messages array to OpenAI and streams the raw response back via SSE. Provider is stateless: it does not interpret tool_calls or manage conversation loops. The chatbot backend drives all logic.",
+    "steps": [
+      "Send valid chat request to provider endpoint (messages array + tool definitions)",
+      "Verify provider forwards to OpenAI exactly as received",
+      "Verify response streams back as SSE (Content-Type: text/event-stream)",
+      "Verify partial tokens arrive incrementally (not buffered until complete)",
+      "Verify tool_call responses from OpenAI are streamed back faithfully (not intercepted)",
+      "Verify stream terminates with [DONE] event",
+      "Verify OpenAI errors are forwarded as error events to caller"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Functional",
+    "description": "Chatbot backend drives the conversation loop through the provider. It sends messages + tool definitions to the provider, parses the streamed response, and if OpenAI returns a tool_call: executes the tool locally (WooCommerce data), appends the result, and makes another request to the provider. This loop repeats until OpenAI returns a text response, which is then streamed to the frontend. The provider URL replaces the OpenAI URL — the loop logic stays in the chatbot backend.",
+    "steps": [
+      "Enable provider mode in chatbot admin settings",
+      "Send a chat message from frontend widget",
+      "Verify request goes to provider endpoint (not OpenAI directly)",
+      "Verify response displays correctly in chat widget",
+      "Verify tool calling works: chatbot backend detects tool_call in provider stream, executes locally, sends result back through provider for next completion",
+      "Verify multi-step tool calls work (e.g. search_products then get_product_details)",
+      "Verify only the final text response streams to frontend (tool-call round-trips are invisible to user)",
+      "Verify conversation history maintained across messages"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Functional",
+    "description": "End-to-end streaming works without buffering across full chain",
+    "steps": [
+      "Enable provider mode in chatbot settings",
+      "Send a chat message from frontend widget",
+      "Verify tokens appear incrementally in the UI (not all at once)",
+      "Verify no perceptible delay between provider receiving OpenAI tokens and forwarding them",
+      "Verify long responses stream smoothly without stalling",
+      "Verify streaming works identically to direct OpenAI mode from user perspective"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Functional",
+    "description": "Admin toggle switches between provider mode and direct OpenAI mode",
+    "steps": [
+      "Open chatbot admin settings",
+      "Verify toggle exists for provider/direct mode",
+      "Set to direct mode and verify chatbot connects to OpenAI directly (requires API key)",
+      "Set to provider mode and verify chatbot routes through provider",
+      "Verify direct mode still works as before (backwards compatible)",
+      "Verify switching modes does not lose other settings",
+      "Verify provider mode does not require user to enter their own OpenAI key"
+    ],
+    "passes": false
+  }
+]

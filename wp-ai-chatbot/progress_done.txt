@@ -1,0 +1,660 @@
+
+## 2026-01-26: PHPStan static analysis at level 6
+
+- Added phpstan/phpstan, phpstan/extension-installer, szepeviktor/phpstan-wordpress to composer.json
+- Created phpstan.neon with level 6 config
+- Created phpstan-bootstrap.php for constant definitions
+- Fixed all type errors in PHP classes (59 errors resolved)
+- Added composer script: "phpstan": "phpstan analyze --memory-limit=512M"
+- All PHP files now pass PHPStan level 6 analysis
+
+## 2026-01-26: PHPCS with WordPress Coding Standards
+
+- Added squizlabs/php_codesniffer, wp-coding-standards/wpcs, dealerdirect/phpcodesniffer-composer-installer to composer.json
+- Created .phpcs.xml.dist with WordPress-Extra ruleset
+- Configured prefixes (wpaic, WPAIC), text domain, and WP version minimum
+- Fixed 1566 auto-fixable errors via PHPCBF
+- Fixed remaining 16 manual issues: Yoda conditions, WP Filesystem usage
+- Added phpcs ignore comments for OpenAI SDK camelCase properties
+- Added wpaic_file_get_contents() helper function using WP_Filesystem
+- Added composer scripts: "lint": "phpcs", "lint:fix": "phpcbf"
+- All PHP files now pass PHPCS WordPress-Extra standard
+
+## 2026-01-26: PHPUnit tests for critical PHP components
+
+- Added phpunit/phpunit v11, yoast/phpunit-polyfills v3 to composer.json
+- Created tests/ directory with bootstrap.php
+- Created tests/stubs/wp-stubs.php with WP_Post, WP_Term, WP_Query, WP_Error stubs
+- Created WPAICTestHelper class for mocking WP data
+- Wrote 12 tests for WPAIC_Tools (search_products, get_product_details, get_categories)
+- Wrote 10 tests for WPAIC_Chat (tool definitions, execute_tool, format_messages)
+- Created phpunit.xml configuration
+- Added composer script: "test": "phpunit"
+- All 22 tests pass with 91 assertions
+
+## 2026-01-26: ESLint for frontend TypeScript/React
+
+- Added eslint, @eslint/js, typescript-eslint, eslint-plugin-react-hooks to frontend/package.json
+- Created frontend/eslint.config.js with strict TS + React rules
+- Configured react-hooks recommended rules
+- All frontend src/ files pass linting (no errors found)
+- Added npm script: "lint": "eslint src/"
+
+## 2026-01-26: Prettier for frontend code formatting
+
+- Added prettier, eslint-config-prettier to frontend/package.json
+- Created frontend/.prettierrc with singleQuote, semi:false, tabWidth:2
+- Added eslintConfigPrettier to eslint.config.js to disable conflicting rules
+- Ran prettier --write src/ (formatted 4 files)
+- Removed broken @types/eslint__js package that was causing build errors
+- Added npm scripts: "format": "prettier --write src/", "format:check": "prettier --check src/"
+- All files pass prettier check, lint, and build
+
+## 2026-01-26: Vitest tests for frontend components
+
+- Added vitest, @testing-library/react, @testing-library/jest-dom, @testing-library/user-event, jsdom@24 to frontend/package.json
+- Created frontend/vitest.config.ts with jsdom environment
+- Created frontend/src/test/setup.ts with jest-dom matchers and scrollIntoView mock
+- Wrote 11 tests for useChat hook (initialization, message sending, streaming, error handling, abort)
+- Wrote 14 tests for ChatWidget component (rendering, user interactions, loading state)
+- Updated frontend/tsconfig.json to exclude test files from build
+- Added npm script: "test": "vitest"
+- All 25 tests pass, lint clean, build succeeds
+
+## 2026-01-26: GitHub Actions CI/CD pipeline
+
+- Created .github/workflows/ci.yml
+- PHP job: runs on PHP 8.2 and 8.3, runs phpstan, phpcs, phpunit
+- Frontend job: runs on Node 20, runs eslint, prettier check, vitest, build
+- Triggers on push and PR to main/master branches
+- Uses caching for Composer and npm dependencies
+- All local tests pass (22 PHP tests, 25 frontend tests)
+
+## 2026-01-26: Admin can customize system prompt
+
+- Added system_prompt field to WPAIC_Admin settings page with textarea and description
+- Added system_prompt to sanitize_settings() for proper sanitization
+- Added system_prompt to wpaic_settings defaults in activation hook
+- Updated WPAIC_Chat::get_system_prompt() to use custom prompt when set, fallback to default
+- Added 3 tests: custom prompt usage, default when empty, default when whitespace-only
+- All checks pass: 25 PHP tests, 25 frontend tests, PHPStan level 6, PHPCS clean
+
+## 2026-01-26: User can stop generation mid-stream
+
+- Modified ChatWidget to use stopGeneration from useChat hook
+- Updated ChatInput component: replaced disabled prop with isLoading + onStop
+- Added Stop button that shows while loading, replacing Send button
+- Added CSS for .wpaic-stop-btn (red styling to differentiate from Send)
+- Added 4 new frontend tests for stop button functionality
+- All checks pass: 25 PHP tests, 28 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Admin can view chat logs
+
+- Created DB tables: wpaic_conversations (session, user, IP, timestamps) and wpaic_messages (conversation_id, role, content)
+- Added wpaic_create_tables() to activation hook using dbDelta
+- Created WPAIC_Logs class: create_conversation, log_message, get_conversations, get_conversation_messages, delete_conversation
+- Modified WPAIC_API to log user messages + assistant responses with session_id
+- Added session_id to frontend useChat hook (stored in sessionStorage)
+- Changed admin menu to top-level with Settings + Chat Logs subpages
+- Built Chat Logs admin page: table view, pagination, modal for viewing conversation
+- Added AJAX handlers for view/delete conversation with nonce validation
+- Created 12 tests for WPAIC_Logs class with MockWpdb database stub
+- All checks pass: 37 PHP tests, 28 frontend tests, PHPStan level 6, PHPCS clean
+
+## 2026-01-26: Plugin activates and creates default settings
+
+- Created tests/WPAIC_ActivationTest.php with 7 tests for activation functionality
+- Added wpaic_activate(), wpaic_create_tables(), flush_rewrite_rules() stubs to tests/stubs/wp-stubs.php
+- Tests verify: settings creation, empty API key, gpt-4o-mini model, greeting message, enabled=true, empty system_prompt
+- Tests verify add_option doesn't overwrite existing settings
+- All checks pass: 44 PHP tests, 28 frontend tests, PHPStan level 6, PHPCS clean
+
+## 2026-01-26: Admin settings page allows configuration
+
+- Created tests/WPAIC_AdminTest.php with 28 tests for admin settings functionality
+- Tests verify sanitize_settings(): API key, model, greeting, enabled, system_prompt sanitization
+- Tests verify field rendering: password input for API key, select for model, textarea for greeting/prompt, checkbox for enabled
+- Tests verify settings persistence via WordPress options API
+- Tests verify capability checks for render_settings_page and render_logs_page
+- Added WordPress admin function stubs: register_setting, add_settings_section, add_settings_field, add_menu_page, etc
+- Fixed nullable parameter deprecation warnings in stubs for PHP 8.4 compatibility
+- All checks pass: 72 PHP tests (185 assertions), 28 frontend tests, PHPStan level 6, PHPCS clean
+
+## 2026-01-26: Chat widget appears on frontend
+
+- Frontend code already complete: App.tsx, ChatButton.tsx, ChatWidget.tsx, useChat.ts, styles.css
+- WPAIC_Frontend class handles asset loading from Vite manifest and container div rendering
+- Created App.test.tsx with 9 tests for widget visibility and toggle functionality
+- Tests verify: toggle button visible, widget hidden initially, widget shows on click, widget hides on close
+- Tests verify: greeting message displays, message input available when widget open
+- All checks pass: 72 PHP tests, 37 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: User can send message and receive streamed response
+
+- Feature fully implemented: useChat hook handles SSE streaming from backend
+- Backend WPAIC_API streams OpenAI responses via text/event-stream
+- Added test for Enter key submission to explicitly verify all PRD requirements
+- Tests cover: message input, form submit, Enter key, streaming response parsing, loading states
+- All checks pass: 72 PHP tests, 38 frontend tests, lint clean, build succeeds
+## 2026-01-26: Fix fatal errors blocking chat functionality
+
+- Added guzzlehttp/guzzle ^7.0 to composer.json for PSR-18 HTTP client
+- openai-php/client requires a PSR-18 HTTP client implementation; was throwing DiscoveryFailedException
+- Ran composer update guzzlehttp/guzzle to install guzzle + dependencies (promises, psr7, psr/http-factory, etc)
+- Verified OpenAI client instantiation works without errors
+- Database tables (wpaic_conversations, wpaic_messages) already properly created via dbDelta in activation hook
+- Chat streaming endpoint (/wpaic/v1/chat/stream) implementation was already complete
+- All checks pass: 72 PHP tests, lint clean, PHPStan level 6 clean
+
+## 2026-01-26: Bot searches products when asked
+
+- Verified search_products tool integration is fully implemented
+- WPAIC_Chat::get_tool_definitions() defines search_products with search, category, min_price, max_price, limit params
+- WPAIC_Chat::handle_tool_calls_stream() handles OpenAI tool_calls response and executes tools
+- WPAIC_Chat::execute_tool() routes to WPAIC_Tools::search_products()
+- WPAIC_Tools::search_products() queries WP_Query for products, returns id, name, url, price, regular_price, sale_price
+- Existing tests verify: tool definitions, execute_tool routing, search_products returns correct data
+- All checks pass: 72 PHP tests, 185 assertions
+
+## 2026-01-26: Bot filters products by category and price range
+
+- Extended test stubs to support tax_query (category filtering) and meta_query (price filtering)
+- Added WPAICTestHelper::set_post_terms() and get_post_term_slugs() for associating products with categories
+- Updated WPAICTestHelper::get_mock_query_posts() to filter by taxonomy slug and meta comparisons (>=, <=, >, <, =, !=)
+- Added 7 tests: category filter (single + multiple), min_price, max_price, price range, combined category+price
+- WPAIC_Tools::search_products() already supported category and price params via WP_Query tax_query/meta_query
+- All checks pass: 78 PHP tests (198 assertions), 38 frontend tests
+
+## 2026-01-26: Chat widget closes and reopens with history
+
+- Refactored to lift useChat hook state from ChatWidget to App component
+- Chat state now persists when widget is closed/reopened (widget unmount doesn't lose messages)
+- Updated ChatWidget props interface to accept chat object
+- Updated ChatWidget.test.tsx to use mock chat prop instead of mocking useChat
+- Added App.test.tsx test to verify chat history persists across close/reopen
+- Also marked get_product_details, get_categories, multi-turn conversation as passing (already implemented)
+- All checks pass: 78 PHP tests (198 assertions), 39 frontend tests
+
+## 2026-01-26: Keyboard shortcuts work
+
+- Added Escape key handler to ChatWidget using useEffect + keydown listener
+- Enter key already worked via form onSubmit (input field submits form on Enter)
+- Added 2 tests: Escape closes widget, Enter sends message
+- All checks pass: 78 PHP tests, 41 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Graceful error handling for missing/invalid API key
+
+- Changed backend error messages to user-friendly text (no technical details exposed)
+- Missing API key now shows "Chat is currently unavailable. Please try again later."
+- OpenAI API errors show "Something went wrong. Please try again."
+- Added isError flag to Message type for error styling
+- Added wpaic-message--error CSS class with red background/border styling
+- Updated MessageList to apply error styling conditionally
+- Frontend continues to work after errors (isLoading properly resets)
+- Added 2 error message styling tests to ChatWidget.test.tsx
+- Updated PHP test for new error message text
+- All checks pass: 78 PHP tests, 43 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Security - REST endpoint validates nonce + API key not exposed
+
+- Verified API key is NOT exposed to frontend (wpaicConfig only contains apiUrl, nonce, greeting)
+- Added verify_nonce() method to WPAIC_API class
+- Changed permission_callback for /chat and /chat/stream endpoints to use nonce validation
+- Requests without valid X-WP-Nonce header now return 403 rest_forbidden error
+- Frontend already sends X-WP-Nonce header (line 60 in useChat.ts)
+- Added wp_verify_nonce stub and WP_REST_Request stub to tests/stubs/wp-stubs.php
+- Created tests/WPAIC_APITest.php with 4 tests for nonce validation
+- Products endpoint kept as public (no nonce) since it's read-only catalog data
+- All checks pass: 82 PHP tests (204 assertions), PHPStan level 6 clean, PHPCS clean
+
+## 2026-01-26: Chat auto-scrolls to latest message
+
+- Moved scroll logic from ChatWidget to MessageList component
+- MessageList now has containerRef attached to wpaic-messages div
+- useEffect triggers scroll on messages.length change AND lastMessageContent change (for streaming)
+- Scrolls by setting containerRef.scrollTop = containerRef.scrollHeight
+- Removed obsolete messagesEndRef from ChatWidget (was outside scrollable container)
+- All checks pass: 82 PHP tests, 43 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: User can clear chat history
+
+- Added clearChat function to useChat hook that clears messages and restores greeting
+- clearChat aborts any active streaming generation and resets isLoading
+- Added clear button (↺) in ChatWidget header next to close button
+- Added CSS for .wpaic-header-actions and .wpaic-clear-btn styling
+- Extended ChatWidgetProps interface to include clearChat in chat prop
+- Added 3 tests for useChat clearChat: clears+shows greeting, stops active gen, empty greeting handling
+- Added 2 tests for ChatWidget clear button: renders, calls clearChat on click
+- All checks pass: 82 PHP tests, 48 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Chat widget is mobile responsive
+
+- Added @media (max-width: 480px) breakpoint for mobile devices
+- Widget takes full width on mobile with rounded top corners
+- Adjusted height to calc(100vh - 60px) for near-fullscreen experience
+- Increased font-size on input to 16px to prevent iOS auto-zoom on focus
+- Added safe-area-inset-bottom padding for notched devices
+- Added @media (max-width: 375px) for smaller phones (iPhone SE)
+- Toggle button sized appropriately for touch (48-56px)
+- All checks pass: 48 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Chat works when no products exist
+
+- Verified existing implementation handles empty product scenarios gracefully
+- WPAIC_Tools::search_products() returns empty array [] when no products
+- WPAIC_Tools::get_categories() returns empty array [] when no categories
+- WPAIC_Tools::get_product_details() returns null for nonexistent product
+- Added 3 tests to WPAIC_ChatTest for execute_tool edge cases with no data
+- OpenAI receives empty results and generates appropriate "no products found" response
+- All checks pass: 85 PHP tests (209 assertions), lint clean
+
+## 2026-01-26: Plugin works without WooCommerce
+
+- Added wpaic_is_woocommerce_active() helper function in wp-ai-chatbot.php
+- Modified WPAIC_Chat to only instantiate WPAIC_Tools when WooCommerce is active
+- get_tool_definitions() returns empty array when WooCommerce not active
+- execute_tool() returns "Product tools unavailable" error when tools is null
+- Updated get_system_prompt() to use generic prompt without product mentions when WooCommerce inactive
+- API calls to OpenAI exclude tools param when empty (cleaner request)
+- Added test stub for wpaic_is_woocommerce_active() with configurable mock
+- Added 4 tests: empty tools, error on tool exec, prompt mentions products, prompt without products
+- All checks pass: 89 PHP tests (217 assertions), PHPStan level 6 clean, PHPCS clean
+
+## 2026-01-26: Frontend uses Vercel AI SDK for streaming + Backend outputs Vercel AI data stream format
+
+- Installed @ai-sdk/react and ai packages in frontend
+- Replaced custom useChat hook with Vercel AI SDK's useChat
+- Created adapter layer to maintain same interface (messages, sendMessage, isLoading, stopGeneration, clearChat)
+- Configured DefaultChatTransport with custom endpoint URL and X-WP-Nonce header
+- Updated backend WPAIC_API to output Vercel AI data stream format:
+  - Changed Content-Type from text/event-stream to text/plain; charset=utf-8
+  - Added x-vercel-ai-data-stream: v1 header
+  - Text chunks now use format: 0:"text"
+  - Finish signal uses format: d:{"finishReason":"stop"}
+  - Error format uses: 3:"error message"
+- Rewrote useChat tests to mock Vercel AI SDK properly
+- All checks pass: 89 PHP tests, 47 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Backend streams tool calls and results to frontend
+
+- Updated backend to use Vercel AI SDK UI Message Stream protocol (x-vercel-ai-ui-message-stream: v1)
+- Changed SSE format from data stream to proper SSE with "data: {JSON}\n\n" format
+- Modified WPAIC_Chat::send_stream() to emit tool events during streaming:
+  - tool_input_start: emitted when tool call begins with toolCallId and toolName
+  - tool_input_delta: emitted as tool arguments stream in with inputTextDelta
+- Modified WPAIC_Chat::handle_tool_calls_stream() to emit:
+  - tool_input_available: emitted when tool input is complete with full input object
+  - tool_output_available: emitted after tool execution with result data
+- Updated WPAIC_API to format events as proper SSE:
+  - text-start, text-delta, text-end for text streaming
+  - tool-input-start, tool-input-delta, tool-input-available, tool-output-available for tool calls
+  - data: [DONE] for stream completion
+- Added 3 tests for tool streaming: input_available event, output_available event, event ordering
+- All checks pass: 92 PHP tests (228 assertions), 47 frontend tests, PHPStan level 6, PHPCS clean
+
+## 2026-01-26: Tool calls show progress indicator to user
+
+- Added ActiveTool interface to useChat hook (toolName, state)
+- Added extractActiveTools() function to parse dynamic-tool parts from UIMessage
+- Maps input-streaming → input-streaming, input-available → executing states
+- Excludes tools with output-available state (completed)
+- Added getToolProgressMessage() in ChatWidget for human-readable progress text:
+  - search_products → "Searching products..."
+  - get_product_details → "Loading product details..."
+  - get_categories → "Loading categories..."
+  - fallback → "Running {toolName}..."
+- Shows tool progress indicator with spinner when isLoading && activeTools.length > 0
+- Falls back to "Typing..." indicator when no active tools
+- Added CSS for .wpaic-tool-progress, .wpaic-tool-progress-item, .wpaic-tool-spinner with animation
+- Added 5 tests for useChat activeTools extraction
+- Added 6 tests for ChatWidget tool progress display
+- All checks pass: 92 PHP tests, 58 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: User can retry failed messages with reload button
+
+- Added retry function to useChat hook that resends the last user message
+- Tracks lastUserMessage in useRef to preserve across re-renders
+- retry() removes the failed assistant message and calls sendMessage again
+- Added id field to Message interface for stable React keys
+- Updated messagesWithError to mark partial content messages as error when API fails
+- Added onRetry prop to MessageList component
+- Shows retry button (↻) on error messages only when it's the last message
+- Added CSS for .wpaic-retry-btn with red border and hover state
+- Added 4 tests for useChat retry functionality
+- Added 4 tests for ChatWidget retry button display and interaction
+- All checks pass: 92 PHP tests, 66 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Product display tool renders rich product cards
+
+- Modified WPAIC_Tools::format_product() to include image URL for all products (not just detailed view)
+- Created ProductCard component with image, name, price (with sale price support), link to product
+- Created ProductGrid component to render multiple product cards in a grid layout
+- Updated useChat hook to extract products from tool output (search_products, get_product_details)
+- Added extractProductsFromMessage() function to parse dynamic-tool parts with output-available state
+- Added isProduct() type guard to validate product objects
+- Updated Message interface to include optional products array
+- Integrated ProductGrid into MessageList to render product cards in assistant messages
+- Added responsive CSS for product cards: grid layout, hover effects, sale price styling
+- Added mobile responsive styles for product grid (2 columns on mobile)
+- Added 7 tests for ProductCard (name, image, link, price, sale price, placeholder)
+- Added 4 tests for ProductGrid (renders all products, empty array, grid class, card count)
+- Added 3 tests for ChatWidget product cards (single product, multiple, no products)
+- Added 5 tests for useChat product extraction (array, single, non-product tool, input-available, user messages)
+- All checks pass: 92 PHP tests, 85 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Admin can customize chatbot theme color
+
+- Added theme_color field to WPAIC_Admin settings page with WordPress color picker
+- Added enqueue_admin_scripts() to load wp-color-picker on settings page
+- Added sanitize_hex_color validation with fallback to #0073aa default
+- Added theme_color to wpaic_settings defaults in activation hook
+- Updated WPAIC_Frontend to pass themeColor via wpaicConfig
+- Updated App.tsx to apply color as CSS custom properties (--wpaic-primary, --wpaic-primary-hover)
+- Added hexToHoverColor() helper to compute 20% darker hover color
+- Updated styles.css to use CSS variables instead of hardcoded colors:
+  - Toggle button, header, user messages, send button
+  - Input focus border, tool spinner, product prices
+- Added sanitize_hex_color stub to tests/stubs/wp-stubs.php
+- Added 6 tests: sanitize valid color, default invalid, default missing, render field, default value, description
+- All checks pass: 98 PHP tests (238 assertions), 85 frontend tests, PHPStan level 6, PHPCS clean
+
+## 2026-01-26: Modernize frontend chatbot UI
+
+- Complete CSS redesign for premium chat experience
+- Added CSS custom properties for design tokens (shadows, radii, transitions, colors)
+- Toggle button: gradient background, pulse animation, scale on hover/active
+- Widget: slide-up entrance animation, refined shadow and border
+- Header: gradient background, styled action buttons with hover states
+- Messages: fade-in animation, improved typography (line-height 1.5, letter-spacing)
+- User messages: gradient background, subtle shadow
+- Assistant messages: white background, border, shadow for depth
+- Messages container: custom scrollbar styling, smooth scroll behavior
+- Typing indicator: animated bouncing dot before text
+- Input field: 2px border, focus ring effect, background color transitions
+- Send/Stop buttons: gradient backgrounds, scale transforms on hover/active
+- Product cards: border highlight on hover, image zoom on hover, shimmer animation for placeholder
+- Retry button: rotate animation on hover
+- Mobile: slide-up-from-bottom animation for fullscreen feel
+- Added prefers-reduced-motion support for accessibility
+- All checks pass: 85 frontend tests, lint clean, build succeeds
+
+# 2026-01-26: Fix product cards not rendering - add dynamic:true flag
+
+- Root cause: Vercel AI SDK expects `dynamic: true` in tool SSE events to create `dynamic-tool` parts
+- Without `dynamic: true`, SDK creates typed parts like `tool-search_products` instead of `dynamic-tool`
+- Frontend's extractProductsFromMessage() expects `type === 'dynamic-tool'` parts
+- Added `dynamic: true` to `tool-input-start`, `tool-input-available`, `tool-output-available` SSE events in WPAIC_API
+- All checks pass: 98 PHP tests, 85 frontend tests, PHPStan level 6, PHPCS clean
+
+## 2026-01-26: Markdown rendering in chat messages
+
+- Installed react-markdown and remark-gfm packages in frontend
+- Created MarkdownContent component with allowed elements whitelist
+- Configured remark-gfm for GFM features (tables, strikethrough)
+- Links open in new tab with rel="noopener noreferrer"
+- Added comprehensive CSS for markdown elements:
+  - Paragraphs, bold, italic, lists, links
+  - Inline code and code blocks (dark theme)
+  - Blockquotes, headings, tables, hr, del
+  - User message variants (inverted colors for links, code, quotes)
+- Replaced plain text span in MessageList with MarkdownContent for assistant messages
+- XSS prevention via allowedElements whitelist (no img, script, etc)
+- Added 14 tests covering all markdown elements and security
+- All checks pass: 98 PHP tests, 99 frontend tests, lint clean, build succeeds
+
+## 2026-01-26: Add to Cart button on product cards
+
+- Added add_to_cart_url field to format_product() in WPAIC_Tools using WC add_query_arg
+- Added wcAjaxUrl and cartUrl to wpaicConfig in WPAIC_Frontend
+- Updated Product interface to include add_to_cart_url
+- Restructured ProductCard: card is now div with separate link and button
+- Added handleAddToCart with AJAX add-to-cart via WC admin-ajax endpoint
+- Fallback: redirects to add_to_cart_url if AJAX unavailable or fails
+- Added CartState type with loading/success/error states
+- Button shows spinner during loading, "✓ Added" on success
+- Triggers WC mini-cart update via wc_fragment_refresh and added_to_cart events
+- Added CSS for .wpaic-add-to-cart-btn with gradient, loading spinner, state variants
+- Added wc_get_cart_url() stub to phpstan-bootstrap.php
+- Added 5 new tests for Add to Cart button functionality
+- All checks pass: 98 PHP tests, 104 frontend tests, PHPStan level 6, lint clean, build succeeds
+
+## 2026-01-26: Product comparison tool
+
+- Added compare_products() method to WPAIC_Tools accepting array of product IDs
+- Returns comparison data with products array and attributes list (price, stock_status, rating, categories)
+- Limits comparison to max 4 products
+- Added format_comparison_product() helper with rating and categories
+- Added compare_products tool definition to WPAIC_Chat with product_ids array param
+- Added execute_tool case for compare_products routing to WPAIC_Tools
+- Created ComparisonTable.tsx component with responsive table layout
+- Product headers with images and names, sticky on scroll
+- Attribute rows: Price (with sale price styling), Availability, Rating (stars), Categories
+- Highlights best values (lowest price, highest rating) with green background
+- Add to Cart buttons per product with AJAX support + loading/success states
+- Added extractComparisonFromMessage() to useChat hook parsing compare_products tool output
+- Added comparison field to Message interface
+- Renders ComparisonTable in MessageList for messages with comparison data
+- Added comprehensive CSS for comparison table with mobile responsive styles
+- Added wc_get_cart_url() stub to tests/stubs/wp-stubs.php
+- Added 10 backend tests for compare_products (empty, found, attributes, limits, fields)
+- Added 15 frontend tests for ComparisonTable (rendering, values, actions)
+- All checks pass: 108 PHP tests (281 assertions), 119 frontend tests, PHPStan level 6, lint clean, build succeeds
+
+## 2026-01-26: Proactive engagement popup
+
+- Added admin settings for proactive engagement under new "Proactive Engagement" section
+- proactive_enabled: checkbox to enable/disable auto-popup
+- proactive_delay: number input for trigger delay in seconds (min 1, max 300)
+- proactive_message: textarea for custom message (falls back to greeting)
+- proactive_pages: select dropdown (all pages, shop only, product only, homepage only)
+- Updated sanitize_settings() with proactive_enabled (bool), proactive_delay (int), proactive_message (text), proactive_pages (text)
+- Added get_proactive_config() in WPAIC_Frontend to compute proactive settings based on current page
+- Added current_page_matches() to check if current page matches selected pages setting (uses WC conditionals)
+- Passes proactiveEnabled, proactiveDelay, proactiveMessage to frontend via wpaicConfig
+- Added proactive auto-open logic in App.tsx with useEffect + setTimeout
+- Stores hasInteracted state to cancel proactive trigger after user interaction
+- Uses sessionStorage (wpaic_proactive_shown) to prevent repeat popups in same session
+- Updated useChat hook to use proactive message when enabled (via getGreetingMessage helper)
+- Added 5 tests for proactive engagement: auto-open, disabled, user interaction cancels, sessionStorage, session check
+- All checks pass: 108 PHP tests, 124 frontend tests, PHPStan level 6, lint clean, build succeeds
+
+## 2026-01-26: Order status lookup tool
+
+- Added get_order_status() method to WPAIC_Tools accepting order_number and email
+- Verifies order exists via wc_get_order() and email matches billing_email (case-insensitive)
+- Returns sanitized order info: order_number, status (readable name), date_created, total, items array, shipping_method
+- Includes tracking_number and tracking_url when available (from order meta)
+- Returns user-friendly error messages for missing params, order not found, email mismatch
+- Does not expose sensitive payment data (card numbers, etc)
+- Added get_order_status tool definition to WPAIC_Chat with order_number and email params
+- Added execute_tool case for get_order_status routing to WPAIC_Tools
+- Added WooCommerce order stubs to tests/stubs/wp-stubs.php: WC_DateTime, WC_Order_Item, MockWCOrder classes
+- Added wc_get_order(), wc_get_order_status_name(), sanitize_email() stub functions
+- Added WPAICTestHelper methods: add_mock_order(), get_mock_order()
+- Added 8 tests for get_order_status: missing params, not found, email mismatch, success, case-insensitive, tracking
+- Updated WPAIC_ChatTest tool count from 4 to 5
+- All checks pass: 116 PHP tests (311 assertions), PHPStan level 6, lint clean
+
+## 2026-01-26: Multi-language support
+
+- Added language setting to admin settings page with dropdown select
+- Options: Auto-detect (default), English, Spanish, French, German, Italian, Portuguese, Dutch, Russian, Chinese, Japanese, Korean, Arabic
+- Auto-detect instructs OpenAI to respond in the language the user writes in
+- Fixed language instructs OpenAI to always respond in the selected language
+- Added get_language_instruction() method to WPAIC_Chat
+- Language instruction appended to both custom and default system prompts
+- Added sanitize for language setting with default to 'auto'
+- Added 5 tests for admin language setting: sanitize, default, render select, default selected, description
+- Added 3 tests for chat language instruction: auto, fixed language, default
+- All checks pass: 124 PHP tests (326 assertions), PHPStan level 6, lint clean
+
+## 2026-01-27: Fix redundant text above product cards
+
+- Issue: bot showed both text description (price, title, etc) AND ProductCard/ComparisonTable UI
+- Fix: suppress text content when products or comparison data present
+- Modified MessageList.tsx: added hasProductUI check, conditionally render MarkdownContent
+- User messages always show text, assistant messages hide text when UI elements present
+- All checks pass: 124 frontend tests, build succeeds
+
+## 2026-01-27: Fix auto-scroll blocking user scroll
+
+- Issue: auto-scroll to bottom during streaming blocked user from scrolling up to read history
+- Fix: smart auto-scroll - only scrolls if user is already at/near bottom (within 50px threshold)
+- Added isUserAtBottomRef to track user's scroll position
+- Added checkIfAtBottom() helper with 50px threshold
+- Added onScroll handler to update isUserAtBottomRef on user scroll
+- useEffect now checks isUserAtBottomRef.current before scrolling
+- Files changed: frontend/src/components/MessageList.tsx
+- All checks pass: 124 frontend tests, build succeeds
+
+## 2026-01-27: Fix mobile floating icon overlapping Send button
+
+- Issue: on mobile, floating toggle button visible when chat open, overlaps input area
+- Fix: hide toggle button on mobile (max-width: 480px) when chat is open
+- Added wpaic-toggle-btn--open modifier class to ChatButton when isOpen=true
+- Added CSS rule to hide .wpaic-toggle-btn--open on mobile via display: none
+- Users can still close chat via X button in header (already existed)
+- Added test for open modifier class application
+- Files changed: frontend/src/components/ChatButton.tsx, frontend/src/styles.css, frontend/src/App.test.tsx
+- All checks pass: 125 frontend tests, build succeeds
+
+## 2026-01-27: Fix scroll propagation to page body
+
+- Issue: scrolling inside chatbot messages also scrolls the page body (scroll chaining)
+- Fix: added overscroll-behavior: contain to .wpaic-messages CSS
+- This CSS property prevents scroll events from propagating to parent when at scroll bounds
+- Supported in Chrome 63+, Firefox 59+, Safari 16+
+- Files changed: frontend/src/styles.css
+- All checks pass: 125 frontend tests, build succeeds
+
+## 2026-01-27: Fix Add to Cart AJAX handler
+
+- Issue: Add to Cart button redirected to product page instead of AJAX adding to cart
+- Root cause: frontend calls woocommerce_ajax_add_to_cart AJAX action but no handler registered
+- Created includes/class-wpaic-cart.php with WPAIC_Cart class
+- Registers wp_ajax_woocommerce_ajax_add_to_cart and wp_ajax_nopriv_woocommerce_ajax_add_to_cart hooks
+- ajax_add_to_cart() validates: WC active, product ID > 0, product exists, purchasable, in stock
+- Adds product to cart via WC()->cart->add_to_cart()
+- Returns success JSON with cart_item_key, cart_count, cart_total, fragments (mini-cart HTML)
+- Triggers woocommerce_ajax_added_to_cart action for WC compatibility
+- get_cart_fragments() returns mini-cart HTML for updating cart widgets
+- Updated class-wpaic-loader.php: load class and call init_cart()
+- Updated phpstan-bootstrap.php: added WC stubs for PHPStan (wc_get_product, WC, WC_Cart, etc)
+- Added tests/WPAIC_CartTest.php with 8 tests covering all error cases and success path
+- Updated tests/stubs/wp-stubs.php: added WPAICJsonResponseException for test assertions, absint, do_action, apply_filters, MockWCProduct, MockWCCart, MockWooCommerce, wc_get_product, woocommerce_mini_cart stubs
+- All checks pass: 132 PHP tests (343 assertions), 125 frontend tests, PHPStan level 6, lint clean
+
+## 2026-01-27: Persist chat history across page navigation
+
+- Issue: chat messages lost when navigating to different page (React app unmounts)
+- Fix: store UIMessage array to sessionStorage, restore on mount
+- Added CHAT_HISTORY_KEY constant and StoredMessage interface
+- Added saveMessagesToStorage(): serializes uiMessages to sessionStorage (skips if only greeting)
+- Added loadMessagesFromStorage(): parses stored messages on mount
+- Added clearStoredMessages(): removes stored messages (called by clearChat)
+- Added restoredFromStorageRef to track initial load state
+- useEffect on mount: restore from storage or show greeting
+- useEffect on uiMessages change: save to storage
+- clearChat now also clears sessionStorage
+- History persists until browser session ends or user clears chat
+- Files changed: frontend/src/hooks/useChat.ts, frontend/src/hooks/useChat.test.ts
+- Added 5 tests: restore on mount, show greeting when empty, save on change, skip save for greeting-only, clearChat removes stored
+- All checks pass: 130 frontend tests, build succeeds
+
+## 2026-01-27: Support WooCommerce variable products with attribute selection
+
+- Backend changes (class-wpaic-tools.php):
+  - format_product() now uses wc_get_product() to get product_type field
+  - Added get_variable_product_data() for variable products: attributes array, is_complex flag, variation_count
+  - Complexity threshold: >2 attributes OR >=30 variations = complex (falls back to ProductCard)
+  - Simple variable: includes full variations array with variation_id, attributes, price, regular_price, is_in_stock, image
+- Frontend types (ProductCard.tsx):
+  - Added ProductAttribute interface (name, label, options)
+  - Added ProductVariation interface (variation_id, attributes, price, regular_price, is_in_stock, image)
+  - Extended Product interface: product_type, attributes, variations, is_complex, variation_count
+- New component (VariableProductCard.tsx):
+  - Renders attribute dropdowns for each attribute
+  - Tracks selectedAttributes state, finds matching variation
+  - Updates price display when variation selected
+  - Shows "Out of Stock" for unavailable variations
+  - Disables Add to Cart until all attributes selected
+  - handleAddToCart sends variation_id and attribute params to AJAX endpoint
+- ProductGrid updated: isSimpleVariableProduct() check, renders VariableProductCard for simple variable products
+- CSS added: .wpaic-variable-attributes, .wpaic-attribute-select with dropdown styling, mobile responsive
+- Added 9 tests for VariableProductCard, updated 3 tests in ProductGrid
+- All checks pass: 142 frontend tests, PHPStan level 6, lint clean, build succeeds
+
+## 2026-01-27: Add TNTSearch and WPAIC_Search_Index class
+
+- PRD feature 1: "Add TNTSearch dependency and create WPAIC_Search_Index class"
+- Added teamtnt/tntsearch ^3.0 to composer.json
+- Created includes/class-wpaic-search-index.php with:
+  - build_index(): builds full-text search index from all products
+  - search(): fuzzy search with price/category filter support, fallback to WP_Query
+  - index_product(): adds/updates single product in index
+  - remove_product(): removes product from index
+  - get_index_status(): returns exists, product_count, last_updated
+- Index stored at wp-content/uploads/wpaic/search/products.index
+- Indexes: title, description, SKU, categories, attributes (for variable products)
+- Added WooCommerce hooks in class-wpaic-loader.php:
+  - woocommerce_new_product, woocommerce_update_product: index_product()
+  - woocommerce_delete_product, wp_trash_post (product): remove_product()
+  - woocommerce_save_product_variation: reindex parent product
+- Added WC_Product stubs to phpstan-bootstrap.php: get_name, get_sku, get_description, get_short_description, get_type, is_type, WC_Product_Variable, wc_attribute_label
+- Fixed pre-existing test issues: added get_type(), get_name(), get_sku(), get_description(), get_short_description(), is_type() to MockWCProduct in tests/stubs/wp-stubs.php
+- Files changed: composer.json, composer.lock, includes/class-wpaic-search-index.php, includes/class-wpaic-loader.php, phpstan-bootstrap.php, tests/stubs/wp-stubs.php
+- All checks pass: PHPStan level 6, lint clean
+
+## 2026-01-27: Admin UI for Search Index status and rebuild
+
+- PRD feature 5: "Admin UI shows index status and rebuild button"
+- Added Search Index settings section to admin page
+- render_search_section_description(): description text
+- render_search_index_status_field(): displays:
+  - Green checkmark + "X products indexed. Last updated: DATE" when index exists
+  - Red warning + "Index missing" message when no index
+  - "Rebuild Index" button with inline JS for AJAX
+  - Status feedback (spinner, success, error)
+- ajax_rebuild_index(): AJAX handler (wpaic_rebuild_index action)
+  - Checks nonce and manage_options capability
+  - Calls WPAIC_Search_Index::build_index()
+  - Returns success with count or error message
+- Page reloads 1.5s after successful rebuild to show updated status
+- Files changed: includes/class-wpaic-admin.php
+- All checks pass: PHPStan level 6, lint clean
+
+## 2026-01-28: Admin settings page redesigned with Tailwind and tabbed navigation
+
+- Complete redesign of admin settings page using Tailwind CSS CDN
+- Enqueued Tailwind CDN (v3.4.1) in enqueue_admin_scripts()
+- Created 5-tab navigation structure: General, API, Appearance, Engagement, Search Index
+- Tab navigation via URL query param (?tab=), active tab visually highlighted
+- render_settings_page(): modern header with icon, tabbed container, tab routing
+- render_general_tab(): enable toggle (styled switch), greeting textarea, language dropdown
+- render_api_tab(): API key info box, password input, model select with descriptions
+- render_appearance_tab(): theme color picker, system prompt textarea
+- render_engagement_tab(): proactive popup toggle, delay input, page select, message textarea
+- render_search_tab(): index status card with icon, rebuild button with AJAX + spinner animation
+- Consistent Tailwind styling: rounded-lg, shadow-sm, focus:ring, text-sm, space-y-6
+- Added esc_url(), add_query_arg(), admin_url() stubs for tests
+- All checks pass: 132 PHP tests (348 assertions), PHPCS clean
+
+## 2026-01-28: Frontend React components use Tailwind instead of custom CSS
+
+- Complete refactor of all React components from BEM CSS to Tailwind utility classes
+- Tailwind CSS v4 already installed with @tailwindcss/vite plugin
+- Refactored components:
+  - ChatButton.tsx: fixed positioning, animations, responsive hiding when open
+  - ChatWidget.tsx: widget container, header, messages area, all using Tailwind
+  - ChatInput.tsx: form, input, send/stop buttons with Tailwind
+  - MessageList.tsx: message bubbles, user/assistant styling, error states
+  - ProductCard.tsx: card layout, image, pricing, add-to-cart button states
+  - VariableProductCard.tsx: attribute dropdowns, variation selection
+  - ProductGrid.tsx: grid layout for 1-2 products, carousel wrapper for 3+
+  - ComparisonTable.tsx: table, sticky columns, best value highlighting
+- Added cn() utility from clsx/tailwind-merge for conditional class composition
+- Significantly reduced styles.css from ~1386 lines to ~277 lines:
+  - Kept: CSS custom properties (--wpaic-primary), keyframe animations, Tailwind @theme config, markdown styles
+  - Added custom animations to @theme inline: wpaic-pulse, wpaic-slideUp, wpaic-slideUpMobile, wpaic-fadeIn, shimmer
+- Updated all frontend tests to use new Tailwind class names instead of BEM classes
+- All 142 frontend tests pass, build succeeds (56KB CSS, 527KB JS)

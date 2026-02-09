@@ -1,0 +1,431 @@
+After completing each task, append to progress.txt:
+- Task completed and PRD item reference
+- Key decisions made and reasoning
+- Files changed
+- Any blockers or notes for next iteration
+
+Keep entries concise. Sacrifice grammar for the sake of concision. This file helps future iterations skip exploration.
+
+## 2026-01-27: Increase chatbot widget height
+
+- PRD feature: "Increase chatbot widget height for better content visibility"
+- Changed widget height from 520px to 600px in styles.css
+- Desktop mobile breakpoints unchanged (mobile uses calc(100vh - 60px))
+- Files changed: frontend/src/styles.css
+- All checks pass: 142 frontend tests, build succeeds
+
+## 2026-01-28: Reduce product card dimensions
+
+- PRD feature: "Reduce product card dimensions so cards fully visible in chat viewport"
+- Changes in styles.css:
+  - Grid: minmax 140px→120px, gap 12px→10px
+  - Image: aspect-ratio 1→4/3 (shorter)
+  - Product info padding: 12px→8px 10px
+  - Name: font 13px→12px, line-height 1.4→1.3, margin-bottom 8px→4px
+  - Price: font 14px→13px
+  - Actions padding: 0 12px 12px→0 10px 10px
+  - Button: padding 8px 12px→6px 10px, font 12px→11px
+  - Variable attrs: tightened padding/gaps/fonts
+  - Mobile: further reductions for smaller screens
+- Files changed: frontend/src/styles.css
+- All checks pass: 142 frontend tests, build succeeds
+
+## 2026-01-28: Install shadcn/ui and carousel component
+
+- PRD feature: "Install shadcn/ui and carousel component"
+- Installed Tailwind CSS v4 + @tailwindcss/vite plugin
+- Added path alias @/* in tsconfig.json and vite.config.ts
+- Initialized shadcn/ui with defaults (components.json created)
+- Installed carousel component (embla-carousel-react)
+- Created files:
+  - frontend/src/lib/utils.ts
+  - frontend/src/components/ui/button.tsx
+  - frontend/src/components/ui/carousel.tsx
+- Modified files:
+  - frontend/vite.config.ts (tailwind plugin + path alias)
+  - frontend/tsconfig.json (baseUrl + paths)
+  - frontend/package.json (new deps)
+  - frontend/src/styles.css (tailwind import + shadcn CSS vars)
+- All checks pass: 142 frontend tests, build succeeds
+
+## 2026-01-28: Product carousel for 3+ results
+
+- PRD feature: "Product results >2 cards display as carousel with partial peek of next card"
+- Logic: 1-2 products = vertical grid, 3+ products = horizontal carousel
+- Used shadcn/ui Carousel (embla-carousel-react) with opts: align='start', loop=true
+- CSS: 75% basis shows partial next card, 80% on mobile
+- Arrow buttons positioned outside carousel (-14px), styled with theme vars
+- Added mocks in test setup: matchMedia, IntersectionObserver, ResizeObserver
+- Updated ProductGrid.test.tsx for new grid/carousel behavior
+- vitest.config.ts: added path alias for @/
+- Files changed:
+  - frontend/src/components/ProductGrid.tsx (carousel integration)
+  - frontend/src/styles.css (carousel CSS)
+  - frontend/src/test/setup.ts (browser API mocks)
+  - frontend/vitest.config.ts (path alias)
+  - frontend/src/components/ProductGrid.test.tsx (updated tests)
+- All checks pass: 142 frontend tests, build succeeds
+
+## 2026-01-28: Product cards render outside message bubbles
+
+- PRD feature: "Product cards and tool component responses render outside message bubbles"
+- Refactored MessageList.tsx:
+  - User msgs: still wrapped in bubble
+  - Assistant msgs with tool UI: text in bubble, ProductGrid/ComparisonTable in wpaic-tool-response outside bubble
+  - Uses React Fragment to render multiple sibling elements per message
+- CSS changes:
+  - Added .wpaic-tool-response class (full-width, inherits gap from parent flex)
+  - Added .wpaic-retry-btn--standalone for retry when tool UI present
+  - Removed margin-top from .wpaic-product-grid, .wpaic-product-carousel-wrapper, .wpaic-comparison-table (parent gap handles spacing)
+- Files changed:
+  - frontend/src/components/MessageList.tsx
+  - frontend/src/styles.css
+- All checks pass: 142 frontend tests, build succeeds
+
+## 2026-01-28: Tool responses include introductory text
+
+- PRD feature: "Tool responses include introductory text message before product cards"
+- Added get_tool_response_instruction() method to WPAIC_Chat
+- System prompt now instructs AI to always start with contextual intro when presenting tool results
+- Applies to: product searches, comparisons, order lookups
+- If no results found, AI will explain clearly (no empty cards)
+- Files changed:
+  - includes/class-wpaic-chat.php
+- All checks pass: 132 PHP tests, 142 frontend tests
+
+## 2026-01-28: Bot text responses concise, no card duplication
+
+- PRD feature: "Bot text responses before tool calls are concise, not duplicating card content"
+- Updated get_tool_response_instruction() in WPAIC_Chat
+- New instruction: max 10 words intro, NEVER list product names/prices/details in text
+- Explicit: "product cards will show all details, text is brief intro only"
+- Files changed:
+  - includes/class-wpaic-chat.php
+- All checks pass: 132 PHP tests
+
+## 2026-01-28: Uniform card heights in carousel
+
+- PRD feature: "Product cards in carousel have uniform height"
+- CSS fixes in styles.css:
+  - .wpaic-carousel-item: added display:flex to stretch cards
+  - .wpaic-carousel-item .wpaic-product-card: height:100% fills carousel item
+  - .wpaic-carousel-content: align-items:stretch ensures equal height
+  - .wpaic-product-name: min-height:calc(2*1.3em) reserves 2-line space
+  - Mobile: also added display:flex to carousel-item
+- Cards now same height regardless of title/attribute variations
+- Files changed: frontend/src/styles.css
+- All checks pass: 142 frontend tests, build succeeds
+
+## 2026-01-28: Updated OpenAI model list with labels
+
+- PRD feature: "Updated OpenAI model list with labels and smart default"
+- Changed model dropdown from simple array to associative array with descriptive labels
+- Models now include: gpt-4o-mini (Recommended), gpt-4o, gpt-4.5-preview, o3-mini, o1, gpt-4-turbo, gpt-3.5-turbo
+- Each model has hint: Recommended, Smartest, Fast reasoning, Deep reasoning, Legacy, Cheapest
+- Default remains gpt-4o-mini (best balance of speed/cost/quality)
+- Added description text below dropdown explaining model selection
+- Updated test to verify new models and labels present
+- Files changed: includes/class-wpaic-admin.php, tests/WPAIC_AdminTest.php
+- All checks pass: 132 PHP tests
+
+## 2026-01-29: Product card styling v2
+
+- PRD feature: "Product card styling v2: larger price/title, no underline, finite carousel, less padding, show description"
+- ProductCard/VariableProductCard changes:
+  - Title: text-xs → text-base (16px), removed min-height constraint
+  - Price: text-[13px] → text-lg (18px bold)
+  - Links: no-underline → [text-decoration:none] (explicit)
+  - Description: added short_description display, line-clamp-2, text-xs text-slate-600
+  - Padding: p-2.5 → p-2 (reduced)
+- ProductGrid carousel: loop: true → loop: false (finite), px-4 → px-2 (8px)
+- Backend: added short_description to format_product() for all search results (wp_strip_all_tags)
+- Files changed:
+  - frontend/src/components/ProductCard.tsx (interface + styling)
+  - frontend/src/components/VariableProductCard.tsx (same styling)
+  - frontend/src/components/ProductGrid.tsx (carousel opts + padding)
+  - includes/class-wpaic-tools.php (short_description in response)
+- All checks pass: 132 PHP tests, 142 frontend tests, build succeeds
+
+## 2026-01-29: Tailwind prose for chat typography
+
+- PRD refactor: "Use Tailwind 'prose' class for chatbot typography instead of custom CSS"
+- Installed @tailwindcss/typography plugin
+- Added @plugin "@tailwindcss/typography" to styles.css
+- Removed 100+ lines of custom .wpaic-message-content CSS rules
+- MessageList.tsx: changed wpaic-message-content span to prose div with prose-sm prose-slate
+- Customizations via Tailwind modifiers: prose-p:my-2, prose-a:text-[var(--wpaic-primary)], etc
+- Updated test: error styling check now uses .closest('.bg-red-50') instead of .closest('div')
+- Files changed:
+  - frontend/package.json (@tailwindcss/typography dep)
+  - frontend/src/styles.css (plugin import, removed custom typography)
+  - frontend/src/components/MessageList.tsx (prose class)
+  - frontend/src/components/ChatWidget.test.tsx (fixed error styling test)
+- All checks pass: 142 frontend tests, build succeeds
+
+## 2026-01-29: Admin page visual polish + model dropdown update
+
+- PRD: "Admin page visual polish" + "AI model dropdown updated to Jan 2026 models"
+- Visual polish changes in class-wpaic-admin.php:
+  - Inputs: added max-w-md (~400px max width) to textareas/selects/inputs
+  - Spacing: space-y-6 → space-y-4 (16px consistent vertical spacing)
+  - Save button area: pt-6 mt-6 → pt-4 mt-4 (16px)
+  - Card: removed shadow-sm (only border remains, no double-border look)
+  - Tab nav: px-6 py-4 → px-5 py-3 (tighter tabs), rounded-t-lg overflow-hidden
+  - Outer container padding: py-6 → py-4
+- Model dropdown updated (Jan 2026 PRD):
+  - Added get_available_models() method
+  - Only 3 models: gpt-4o-mini, gpt-4o, gpt-5
+  - Labels: "(Recommended - Fast & Cheap)", "(Balanced)", "(Best - Expensive)"
+  - Removed legacy models: gpt-3.5-turbo, gpt-4-turbo, o1, o3-mini, gpt-4.5-preview
+- Tests updated: model field tests check for new 3-model list
+- Files changed:
+  - includes/class-wpaic-admin.php (styling + model list)
+  - tests/WPAIC_AdminTest.php (updated model tests)
+- All checks pass: 133 PHP tests, 142 frontend tests
+
+## 2026-01-29: Chatbot header with configurable logo and name
+
+- PRD feature: "Chatbot header with configurable logo and name"
+- Admin (class-wpaic-admin.php):
+  - Added 'Chatbot Name' text input in Appearance tab
+  - Added 'Chatbot Logo URL' url input in Appearance tab
+  - Sanitize: chatbot_name via sanitize_text_field, chatbot_logo via esc_url_raw
+- Frontend (class-wpaic-frontend.php):
+  - Added chatbotName and chatbotLogo to wpaicConfig
+- App.tsx:
+  - Extended Window.wpaicConfig interface with chatbotName/chatbotLogo
+  - Pass props to ChatWidget component
+- ChatWidget.tsx header logic:
+  - hasName: shows custom name + "AI Assistant" subtitle
+  - hasLogo: shows logo img (h-8 max-h-8)
+  - Logo only: shows logo + "AI Assistant" as title (no subtitle)
+  - Neither: shows "AI Assistant" as title only
+- Tests updated:
+  - ChatWidget.test.tsx: new tests for logo/name combos, changed 'Chat with us' → 'AI Assistant'
+  - App.test.tsx: changed 'Chat with us' → 'AI Assistant'
+  - test/setup.ts: extended wpaicConfig interface
+- Files changed:
+  - includes/class-wpaic-admin.php
+  - includes/class-wpaic-frontend.php
+  - frontend/src/App.tsx
+  - frontend/src/components/ChatWidget.tsx
+  - frontend/src/components/ChatWidget.test.tsx
+  - frontend/src/App.test.tsx
+  - frontend/src/test/setup.ts
+- All checks pass: 147 frontend tests, build succeeds
+
+## 2026-01-29: Handoff tool for human support requests
+
+- PRD features: "Handoff tool sends support request email to admin" + "Handoff feature respects admin enable/disable setting"
+- Admin (class-wpaic-admin.php):
+  - Added 'Enable Handoff to Human' toggle in Engagement tab
+  - handoff_enabled sanitized as boolean
+- Database (wp-ai-chatbot.php):
+  - Created wpaic_support_requests table: id, customer_name, customer_email, conversation_id, transcript, status (new/contacted/resolved), created_at, updated_at
+- Tools (class-wpaic-tools.php):
+  - Added create_handoff_request() method: validates name/email, inserts to DB, sends email
+  - Added send_handoff_email() method: sends wp_mail to admin with transcript and support page link
+- Chat (class-wpaic-chat.php):
+  - Added is_handoff_enabled() method
+  - Tool definitions now dynamic: WooCommerce tools always present, handoff tool only when enabled
+  - Added get_handoff_instruction(): when enabled instructs bot to collect name/email, when disabled instructs bot to apologize
+  - execute_tool() handles create_handoff_request (works without WooCommerce)
+- Test stubs (wp-stubs.php):
+  - Added esc_url_raw(), is_email(), wp_mail() stubs
+- Files changed:
+  - includes/class-wpaic-admin.php
+  - includes/class-wpaic-tools.php
+  - includes/class-wpaic-chat.php
+  - wp-ai-chatbot.php
+  - tests/stubs/wp-stubs.php
+- All checks pass: 133 PHP tests, 147 frontend tests, build succeeds
+
+## 2026-01-29: Support admin page for handoff requests
+
+- PRD feature: "Support admin page lists handoff requests with transcripts"
+- Admin (class-wpaic-admin.php):
+  - Added 'Support' submenu page under AI Chatbot menu
+  - render_support_page() method with Tailwind-styled table
+  - Table columns: Date, Customer Name, Email, Status, Actions
+  - Status dropdown (new/contacted/resolved) updates via AJAX
+  - 'View' button shows transcript in modal
+  - 'Email' button is mailto: link with customer email
+  - Pagination support for large request lists
+  - enqueue_admin_scripts() now loads Tailwind on support page too
+  - AJAX handlers: ajax_update_support_status(), ajax_get_support_transcript()
+- Modal transcript viewer parses User/Assistant format from stored transcript
+- Status colors: yellow=new, blue=contacted, green=resolved
+- Files changed:
+  - includes/class-wpaic-admin.php
+- All checks pass: 133 PHP tests, 147 frontend tests, build succeeds
+
+## 2026-01-29: Train bot with CSV data upload
+
+- PRD feature: "Train bot with CSV data upload"
+- Database (wp-ai-chatbot.php):
+  - Created wpaic_data_sources table: id, name (unique slug), label, description, columns (JSON), row_count, timestamps
+  - Created wpaic_training_data table: id, source_id (FK), row_data (JSON), created_at
+  - wpaic_create_training_tables() called during activation
+- Admin (class-wpaic-admin.php):
+  - Added 'Train Bot' tab to settings tabs
+  - render_train_tab(): shows data sources table with name/desc/columns/rows/actions
+  - 'Add Data Source' button opens modal with form: name (slug), label, description, file upload
+  - Modal form validates: slug pattern, 5MB limit, .csv only
+  - AJAX ajax_upload_csv(): parses CSV, extracts headers as columns, stores each row as JSON
+  - If source name exists, replaces (deletes old data + source, inserts new)
+  - Success shows row count imported
+  - ajax_delete_data_source(): removes source and all associated rows
+  - Train tab excluded from Save button (separate AJAX actions)
+- Files changed:
+  - wp-ai-chatbot.php (training tables creation)
+  - includes/class-wpaic-admin.php (Train Bot tab + AJAX handlers)
+  - prd.json (marked passes: true)
+
+## 2026-01-29: Dynamic tool for querying uploaded training data
+
+- PRD feature: "Bot has dynamic tool to query uploaded training data"
+- WPAIC_Tools (class-wpaic-tools.php):
+  - Added query_custom_data() method: queries wpaic_training_data by source_name
+  - Supports optional query param for text filtering (case-insensitive)
+  - Returns source label/description, columns, and up to 20 results
+  - Added static get_data_sources() method: fetches all sources for tool definition
+- WPAIC_Chat (class-wpaic-chat.php):
+  - Added get_custom_data_tool_definition(): builds tool def dynamically from DB
+  - Tool description lists all sources with their descriptions and columns
+  - source_name param has enum of valid source names
+  - Tool only appears when >=1 data source exists
+  - Integrated into execute_tool() to handle query_custom_data calls
+- Behavior:
+  - Upload CSV → tool appears in next chat
+  - Bot calls query_custom_data(source_name, query) when relevant
+  - Delete source → tool removes that source (or disappears if no sources)
+- Files changed:
+  - includes/class-wpaic-tools.php (query_custom_data, get_data_sources)
+  - includes/class-wpaic-chat.php (tool definition + execute_tool)
+- All checks pass: 133 PHP tests, 147 frontend tests, build succeeds
+
+## 2026-01-29: FAQ-style Q&A textbox training
+
+- PRD feature: "Train bot with FAQ-style Q&A textbox"
+- Database (wp-ai-chatbot.php):
+  - Added wpaic_faqs table: id, question, answer, created_at
+  - Created via wpaic_create_training_tables()
+- Admin (class-wpaic-admin.php):
+  - Added 'FAQ Responses' section in Train Bot tab
+  - Large textarea for Q&A pairs (Q:/A: format, blank line separator)
+  - Placeholder example demonstrates format
+  - ajax_save_faqs(): parses content, clears old FAQs, inserts new pairs
+  - Regex parses "Q: ...\nA: ..." format (multiline answers supported)
+  - Shows saved count on success
+- Chat (class-wpaic-chat.php):
+  - Added get_faq_instruction(): queries wpaic_faqs, builds system prompt injection
+  - FAQ content prepended to base prompt with natural language instruction
+  - Bot can rephrase answers naturally (not verbatim)
+- Files changed:
+  - wp-ai-chatbot.php (faqs table)
+  - includes/class-wpaic-admin.php (FAQ section UI + AJAX)
+  - includes/class-wpaic-chat.php (get_faq_instruction)
+- All checks pass: 133 PHP tests, 147 frontend tests, build succeeds
+
+## 2026-01-29: FEATURES.md documentation
+
+- PRD: "FEATURES.md documents all plugin features"
+- Created FEATURES.md in project root
+- Documents: chat widget, admin config, branding, proactive engagement, WooCommerce tools, handoff, CSV training, FAQ training, chat logs
+- Files changed: FEATURES.md (created)
+
+## 2026-01-30: Fix CSV file upload null/empty input validation
+
+- PRD bug: "CSV file upload handles null/empty input without fatal error"
+- Fixed in class-wpaic-admin.php ajax_upload_csv():
+  - Added explicit check for empty tmp_name before is_uploaded_file() call
+  - Split validation: first check if file data exists, then check if uploaded
+  - Changed error message to "Please select a CSV file to upload." (more user-friendly)
+- Test stubs (wp-stubs.php):
+  - Added sanitize_key() function stub
+- Tests (WPAIC_AdminTest.php):
+  - Added test_ajax_upload_csv_returns_error_when_no_file_selected
+  - Added test_ajax_upload_csv_returns_error_when_files_not_set
+- Files changed:
+  - includes/class-wpaic-admin.php (validation fix)
+  - tests/stubs/wp-stubs.php (sanitize_key stub)
+  - tests/WPAIC_AdminTest.php (2 new tests)
+- All checks pass: 135 PHP tests
+
+## 2026-02-09: Fix settings save overwriting unrelated fields + enabled default
+
+- PRD bugs: "Saving one admin settings section does not overwrite unrelated settings fields" + "Chatbot is enabled by default on fresh plugin install"
+- Root cause: sanitize_settings() rebuilt entire settings array from $input on every save. Tabs only submit their own fields, so missing fields got default/empty values, wiping other tabs' data.
+- Fix in class-wpaic-admin.php sanitize_settings():
+  - Added hidden input `wpaic_settings[active_tab]` to form identifying which tab submitted
+  - When active_tab present: merge only that tab's fields into existing settings
+  - When no active_tab (legacy/test path): merge $input over existing (backward-compat)
+  - Tab→field mapping: general(enabled,greeting,language), api(key,model), appearance(name,logo,color,prompt), engagement(handoff,proactive_*)
+  - Unchecked checkboxes correctly clear on their own tab but don't affect other tabs
+- Also fixes "enabled by default": activation hook already sets enabled=true, saving other tabs no longer clears it
+- 4 new tests: api_tab preserves general, general preserves api, engagement preserves appearance, unchecked checkbox on active tab clears it
+- Files changed:
+  - includes/class-wpaic-admin.php (sanitize_settings + hidden active_tab input)
+  - tests/WPAIC_AdminTest.php (4 new tests)
+- All checks pass: 139 PHP tests, 147 frontend tests
+
+## 2026-02-09: FAQ persistence tests + MockWpdb $wpdb global fix
+
+- PRD bug: "FAQ responses persist and display after save, and feed into AI prompt"
+- Root cause: MockWpdb global $wpdb was null in tests. Set via file-scope `$wpdb = ...` but not reachable as global. Changed to `$GLOBALS['wpdb']`. Also MockWpdb lacked query() method (needed for TRUNCATE) and wpaic_faqs table support in get_results().
+- MockWpdb fixes (wp-stubs.php):
+  - Changed `$wpdb = new MockWpdb()` → `$GLOBALS['wpdb'] = new MockWpdb()`
+  - Added `query()` method supporting TRUNCATE TABLE
+  - Added wpaic_faqs table to constructor and reset()
+  - Added get_results() pattern matching for wpaic_faqs queries
+- WPAIC_ChatTest setUp/tearDown now reset $wpdb (was missing, caused 13 pre-existing test errors)
+- New chat tests (6): FAQ in system prompt, no FAQ when empty, multiple FAQs, FAQ as text not tool, FAQ in format_messages
+- New admin tests (4): save FAQ pairs, clear on empty, replace existing, permission check
+- Code inspection confirmed: FAQ save/load/inject logic was correct — only test infrastructure was broken
+- Files changed:
+  - tests/stubs/wp-stubs.php (MockWpdb improvements + global fix)
+  - tests/WPAIC_ChatTest.php (6 new tests + setUp fix)
+  - tests/WPAIC_AdminTest.php (4 new tests)
+  - prd.json (marked passes: true)
+- All checks pass: 148 PHP tests, 147 frontend tests
+
+## 2026-02-09: UI polish - CSV file input, clickable data sources header, logo/name PRD verified
+
+- PRD items resolved: "CSV File input styled to match admin design system", "Data Sources section acts as clickable trigger to open add-source dialog", "Chatbot logo and name settings apply to frontend widget"
+- Logo/name: already fully implemented, just marked passes: true
+- CSV file input: replaced browser-default file input with Tailwind `file:` modifier styling — blue button, consistent borders/focus ring, clean filename display
+- Data Sources header: added id `wpaic-data-sources-header`, hover:bg-gray-50, cursor-pointer, bound click event to open modal (button still works via event bubbling)
+- Files changed:
+  - includes/class-wpaic-admin.php (file input styling, header clickable)
+  - prd.json (3 items marked passes: true)
+- All checks pass: 148 PHP tests, 147 frontend tests, build succeeds
+
+## 2026-02-09: Root CLAUDE.md for monorepo structure
+
+- PRD feature (root prd.json): "Root CLAUDE.md explains two-project structure and data flow"
+- Created wp-ai/CLAUDE.md at monorepo root
+- Documents: wp-ai-chatbot (user-facing plugin), wp-ai-provider (middleman server)
+- Full data flow diagram: frontend → chatbot backend → provider → OpenAI → back
+- Explains provider is stateless, chatbot drives tool-call logic
+- References sub-project CLAUDE.md files for details
+- Files changed: wp-ai/CLAUDE.md (created), wp-ai/prd.json (marked passes: true)
+- Documentation-only, no tests to run
+
+## 2026-02-09: Provider WordPress plugin scaffold
+
+- PRD feature (root prd.json): "Provider WordPress plugin scaffold with base files and activation hooks"
+- Created wp-ai-provider plugin: main file, composer.json, loader class, test infrastructure
+- Prefix: `wpaip_` for functions, `WPAIP_` for classes (mirrors chatbot's `wpaic_`/`WPAIC_` pattern)
+- composer.json: openai-php/client + guzzlehttp/guzzle deps, phpunit + yoast polyfills dev deps
+- Activation: stores default settings (openai_api_key, model) via add_option
+- Deactivation: flush_rewrite_rules only
+- Test infrastructure: bootstrap, WP stubs (options/actions/hooks), 7 tests all passing
+- Files created:
+  - wp-ai-provider/wp-ai-provider.php (main plugin file)
+  - wp-ai-provider/composer.json
+  - wp-ai-provider/includes/class-wpaip-loader.php
+  - wp-ai-provider/phpunit.xml
+  - wp-ai-provider/tests/bootstrap.php
+  - wp-ai-provider/tests/stubs/wp-stubs.php
+  - wp-ai-provider/tests/WPAIP_PluginTest.php
+- All checks pass: 7 PHP tests

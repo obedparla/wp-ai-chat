@@ -1,0 +1,11 @@
+parameters:
+    level: 6
+    paths:
+        - includes
+        - wp-ai-chatbot.php
+    scanDirectories:
+        - vendor
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+        - vendor/autoload.php
+    treatPhpDocTypesAsCertain: false

@@ -1,0 +1,111 @@
+[
+  {
+    "category": "Documentation",
+    "description": "FEATURES.md documents all plugin features",
+    "steps": [
+      "Verify FEATURES.md file exists in project root",
+      "Verify handoff feature documented with description",
+      "Verify train bot (CSV) feature documented",
+      "Verify train bot (FAQ) feature documented",
+      "Verify all major features listed with brief descriptions"
+    ],
+    "passes": true
+  },
+  {
+    "category": "UI/UX",
+    "description": "CSV File input styled to match admin design system",
+    "steps": [
+      "Open Train Bot tab in admin settings",
+      "Click 'Add Data Source' to open dialog",
+      "Locate the CSV file input field",
+      "Verify input has consistent styling with other form elements (borders, padding, focus states)",
+      "Verify file input doesn't look like browser default unstyled element",
+      "Verify selected filename displays cleanly after file selection"
+    ],
+    "passes": true
+  },
+  {
+    "category": "UI/UX",
+    "description": "Data Sources section acts as clickable trigger to open add-source dialog",
+    "steps": [
+      "Open Train Bot tab in admin settings",
+      "Click anywhere on the 'Data Sources' section header/area (not just the button)",
+      "Verify the 'Add Data Source' dialog opens",
+      "Verify visual affordance (cursor pointer, hover state) indicates clickability",
+      "Verify clicking 'Add Data Source' button still works independently"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Bug",
+    "description": "CSV file upload handles null/empty input without fatal error",
+    "steps": [
+      "Open Train Bot tab in admin settings",
+      "Click 'Add Data Source' and fill in name/label fields",
+      "Attempt to save without selecting a CSV file",
+      "Verify no PHP fatal error occurs (no TypeError in sanitize_settings)",
+      "Verify appropriate validation message shown to user",
+      "Upload valid CSV file and verify it saves successfully"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Bug",
+    "description": "FAQ responses persist and display after save, and feed into AI prompt",
+    "steps": [
+      "Open Train Bot tab, Questions & Answers section",
+      "Enter FAQ text in textarea (Q: test question? A: test answer)",
+      "Click Save FAQs button",
+      "Verify success message shows count of saved FAQs",
+      "Refresh page and verify FAQ text still visible in textarea",
+      "Verify FAQs stored in database (wpaic_faqs table)",
+      "Open frontend chat and ask the FAQ question",
+      "Verify bot response references the configured answer",
+      "Verify FAQ content injected as text in system prompt (not via tool call)"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Bug",
+    "description": "Chatbot logo and name settings apply to frontend widget",
+    "steps": [
+      "Open admin Appearance tab",
+      "Set Chatbot Logo URL to valid image URL",
+      "Set Chatbot Name to 'TestBot'",
+      "Save settings",
+      "Open frontend page with chat widget",
+      "Verify widget header displays the configured logo image",
+      "Verify widget header displays 'TestBot' as the bot name",
+      "Clear logo URL and verify header shows name without logo",
+      "Clear name and verify header shows only 'AI Assistant' default"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Bug",
+    "description": "Saving one admin settings section does not overwrite unrelated settings fields",
+    "steps": [
+      "Open admin settings and set an API key, then save",
+      "Verify API key is persisted after page reload",
+      "Navigate to Enable/Disable section and toggle chatbot enabled",
+      "Save the enable/disable setting",
+      "Reload page and verify API key is still present (not cleared)",
+      "Update API key to a new value and save",
+      "Reload and verify chatbot enabled/disabled state was not changed",
+      "Change greeting message and save",
+      "Reload and verify both API key and enabled state are unchanged",
+      "Verify each settings section only updates its own fields on save"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Functional",
+    "description": "Chatbot is enabled by default on fresh plugin install",
+    "steps": [
+      "Verify the chatbot enabled toggle is ON by default",
+      "Visit a frontend page and verify the chat widget is visible without manual activation",
+      "Verify saving other settings does not disable the chatbot if enabled field was not explicitly toggled off"
+    ],
+    "passes": true
+  }
+]

@@ -1,0 +1,26 @@
+## 2026-02-09: Provider REST endpoint (PRD item 3)
+
+Implemented WPAIP_API class with POST /wpaip/v1/chat endpoint.
+
+What was done:
+- Created includes/class-wpaip-api.php with REST route registration
+- Auth via X-WPAIP-Site-Key header (hash_equals against stored site_key)
+- Request validation: messages array required, each msg needs role+content (with exceptions for tool/assistant+tool_calls messages), tools must be array, model must be string
+- Added site_key to default settings on activation (auto-generated UUID)
+- Wired WPAIP_API into WPAIP_Loader
+- Added WP stubs (WP_REST_Request, WP_REST_Response, WP_Error, register_rest_route, wp_generate_uuid4)
+- 16 new tests (23 total), all passing
+- handle_chat returns placeholder response — next feature will add OpenAI forwarding
+
+## 2026-02-09: OpenAI proxy streaming (PRD item 4)
+
+Replaced placeholder in handle_chat with actual OpenAI forwarding + SSE streaming.
+
+What was done:
+- Created WPAIP_Streamer class: wraps openai-php/client, streams response chunks as SSE `data:` lines
+- Streamer emits each chunk via `data: {json}\n\n`, errors as `data: {"error":...}\n\n`, terminates with `data: [DONE]\n\n`
+- WPAIP_API::handle_chat now validates → checks API key → sets SSE headers → delegates to streamer → exits
+- Extracted validate_chat_request as public method for testability
+- Streamer injectable via set_streamer() for testing with mocks
+- Updated WPAIP_Loader to require class-wpaip-streamer.php
+- 34 tests (11 new), all passing: validation, auth, no-API-key error, param building with/without tools/model, SSE formatting
