@@ -105,6 +105,114 @@ if ( ! function_exists( 'wp_generate_uuid4' ) ) {
 	}
 }
 
+if ( ! function_exists( 'add_menu_page' ) ) {
+	function add_menu_page( string $page_title, string $menu_title, string $capability, string $menu_slug, ?callable $callback = null, string $icon_url = '', int|float|null $position = null ): string {
+		$GLOBALS['wp_admin_pages'][ $menu_slug ] = array(
+			'page_title' => $page_title,
+			'menu_title' => $menu_title,
+			'capability' => $capability,
+			'callback'   => $callback,
+			'icon_url'   => $icon_url,
+			'position'   => $position,
+		);
+		return $menu_slug;
+	}
+}
+
+if ( ! function_exists( 'register_setting' ) ) {
+	function register_setting( string $option_group, string $option_name, array $args = array() ): void {
+		$GLOBALS['wp_registered_settings'][ $option_name ] = array(
+			'group' => $option_group,
+			'args'  => $args,
+		);
+	}
+}
+
+if ( ! function_exists( 'add_settings_section' ) ) {
+	function add_settings_section( string $id, string $title, callable|string|null $callback, string $page ): void {
+		$GLOBALS['wp_settings_sections'][ $page ][ $id ] = array(
+			'title'    => $title,
+			'callback' => $callback,
+		);
+	}
+}
+
+if ( ! function_exists( 'add_settings_field' ) ) {
+	function add_settings_field( string $id, string $title, callable $callback, string $page, string $section = 'default', array $args = array() ): void {
+		$GLOBALS['wp_settings_fields'][ $page ][ $section ][ $id ] = array(
+			'title'    => $title,
+			'callback' => $callback,
+			'args'     => $args,
+		);
+	}
+}
+
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( string $str ): string {
+		return trim( strip_tags( $str ) );
+	}
+}
+
+if ( ! function_exists( 'esc_attr' ) ) {
+	function esc_attr( string $text ): string {
+		return htmlspecialchars( $text, ENT_QUOTES, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'esc_html' ) ) {
+	function esc_html( string $text ): string {
+		return htmlspecialchars( $text, ENT_QUOTES, 'UTF-8' );
+	}
+}
+
+if ( ! function_exists( 'esc_html__' ) ) {
+	function esc_html__( string $text, string $domain = 'default' ): string {
+		return $text;
+	}
+}
+
+if ( ! function_exists( '__' ) ) {
+	function __( string $text, string $domain = 'default' ): string {
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'current_user_can' ) ) {
+	function current_user_can( string $capability ): bool {
+		return $GLOBALS['wp_current_user_can'] ?? true;
+	}
+}
+
+if ( ! function_exists( 'get_admin_page_title' ) ) {
+	function get_admin_page_title(): string {
+		return 'AI Provider';
+	}
+}
+
+if ( ! function_exists( 'settings_fields' ) ) {
+	function settings_fields( string $option_group ): void {
+		// No-op in tests.
+	}
+}
+
+if ( ! function_exists( 'do_settings_sections' ) ) {
+	function do_settings_sections( string $page ): void {
+		// No-op in tests.
+	}
+}
+
+if ( ! function_exists( 'submit_button' ) ) {
+	function submit_button(): void {
+		echo '<input type="submit" class="button button-primary" value="Save Changes" />';
+	}
+}
+
+if ( ! function_exists( 'is_admin' ) ) {
+	function is_admin(): bool {
+		return $GLOBALS['wp_is_admin'] ?? false;
+	}
+}
+
 if ( ! class_exists( 'WP_Error' ) ) {
 	class WP_Error {
 		private string $code;

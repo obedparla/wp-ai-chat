@@ -12,6 +12,6 @@
       "Verify the default model setting is displayed and editable",
       "Verify settings are sanitized on save (API key trimmed, model validated)"
     ],
-    "passes": true
+    "passes": false
   }
 ]

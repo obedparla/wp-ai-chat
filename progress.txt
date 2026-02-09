@@ -47,3 +47,23 @@ What was done:
   - tests/WPAIC_AdminTest.php (3 new tests)
   - prd.json (marked passes: true)
 - All checks pass: 162 PHP tests, 147 frontend tests
+
+## 2026-02-09: Provider admin settings page (PRD item — last remaining)
+
+Provider plugin now has a WordPress admin settings page for managing configuration.
+
+What was done:
+- Created includes/class-wpaip-admin.php with:
+  - add_admin_menu(): registers "AI Provider" top-level menu page
+  - register_settings(): registers wpaip_settings with sanitize callback, adds section + 3 fields
+  - render_site_key_field(): read-only input with Copy button (clipboard API)
+  - render_api_key_field(): password-masked input for OpenAI API key
+  - render_model_field(): select dropdown with gpt-4o-mini / gpt-4o / gpt-5
+  - sanitize_settings(): trims API key, validates model against allowed list, preserves site_key from DB
+  - render_settings_page(): standard WP settings form with capability check
+  - get_available_models(): returns model ID => label map
+- Wired WPAIP_Admin into WPAIP_Loader (loads only when is_admin())
+- Added WP admin stubs: add_menu_page, register_setting, add_settings_section, add_settings_field, sanitize_text_field, esc_attr, esc_html, esc_html__, __, current_user_can, get_admin_page_title, settings_fields, do_settings_sections, submit_button, is_admin
+- 15 new tests in WPAIP_AdminTest covering all PRD verification steps
+- All 60 provider tests passing
+- prd.json: all items now pass — PRD complete
