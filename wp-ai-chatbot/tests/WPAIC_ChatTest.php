@@ -986,4 +986,305 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'Hours of operation?', $formatted[0]['content'] );
 		$this->assertStringContainsString( '9am to 5pm.', $formatted[0]['content'] );
 	}
+
+	public function test_is_provider_mode_true_when_both_fields_set(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-site-key-123',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+		$this->assertTrue( $chat->is_provider_mode() );
+	}
+
+	public function test_is_provider_mode_false_when_url_missing(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => '',
+				'provider_site_key' => 'test-site-key-123',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+		$this->assertFalse( $chat->is_provider_mode() );
+	}
+
+	public function test_is_provider_mode_false_when_site_key_missing(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => '',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+		$this->assertFalse( $chat->is_provider_mode() );
+	}
+
+	public function test_is_provider_mode_false_when_neither_set(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => 'test-key',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+		$this->assertFalse( $chat->is_provider_mode() );
+	}
+
+	public function test_send_no_error_in_provider_mode_without_api_key(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key'    => '',
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat   = new WPAIC_Chat();
+		$result = $chat->send( array( array( 'role' => 'user', 'content' => 'Hello' ) ) );
+
+		// In provider mode, send() should attempt provider connection (and fail due to no actual server).
+		// It should NOT return 'no_api_key' error.
+		if ( is_wp_error( $result ) ) {
+			$this->assertNotEquals( 'no_api_key', $result->get_error_code() );
+		} else {
+			$this->assertArrayHasKey( 'content', $result );
+		}
+	}
+
+	public function test_send_stream_no_error_in_provider_mode_without_api_key(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key'    => '',
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat          = new WPAIC_Chat();
+		$callback_data = array();
+
+		$chat->send_stream(
+			array( array( 'role' => 'user', 'content' => 'Hello' ) ),
+			function ( $data ) use ( &$callback_data ) {
+				$callback_data[] = $data;
+			}
+		);
+
+		// Should attempt provider (fail to connect), but NOT give 'Chat is currently unavailable' error
+		$has_unavailable_error = false;
+		foreach ( $callback_data as $data ) {
+			if ( isset( $data['error'] ) && 'Chat is currently unavailable. Please try again later.' === $data['error'] ) {
+				$has_unavailable_error = true;
+			}
+		}
+		$this->assertFalse( $has_unavailable_error, 'Provider mode should not produce "no API key" error' );
+	}
+
+	public function test_stream_from_provider_parses_text_chunks(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'stream_from_provider' );
+		$method->setAccessible( true );
+
+		// Create a temporary SSE stream file
+		$sse_content  = "data: " . json_encode( array( 'choices' => array( array( 'delta' => array( 'content' => 'Hello' ), 'finish_reason' => null ) ) ) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array( 'choices' => array( array( 'delta' => array( 'content' => ' world' ), 'finish_reason' => 'stop' ) ) ) ) . "\n\n";
+		$sse_content .= "data: [DONE]\n\n";
+
+		$temp_file = tempnam( sys_get_temp_dir(), 'sse_test_' );
+		file_put_contents( $temp_file, $sse_content );
+
+		$chunks = array();
+		$result = $method->invoke(
+			$chat,
+			'file://' . $temp_file,
+			'test-key',
+			array( 'messages' => array() ),
+			function ( $data ) use ( &$chunks ) {
+				$chunks[] = $data;
+			}
+		);
+
+		unlink( $temp_file );
+
+		$this->assertCount( 2, $chunks );
+		$this->assertEquals( array( 'content' => 'Hello' ), $chunks[0] );
+		$this->assertEquals( array( 'content' => ' world' ), $chunks[1] );
+		$this->assertEmpty( $result );
+	}
+
+	public function test_stream_from_provider_parses_tool_calls(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'stream_from_provider' );
+		$method->setAccessible( true );
+
+		$sse_content  = "data: " . json_encode( array(
+			'choices' => array( array(
+				'delta' => array(
+					'tool_calls' => array( array(
+						'index'    => 0,
+						'id'       => 'call_abc123',
+						'function' => array( 'name' => 'search_products', 'arguments' => '' ),
+					) ),
+				),
+				'finish_reason' => null,
+			) ),
+		) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array(
+			'choices' => array( array(
+				'delta' => array(
+					'tool_calls' => array( array(
+						'index'    => 0,
+						'function' => array( 'arguments' => '{"search":"shoes"}' ),
+					) ),
+				),
+				'finish_reason' => null,
+			) ),
+		) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array(
+			'choices' => array( array(
+				'delta'         => new \stdClass(),
+				'finish_reason' => 'tool_calls',
+			) ),
+		) ) . "\n\n";
+		$sse_content .= "data: [DONE]\n\n";
+
+		$temp_file = tempnam( sys_get_temp_dir(), 'sse_test_' );
+		file_put_contents( $temp_file, $sse_content );
+
+		$chunks = array();
+		$result = $method->invoke(
+			$chat,
+			'file://' . $temp_file,
+			'test-key',
+			array( 'messages' => array() ),
+			function ( $data ) use ( &$chunks ) {
+				$chunks[] = $data;
+			}
+		);
+
+		unlink( $temp_file );
+
+		$this->assertArrayHasKey( 'tool_calls', $result );
+		$this->assertCount( 1, $result['tool_calls'] );
+		$this->assertEquals( 'call_abc123', $result['tool_calls'][0]['id'] );
+		$this->assertEquals( 'search_products', $result['tool_calls'][0]['function']['name'] );
+		$this->assertEquals( '{"search":"shoes"}', $result['tool_calls'][0]['function']['arguments'] );
+
+		// Verify tool_input_start and tool_input_delta chunks were emitted
+		$chunk_types = array_keys( array_merge( ...$chunks ) );
+		$this->assertContains( 'tool_input_start', $chunk_types );
+		$this->assertContains( 'tool_input_delta', $chunk_types );
+	}
+
+	public function test_stream_from_provider_handles_error_response(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'stream_from_provider' );
+		$method->setAccessible( true );
+
+		$sse_content = "data: " . json_encode( array( 'error' => array( 'message' => 'Invalid API key' ) ) ) . "\n\n";
+
+		$temp_file = tempnam( sys_get_temp_dir(), 'sse_test_' );
+		file_put_contents( $temp_file, $sse_content );
+
+		$chunks = array();
+		$result = $method->invoke(
+			$chat,
+			'file://' . $temp_file,
+			'test-key',
+			array( 'messages' => array() ),
+			function ( $data ) use ( &$chunks ) {
+				$chunks[] = $data;
+			}
+		);
+
+		unlink( $temp_file );
+
+		$this->assertArrayHasKey( 'error', $result );
+		$this->assertEquals( 'Invalid API key', $result['error'] );
+	}
+
+	public function test_stream_from_provider_handles_connection_failure(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'stream_from_provider' );
+		$method->setAccessible( true );
+
+		$chunks = array();
+		$result = $method->invoke(
+			$chat,
+			'https://this-will-not-resolve.invalid/endpoint',
+			'test-key',
+			array( 'messages' => array() ),
+			function ( $data ) use ( &$chunks ) {
+				$chunks[] = $data;
+			}
+		);
+
+		$this->assertArrayHasKey( 'error', $result );
+		$this->assertEquals( 'Failed to connect to provider', $result['error'] );
+	}
+
+	public function test_provider_mode_client_not_initialized(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key'    => 'this-key-should-be-ignored',
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$property   = $reflection->getProperty( 'client' );
+		$property->setAccessible( true );
+
+		// In provider mode, the OpenAI client should NOT be initialized
+		$this->assertNull( $property->getValue( $chat ) );
+	}
 }

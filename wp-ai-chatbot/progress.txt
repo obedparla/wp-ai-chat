@@ -400,6 +400,20 @@ Keep entries concise. Sacrifice grammar for the sake of concision. This file hel
   - prd.json (3 items marked passes: true)
 - All checks pass: 148 PHP tests, 147 frontend tests, build succeeds
 
+## 2026-02-09: Chatbot-to-provider conversation loop
+
+- PRD feature (root prd.json item 5): "Chatbot backend drives conversation loop through provider"
+- WPAIC_Chat: provider mode (provider_url + provider_site_key), streams via fopen SSE parsing
+- Recursive provider_completion_loop: request → parse SSE → detect tool_calls → execute locally → re-request
+- Admin: provider_url + provider_site_key fields in API tab
+- 14 new tests (11 chat + 3 admin)
+- Files changed:
+  - includes/class-wpaic-chat.php
+  - includes/class-wpaic-admin.php
+  - tests/WPAIC_ChatTest.php
+  - tests/WPAIC_AdminTest.php
+- All checks pass: 162 PHP tests, 147 frontend tests
+
 ## 2026-02-09: Root CLAUDE.md for monorepo structure
 
 - PRD feature (root prd.json): "Root CLAUDE.md explains two-project structure and data flow"

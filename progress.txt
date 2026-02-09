@@ -24,3 +24,26 @@ What was done:
 - Streamer injectable via set_streamer() for testing with mocks
 - Updated WPAIP_Loader to require class-wpaip-streamer.php
 - 34 tests (11 new), all passing: validation, auth, no-API-key error, param building with/without tools/model, SSE formatting
+
+## 2026-02-09: Chatbot-to-provider conversation loop (PRD item 5)
+
+Chatbot backend routes through provider, handles tool calls locally, loops until final text response.
+
+What was done:
+- WPAIC_Chat: added is_provider_mode() — true when provider_url + provider_site_key both set
+- Constructor skips OpenAI client init when in provider mode
+- send_stream() delegates to send_stream_via_provider() when provider mode active
+- send_stream_via_provider() → provider_completion_loop(): recursive loop that sends to provider, parses SSE, detects tool_calls, executes locally, appends results, re-requests
+- stream_from_provider(): opens HTTP stream via fopen(), parses SSE lines, extracts raw OpenAI chunks (content deltas, tool_calls), returns collected tool_calls or empty on text-only
+- Tool call events (tool_input_start, tool_input_delta, tool_input_available, tool_output_available) emitted to frontend same as direct mode
+- send() non-streaming also supports provider via send_via_provider() wrapper
+- Admin: added provider_url + provider_site_key fields to API tab with fieldset grouping (Provider Mode vs Direct Mode)
+- Sanitization: provider_url via esc_url_raw, provider_site_key via sanitize_text_field, in api tab_fields
+- 14 new tests (11 chat + 3 admin): provider mode detection, SSE text parsing, SSE tool call parsing, error handling, connection failure, settings sanitization
+- Files changed:
+  - includes/class-wpaic-chat.php (provider streaming + loop)
+  - includes/class-wpaic-admin.php (provider fields in API tab + sanitization)
+  - tests/WPAIC_ChatTest.php (11 new tests)
+  - tests/WPAIC_AdminTest.php (3 new tests)
+  - prd.json (marked passes: true)
+- All checks pass: 162 PHP tests, 147 frontend tests

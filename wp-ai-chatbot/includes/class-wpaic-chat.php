@@ -20,10 +20,22 @@ class WPAIC_Chat {
 			$this->tools = new WPAIC_Tools();
 		}
 
-		$api_key = $this->settings['openai_api_key'] ?? '';
-		if ( is_string( $api_key ) && '' !== $api_key ) {
-			$this->client = \OpenAI::client( $api_key );
+		if ( ! $this->is_provider_mode() ) {
+			$api_key = $this->settings['openai_api_key'] ?? '';
+			if ( is_string( $api_key ) && '' !== $api_key ) {
+				$this->client = \OpenAI::client( $api_key );
+			}
 		}
+	}
+
+	/**
+	 * Check if provider mode is active (provider_url + provider_site_key both set).
+	 */
+	public function is_provider_mode(): bool {
+		$provider_url      = $this->settings['provider_url'] ?? '';
+		$provider_site_key = $this->settings['provider_site_key'] ?? '';
+		return is_string( $provider_url ) && '' !== $provider_url
+			&& is_string( $provider_site_key ) && '' !== $provider_site_key;
 	}
 
 	/**
@@ -31,8 +43,12 @@ class WPAIC_Chat {
 	 * @return array<string, mixed>|WP_Error
 	 */
 	public function send( array $messages ): array|WP_Error {
-		if ( null === $this->client ) {
+		if ( ! $this->is_provider_mode() && null === $this->client ) {
 			return new WP_Error( 'no_api_key', 'OpenAI API key not configured', array( 'status' => 500 ) );
+		}
+
+		if ( $this->is_provider_mode() ) {
+			return $this->send_via_provider( $messages );
 		}
 
 		$model = $this->settings['model'] ?? 'gpt-4o-mini';
@@ -68,10 +84,44 @@ class WPAIC_Chat {
 	}
 
 	/**
+	 * Non-streaming send via provider. Collects full response from SSE stream.
+	 *
+	 * @param array<int, array<string, mixed>> $messages
+	 * @return array<string, mixed>|WP_Error
+	 */
+	private function send_via_provider( array $messages ): array|WP_Error {
+		$collected_content = '';
+		$error             = null;
+
+		$this->send_stream_via_provider(
+			$messages,
+			function ( array $data ) use ( &$collected_content, &$error ): void {
+				if ( isset( $data['content'] ) && is_string( $data['content'] ) ) {
+					$collected_content .= $data['content'];
+				}
+				if ( isset( $data['error'] ) && is_string( $data['error'] ) ) {
+					$error = $data['error'];
+				}
+			}
+		);
+
+		if ( null !== $error ) {
+			return new WP_Error( 'provider_error', $error, array( 'status' => 500 ) );
+		}
+
+		return array( 'content' => $collected_content );
+	}
+
+	/**
 	 * @param array<int, array<string, mixed>> $messages
 	 * @param callable(array<string, mixed>): void $on_chunk
 	 */
 	public function send_stream( array $messages, callable $on_chunk ): void {
+		if ( $this->is_provider_mode() ) {
+			$this->send_stream_via_provider( $messages, $on_chunk );
+			return;
+		}
+
 		if ( null === $this->client ) {
 			$on_chunk( array( 'error' => 'Chat is currently unavailable. Please try again later.' ) );
 			return;
@@ -160,6 +210,247 @@ class WPAIC_Chat {
 		} catch ( \Exception $e ) {
 			$on_chunk( array( 'error' => $e->getMessage() ) );
 		}
+	}
+
+	/**
+	 * Stream chat completion via provider endpoint, handling tool calls locally.
+	 *
+	 * @param array<int, array<string, mixed>> $messages
+	 * @param callable(array<string, mixed>): void $on_chunk
+	 */
+	private function send_stream_via_provider( array $messages, callable $on_chunk ): void {
+		$formatted_messages = $this->format_messages( $messages );
+		$tools              = $this->get_tool_definitions();
+		$model              = $this->settings['model'] ?? 'gpt-4o-mini';
+		if ( ! is_string( $model ) ) {
+			$model = 'gpt-4o-mini';
+		}
+
+		$this->provider_completion_loop( $formatted_messages, $tools, $model, $on_chunk );
+	}
+
+	/**
+	 * Provider completion loop: sends to provider, parses SSE, handles tool calls, recurses.
+	 *
+	 * @param array<int, array<string, mixed>> $formatted_messages Already-formatted messages with system prompt.
+	 * @param array<int, array<string, mixed>> $tools Tool definitions.
+	 * @param string $model Model name.
+	 * @param callable(array<string, mixed>): void $on_chunk Frontend chunk callback.
+	 */
+	private function provider_completion_loop( array $formatted_messages, array $tools, string $model, callable $on_chunk ): void {
+		$provider_url      = $this->settings['provider_url'];
+		$provider_site_key = $this->settings['provider_site_key'];
+
+		$body = array(
+			'messages' => $formatted_messages,
+			'model'    => $model,
+		);
+		if ( ! empty( $tools ) ) {
+			$body['tools'] = $tools;
+		}
+
+		$result = $this->stream_from_provider( $provider_url, $provider_site_key, $body, $on_chunk );
+
+		if ( isset( $result['error'] ) ) {
+			$on_chunk( array( 'error' => $result['error'] ) );
+			return;
+		}
+
+		if ( ! empty( $result['tool_calls'] ) ) {
+			$tool_calls_for_messages = array_map(
+				function ( $tc ) {
+					return array(
+						'id'       => $tc['id'],
+						'type'     => $tc['type'],
+						'function' => $tc['function'],
+					);
+				},
+				array_values( $result['tool_calls'] )
+			);
+
+			$formatted_messages[] = array(
+				'role'       => 'assistant',
+				'content'    => null,
+				'tool_calls' => $tool_calls_for_messages,
+			);
+
+			foreach ( $result['tool_calls'] as $tc ) {
+				$args        = json_decode( $tc['function']['arguments'], true );
+				$parsed_args = is_array( $args ) ? $args : array();
+
+				$on_chunk(
+					array(
+						'tool_input_available' => array(
+							'toolCallId' => $tc['id'] ?? '',
+							'toolName'   => $tc['function']['name'],
+							'input'      => $parsed_args,
+						),
+					)
+				);
+
+				$tool_result = $this->execute_tool( $tc['function']['name'], $parsed_args );
+
+				$on_chunk(
+					array(
+						'tool_output_available' => array(
+							'toolCallId' => $tc['id'] ?? '',
+							'output'     => $tool_result,
+						),
+					)
+				);
+
+				$formatted_messages[] = array(
+					'role'         => 'tool',
+					'tool_call_id' => $tc['id'] ?? '',
+					'content'      => (string) wp_json_encode( $tool_result ),
+				);
+			}
+
+			$this->provider_completion_loop( $formatted_messages, $tools, $model, $on_chunk );
+			return;
+		}
+
+		$on_chunk( array( 'done' => true ) );
+	}
+
+	/**
+	 * Open HTTP stream to provider, parse SSE lines, emit text chunks and collect tool calls.
+	 *
+	 * @param string $url Provider endpoint URL.
+	 * @param string $site_key Authentication key.
+	 * @param array<string, mixed> $body Request body.
+	 * @param callable(array<string, mixed>): void $on_chunk Frontend callback.
+	 * @return array{error?: string, tool_calls?: array<int, array<string, mixed>>} Result.
+	 */
+	private function stream_from_provider( string $url, string $site_key, array $body, callable $on_chunk ): array {
+		$context = stream_context_create(
+			array(
+				'http' => array(
+					'method'  => 'POST',
+					'header'  => "Content-Type: application/json\r\nX-WPAIP-Site-Key: {$site_key}\r\n",
+					'content' => wp_json_encode( $body ),
+					'timeout' => 120,
+				),
+				'ssl'  => array(
+					'verify_peer' => true,
+				),
+			)
+		);
+
+		$stream = @fopen( $url, 'r', false, $context ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		if ( false === $stream ) {
+			return array( 'error' => 'Failed to connect to provider' );
+		}
+
+		/** @var array<int, array{id: string|null, type: string, function: array{name: string, arguments: string}, started: bool}> $tool_calls */
+		$tool_calls    = array();
+		$finish_reason = '';
+		$buffer        = '';
+
+		while ( ! feof( $stream ) ) {
+			$chunk = fread( $stream, 8192 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
+			if ( false === $chunk ) {
+				break;
+			}
+			$buffer .= $chunk;
+
+			while ( false !== ( $newline_pos = strpos( $buffer, "\n" ) ) ) {
+				$line   = substr( $buffer, 0, $newline_pos );
+				$buffer = substr( $buffer, $newline_pos + 1 );
+				$line   = trim( $line );
+
+				if ( '' === $line ) {
+					continue;
+				}
+
+				if ( ! str_starts_with( $line, 'data: ' ) ) {
+					continue;
+				}
+
+				$data_str = substr( $line, 6 );
+
+				if ( '[DONE]' === $data_str ) {
+					break 2;
+				}
+
+				$data = json_decode( $data_str, true );
+				if ( ! is_array( $data ) ) {
+					continue;
+				}
+
+				if ( isset( $data['error'] ) ) {
+					fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+					$error_message = is_array( $data['error'] ) ? ( $data['error']['message'] ?? 'Provider error' ) : (string) $data['error'];
+					return array( 'error' => $error_message );
+				}
+
+				$choices = $data['choices'] ?? array();
+				if ( empty( $choices ) ) {
+					continue;
+				}
+
+				$choice = $choices[0];
+				$delta  = $choice['delta'] ?? array();
+
+				if ( ! empty( $delta['content'] ) ) {
+					$on_chunk( array( 'content' => $delta['content'] ) );
+				}
+
+				if ( ! empty( $delta['tool_calls'] ) ) {
+					foreach ( $delta['tool_calls'] as $tc_delta ) {
+						$index = $tc_delta['index'] ?? 0;
+						if ( ! isset( $tool_calls[ $index ] ) ) {
+							$tool_calls[ $index ] = array(
+								'id'       => $tc_delta['id'] ?? null,
+								'type'     => 'function',
+								'function' => array(
+									'name'      => '',
+									'arguments' => '',
+								),
+								'started'  => false,
+							);
+						}
+						if ( ! empty( $tc_delta['function']['name'] ) ) {
+							$tool_calls[ $index ]['function']['name'] = $tc_delta['function']['name'];
+							if ( ! $tool_calls[ $index ]['started'] ) {
+								$tool_calls[ $index ]['started'] = true;
+								$on_chunk(
+									array(
+										'tool_input_start' => array(
+											'toolCallId' => $tool_calls[ $index ]['id'],
+											'toolName'   => $tc_delta['function']['name'],
+										),
+									)
+								);
+							}
+						}
+						if ( ! empty( $tc_delta['function']['arguments'] ) ) {
+							$tool_calls[ $index ]['function']['arguments'] .= $tc_delta['function']['arguments'];
+							$on_chunk(
+								array(
+									'tool_input_delta' => array(
+										'toolCallId'     => $tool_calls[ $index ]['id'],
+										'inputTextDelta' => $tc_delta['function']['arguments'],
+									),
+								)
+							);
+						}
+					}
+				}
+
+				if ( ! empty( $choice['finish_reason'] ) ) {
+					$finish_reason = $choice['finish_reason'];
+				}
+			}
+		}
+
+		fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+
+		if ( 'tool_calls' === $finish_reason && ! empty( $tool_calls ) ) {
+			return array( 'tool_calls' => $tool_calls );
+		}
+
+		return array();
 	}
 
 	/**

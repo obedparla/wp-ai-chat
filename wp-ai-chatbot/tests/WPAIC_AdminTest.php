@@ -898,4 +898,62 @@ class WPAIC_AdminTest extends TestCase {
 		$_POST  = array();
 		$_FILES = array();
 	}
+
+	public function test_sanitize_settings_api_tab_includes_provider_fields(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => 'existing-key',
+				'enabled'        => true,
+			)
+		);
+
+		$admin = new WPAIC_Admin();
+		$result = $admin->sanitize_settings( array(
+			'active_tab'        => 'api',
+			'openai_api_key'    => '',
+			'model'             => 'gpt-4o-mini',
+			'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+			'provider_site_key' => 'my-site-key-123',
+		) );
+
+		$this->assertEquals( 'https://provider.example.com/wp-json/wpaip/v1/chat', $result['provider_url'] );
+		$this->assertEquals( 'my-site-key-123', $result['provider_site_key'] );
+		$this->assertTrue( $result['enabled'] );
+	}
+
+	public function test_sanitize_settings_general_tab_preserves_provider_fields(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'my-site-key-123',
+				'enabled'           => true,
+			)
+		);
+
+		$admin = new WPAIC_Admin();
+		$result = $admin->sanitize_settings( array(
+			'active_tab'       => 'general',
+			'enabled'          => true,
+			'greeting_message' => 'Hi!',
+			'language'         => 'en',
+		) );
+
+		$this->assertEquals( 'https://provider.example.com/wp-json/wpaip/v1/chat', $result['provider_url'] );
+		$this->assertEquals( 'my-site-key-123', $result['provider_site_key'] );
+	}
+
+	public function test_sanitize_settings_provider_url_uses_esc_url_raw(): void {
+		$admin = new WPAIC_Admin();
+		$result = $admin->sanitize_settings( array(
+			'active_tab'        => 'api',
+			'openai_api_key'    => '',
+			'model'             => 'gpt-4o-mini',
+			'provider_url'      => 'https://valid-url.com/wp-json/wpaip/v1/chat',
+			'provider_site_key' => 'key',
+		) );
+
+		$this->assertEquals( 'https://valid-url.com/wp-json/wpaip/v1/chat', $result['provider_url'] );
+	}
 }

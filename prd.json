@@ -63,7 +63,7 @@
       "Verify only the final text response streams to frontend (tool-call round-trips are invisible to user)",
       "Verify conversation history maintained across messages"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Functional",
