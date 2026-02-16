@@ -29,3 +29,16 @@ The chatbot backend drives all conversation logic: it sends messages + tool defi
 ## Dev Setup
 
 Each sub-project has its own dependencies. See their respective CLAUDE.md / README for commands.
+
+## Local Dev Sites (Local by Flywheel)
+
+When debugging, always check logs on both sites:
+
+- **Provider**: `/Users/obedmarquez/Local Sites/wp-ai-chatbot-provider/app/public`
+  - Debug log: `wp-content/debug.log`
+- **Chatbot**: `/Users/obedmarquez/Local Sites/wp-ai-chatbot/app/public`
+  - Debug log: `wp-content/debug.log`
+
+## Known Gotchas
+
+- **Empty JSON objects through provider**: PHP `json_decode($json, true)` turns `{}` into `[]`. When provider re-encodes and sends to OpenAI, empty objects become arrays. Never use `new \stdClass()` for empty `properties` in tool schemas — omit the key instead.

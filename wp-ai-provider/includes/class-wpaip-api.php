@@ -154,7 +154,7 @@ class WPAIP_API {
 		);
 
 		if ( is_array( $tools ) && ! empty( $tools ) ) {
-			$params['tools'] = $tools;
+			$params['tools'] = $this->fix_tool_schemas( $tools );
 		}
 
 		// @codeCoverageIgnoreStart
@@ -178,5 +178,46 @@ class WPAIP_API {
 			exit;
 		}
 		// @codeCoverageIgnoreEnd
+	}
+
+	/**
+	 * Fix empty arrays that should be JSON objects in tool schemas.
+	 *
+	 * PHP's json_decode turns {} into [] (empty array). When re-encoded,
+	 * [] becomes a JSON array instead of object, which OpenAI rejects.
+	 *
+	 * @param array<int, array<string, mixed>> $tools
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function fix_tool_schemas( array $tools ): array {
+		foreach ( $tools as &$tool ) {
+			if ( ! isset( $tool['function']['parameters'] ) ) {
+				continue;
+			}
+			$tool['function']['parameters'] = $this->fix_empty_objects( $tool['function']['parameters'] );
+		}
+		return $tools;
+	}
+
+	/**
+	 * Recursively convert empty arrays to stdClass so json_encode produces {} not [].
+	 *
+	 * @param mixed $value
+	 * @return mixed
+	 */
+	private function fix_empty_objects( mixed $value ): mixed {
+		if ( ! is_array( $value ) ) {
+			return $value;
+		}
+
+		if ( empty( $value ) ) {
+			return new \stdClass();
+		}
+
+		foreach ( $value as $key => &$item ) {
+			$item = $this->fix_empty_objects( $item );
+		}
+
+		return $value;
 	}
 }

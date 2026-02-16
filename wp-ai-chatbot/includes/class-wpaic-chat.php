@@ -326,10 +326,11 @@ class WPAIC_Chat {
 		$context = stream_context_create(
 			array(
 				'http' => array(
-					'method'  => 'POST',
-					'header'  => "Content-Type: application/json\r\nX-WPAIP-Site-Key: {$site_key}\r\n",
-					'content' => wp_json_encode( $body ),
-					'timeout' => 120,
+					'method'        => 'POST',
+					'header'        => "Content-Type: application/json\r\nX-WPAIP-Site-Key: {$site_key}\r\n",
+					'content'       => wp_json_encode( $body ),
+					'timeout'       => 120,
+					'ignore_errors' => true,
 				),
 				'ssl'  => array(
 					'verify_peer' => true,
@@ -339,20 +340,52 @@ class WPAIC_Chat {
 
 		$stream = @fopen( $url, 'r', false, $context ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 		if ( false === $stream ) {
-			return array( 'error' => 'Failed to connect to provider' );
+			$last_error = error_get_last();
+			$detail     = $last_error['message'] ?? 'unknown error';
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( "[WPAIC] Provider connection failed: {$detail} | URL: {$url}" );
+			return array( 'error' => "Failed to connect to provider: {$detail}" );
 		}
+
+		$response_meta = stream_get_meta_data( $stream );
+		$http_status   = 0;
+		if ( ! empty( $response_meta['wrapper_data'] ) && is_array( $response_meta['wrapper_data'] ) ) {
+			foreach ( $response_meta['wrapper_data'] as $header ) {
+				if ( preg_match( '/^HTTP\/\S+\s+(\d{3})/', $header, $matches ) ) {
+					$http_status = (int) $matches[1];
+				}
+			}
+		}
+
+		if ( $http_status >= 400 ) {
+			$error_body = stream_get_contents( $stream );
+			fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( "[WPAIC] Provider HTTP {$http_status} | body: {$error_body}" );
+			return array( 'error' => "Provider returned HTTP {$http_status}" );
+		}
+
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+		error_log( "[WPAIC] Provider stream opened, HTTP {$http_status}. Reading..." );
 
 		/** @var array<int, array{id: string|null, type: string, function: array{name: string, arguments: string}, started: bool}> $tool_calls */
 		$tool_calls    = array();
 		$finish_reason = '';
 		$buffer        = '';
+		$total_bytes   = 0;
 
 		while ( ! feof( $stream ) ) {
 			$chunk = fread( $stream, 8192 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
 			if ( false === $chunk ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( '[WPAIC] fread returned false, breaking' );
 				break;
 			}
-			$buffer .= $chunk;
+			if ( '' === $chunk ) {
+				continue;
+			}
+			$total_bytes += strlen( $chunk );
+			$buffer      .= $chunk;
 
 			while ( false !== ( $newline_pos = strpos( $buffer, "\n" ) ) ) {
 				$line   = substr( $buffer, 0, $newline_pos );
@@ -445,6 +478,9 @@ class WPAIC_Chat {
 		}
 
 		fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+		error_log( "[WPAIC] Stream finished. Total bytes read: {$total_bytes}, finish_reason: {$finish_reason}, remaining buffer: " . substr( $buffer, 0, 200 ) );
 
 		if ( 'tool_calls' === $finish_reason && ! empty( $tool_calls ) ) {
 			return array( 'tool_calls' => $tool_calls );
