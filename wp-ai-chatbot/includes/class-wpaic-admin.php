@@ -248,9 +248,9 @@ class WPAIC_Admin {
 		}
 
 		$tab_fields = array(
-			'general'    => array( 'enabled', 'greeting_message', 'language' ),
+			'general'    => array( 'enabled', 'greeting_message', 'language', 'system_prompt' ),
 			'api'        => array( 'openai_api_key', 'model', 'provider_url', 'provider_site_key' ),
-			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color', 'system_prompt' ),
+			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color' ),
 			'engagement' => array( 'handoff_enabled', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages' ),
 		);
 
@@ -538,9 +538,10 @@ class WPAIC_Admin {
 	 * @param array<string, mixed> $settings Current settings.
 	 */
 	private function render_general_tab( array $settings ): void {
-		$enabled   = ! empty( $settings['enabled'] );
-		$greeting  = $settings['greeting_message'] ?? 'Hello! How can I help you today?';
-		$language  = $settings['language'] ?? 'auto';
+		$enabled        = ! empty( $settings['enabled'] );
+		$greeting       = $settings['greeting_message'] ?? 'Hello! How can I help you today?';
+		$language       = $settings['language'] ?? 'auto';
+		$system_prompt  = $settings['system_prompt'] ?? '';
 		$languages = array(
 			'auto' => __( 'Auto-detect (match user)', 'wp-ai-chatbot' ),
 			'en'   => __( 'English', 'wp-ai-chatbot' ),
@@ -589,6 +590,16 @@ class WPAIC_Admin {
 					<?php endforeach; ?>
 				</select>
 				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Language for chatbot responses. Auto-detect responds in the user\'s language.', 'wp-ai-chatbot' ); ?></p>
+			</div>
+
+			<div>
+				<label for="wpaic_system_prompt" class="block text-sm font-medium text-gray-700 mb-2">
+					<?php esc_html_e( 'Custom System Prompt', 'wp-ai-chatbot' ); ?>
+				</label>
+				<textarea id="wpaic_system_prompt" name="wpaic_settings[system_prompt]" rows="6"
+							class="max-w-lg w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+							placeholder="<?php esc_attr_e( 'Leave empty for default prompt', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $system_prompt ); ?></textarea>
+				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Define the chatbot\'s personality and behavior. Leave empty for the default helpful assistant prompt.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 		</div>
 		<?php
@@ -679,7 +690,6 @@ class WPAIC_Admin {
 	 */
 	private function render_appearance_tab( array $settings ): void {
 		$theme_color   = $settings['theme_color'] ?? '#0073aa';
-		$system_prompt = $settings['system_prompt'] ?? '';
 		$chatbot_name  = $settings['chatbot_name'] ?? '';
 		$chatbot_logo  = $settings['chatbot_logo'] ?? '';
 		?>
@@ -711,16 +721,6 @@ class WPAIC_Admin {
 				<input type="text" name="wpaic_settings[theme_color]" value="<?php echo esc_attr( $theme_color ); ?>"
 						class="wpaic-color-picker" data-default-color="#0073aa">
 				<p class="mt-2 text-sm text-gray-500"><?php esc_html_e( 'Primary color for the chat header, buttons, and accents.', 'wp-ai-chatbot' ); ?></p>
-			</div>
-
-			<div>
-				<label for="wpaic_system_prompt" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Custom System Prompt', 'wp-ai-chatbot' ); ?>
-				</label>
-				<textarea id="wpaic_system_prompt" name="wpaic_settings[system_prompt]" rows="6"
-							class="max-w-lg w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
-							placeholder="<?php esc_attr_e( 'Leave empty for default prompt', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $system_prompt ); ?></textarea>
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Define the chatbot\'s personality and behavior. Leave empty for the default helpful assistant prompt.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 		</div>
 		<?php
@@ -2100,6 +2100,13 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 		global $wpdb;
 		$faqs_table = $wpdb->prefix . 'wpaic_faqs';
 
+		// Ensure FAQs table exists (handles plugin updates without reactivation).
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $faqs_table ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		if ( ! $table_exists && function_exists( 'wpaic_create_training_tables' ) ) {
+			wpaic_create_training_tables();
+		}
+
 		// Clear existing FAQs.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->query( "TRUNCATE TABLE $faqs_table" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -2123,7 +2130,7 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 
 				if ( '' !== $question && '' !== $answer ) {
 					// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-					$wpdb->insert(
+					$result = $wpdb->insert(
 						$faqs_table,
 						array(
 							'question' => $question,
@@ -2131,9 +2138,17 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 						),
 						array( '%s', '%s' )
 					);
-					++$count;
+					if ( false !== $result ) {
+						++$count;
+					}
 				}
 			}
+		}
+
+		if ( 0 === $count && '' !== trim( $content ) ) {
+			wp_send_json_error(
+				array( 'message' => __( 'No FAQs could be saved. Check the format: "Q: question" then "A: answer", separated by blank lines.', 'wp-ai-chatbot' ) )
+			);
 		}
 
 		wp_send_json_success(
