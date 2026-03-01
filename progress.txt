@@ -91,3 +91,18 @@ What was done:
 - On exceeding max, logs error and sends user-friendly message to frontend
 - 2 new tests: max iteration guard triggers at limit, normal iterations (0) don't trigger
 - All 48 ChatTest tests passing (162+ total)
+
+## 2026-03-01: Chatbot Logo — WordPress media uploader (PRD item — Feature)
+
+Replaced plain URL text input with WordPress media library uploader for the chatbot logo setting.
+
+What was done:
+- `enqueue_admin_scripts()`: added `wp_enqueue_media()` to load WP media scripts
+- `render_appearance_tab()`: replaced `<input type="url">` with hidden input + Upload button + Remove button + image preview
+- Added inline JS: opens `wp.media` modal on Upload click, populates hidden input + preview on select, clears on Remove
+- Preview/Remove hidden by default when no logo set, shown when logo URL exists
+- Sanitization unchanged — still stores URL via `esc_url_raw()`
+- Frontend rendering unchanged — still reads `chatbot_logo` from settings
+- Added `wp_enqueue_media` stub in test stubs
+- 2 new tests: media uploader elements rendered with logo set, preview/remove hidden when no logo
+- All 173 tests passing

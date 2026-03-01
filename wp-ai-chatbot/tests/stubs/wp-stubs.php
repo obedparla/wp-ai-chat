@@ -772,6 +772,12 @@ class MockWpdb {
 
 $GLOBALS['wpdb'] = new MockWpdb();
 
+if ( ! function_exists( 'wp_enqueue_media' ) ) {
+	function wp_enqueue_media(): void {
+		// No-op for unit tests.
+	}
+}
+
 if ( ! function_exists( 'flush_rewrite_rules' ) ) {
 	function flush_rewrite_rules( bool $hard = true ): void {
 		// No-op for testing.

@@ -48,9 +48,31 @@ class WPAIC_Admin {
 		}
 		wp_enqueue_style( 'wp-color-picker' );
 		wp_enqueue_script( 'wp-color-picker' );
+		wp_enqueue_media();
 		wp_add_inline_script(
 			'wp-color-picker',
-			'jQuery(document).ready(function($){$(".wpaic-color-picker").wpColorPicker();});'
+			'jQuery(document).ready(function($){' .
+				'$(".wpaic-color-picker").wpColorPicker();' .
+				'var frame;' .
+				'$("#wpaic_logo_upload").on("click",function(e){' .
+					'e.preventDefault();' .
+					'if(frame){frame.open();return;}' .
+					'frame=wp.media({title:"Select Chatbot Logo",button:{text:"Use as Logo"},multiple:false,library:{type:"image"}});' .
+					'frame.on("select",function(){' .
+						'var a=frame.state().get("selection").first().toJSON();' .
+						'$("#wpaic_chatbot_logo").val(a.url);' .
+						'$("#wpaic_logo_preview").attr("src",a.url).show();' .
+						'$("#wpaic_logo_remove").show();' .
+					'});' .
+					'frame.open();' .
+				'});' .
+				'$("#wpaic_logo_remove").on("click",function(e){' .
+					'e.preventDefault();' .
+					'$("#wpaic_chatbot_logo").val("");' .
+					'$("#wpaic_logo_preview").hide();' .
+					'$(this).hide();' .
+				'});' .
+			'});'
 		);
 
 		$manifest_path = WPAIC_PLUGIN_DIR . 'frontend/dist/.vite/manifest.json';
@@ -705,13 +727,23 @@ class WPAIC_Admin {
 			</div>
 
 			<div>
-				<label for="wpaic_chatbot_logo" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Chatbot Logo URL', 'wp-ai-chatbot' ); ?>
+				<label class="block text-sm font-medium text-gray-700 mb-2">
+					<?php esc_html_e( 'Chatbot Logo', 'wp-ai-chatbot' ); ?>
 				</label>
-				<input type="url" id="wpaic_chatbot_logo" name="wpaic_settings[chatbot_logo]" value="<?php echo esc_attr( $chatbot_logo ); ?>"
-						class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-						placeholder="<?php esc_attr_e( 'https://example.com/logo.png', 'wp-ai-chatbot' ); ?>">
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'URL to a logo image (max 32px height). Leave empty for no logo.', 'wp-ai-chatbot' ); ?></p>
+				<input type="hidden" id="wpaic_chatbot_logo" name="wpaic_settings[chatbot_logo]" value="<?php echo esc_attr( $chatbot_logo ); ?>">
+				<div class="flex items-center gap-3">
+					<button type="button" id="wpaic_logo_upload" class="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+						<?php esc_html_e( 'Upload Logo', 'wp-ai-chatbot' ); ?>
+					</button>
+					<button type="button" id="wpaic_logo_remove" class="px-4 py-2 bg-white border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-600 hover:bg-red-50"
+						style="<?php echo empty( $chatbot_logo ) ? 'display:none' : ''; ?>">
+						<?php esc_html_e( 'Remove', 'wp-ai-chatbot' ); ?>
+					</button>
+				</div>
+				<img id="wpaic_logo_preview" src="<?php echo esc_attr( $chatbot_logo ); ?>"
+					alt="" class="mt-2 max-h-16 w-auto object-contain border border-gray-200 rounded p-1"
+					style="<?php echo empty( $chatbot_logo ) ? 'display:none' : ''; ?>">
+				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Upload a logo image (max 32px height in widget). Leave empty for no logo.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 
 			<div>

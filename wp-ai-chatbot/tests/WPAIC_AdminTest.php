@@ -956,4 +956,44 @@ class WPAIC_AdminTest extends TestCase {
 
 		$this->assertEquals( 'https://valid-url.com/wp-json/wpaip/v1/chat', $result['provider_url'] );
 	}
+
+	public function test_appearance_tab_renders_media_uploader_for_logo(): void {
+		$_GET['tab'] = 'appearance';
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array(
+			'chatbot_logo' => 'https://example.com/logo.png',
+		) );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'id="wpaic_logo_upload"', $output );
+		$this->assertStringContainsString( 'id="wpaic_logo_remove"', $output );
+		$this->assertStringContainsString( 'id="wpaic_logo_preview"', $output );
+		$this->assertStringContainsString( 'type="hidden" id="wpaic_chatbot_logo"', $output );
+		$this->assertStringContainsString( 'https://example.com/logo.png', $output );
+		unset( $_GET['tab'] );
+	}
+
+	public function test_appearance_tab_hides_preview_when_no_logo(): void {
+		$_GET['tab'] = 'appearance';
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array(
+			'chatbot_logo' => '',
+		) );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'id="wpaic_logo_upload"', $output );
+		$this->assertMatchesRegularExpression( '/id="wpaic_logo_remove"[^>]*style="display:none"/', $output );
+		$this->assertMatchesRegularExpression( '/id="wpaic_logo_preview"[^>]*style="display:none"/', $output );
+		unset( $_GET['tab'] );
+	}
 }

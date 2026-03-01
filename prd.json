@@ -14,7 +14,7 @@
       "Save settings — verify the logo URL persists in the database",
       "Verify the frontend widget displays the uploaded logo correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "project": "chatbot",
