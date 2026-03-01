@@ -80,3 +80,14 @@ What was done:
 - 6 new tests for `create_handoff_request`: missing name, missing email, invalid email, success, DB row verification, admin email verification
 - Fixed pre-existing test: `test_stream_from_provider_handles_connection_failure` used exact match on error message that now includes fopen detail
 - All 169 tests passing
+
+## 2026-03-01: Max iteration limit on provider completion loop (prd_todo — Robustness)
+
+`provider_completion_loop()` recursed without limit — if AI kept returning tool_calls, server would crash from infinite recursion.
+
+What was done:
+- Added `MAX_PROVIDER_ITERATIONS = 10` constant to WPAIC_Chat
+- `provider_completion_loop()` now takes `$iteration` param, checks against max before proceeding
+- On exceeding max, logs error and sends user-friendly message to frontend
+- 2 new tests: max iteration guard triggers at limit, normal iterations (0) don't trigger
+- All 48 ChatTest tests passing (162+ total)

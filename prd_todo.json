@@ -1,16 +1,125 @@
 [
   {
     "category": "Functional",
-    "project": "provider",
-    "description": "Provider admin settings page displays the site key and allows configuring the OpenAI API key. Minimal UI — just enough to copy the site key and set the API key without touching the database directly.",
+    "project": "chatbot & provider",
+    "description": "End-to-end streaming works without buffering across full chain",
     "steps": [
-      "Open provider plugin admin settings page in WordPress",
-      "Verify the auto-generated site key is displayed (read-only, copyable)",
-      "Verify a 'Copy' button or similar mechanism exists for the site key",
-      "Verify an OpenAI API key input field exists (password-masked)",
-      "Save a new API key and verify it persists after page reload",
-      "Verify the default model setting is displayed and editable",
-      "Verify settings are sanitized on save (API key trimmed, model validated)"
+      "Enable provider mode in chatbot settings",
+      "Send a chat message from frontend widget",
+      "Verify tokens appear incrementally in the UI (not all at once)",
+      "Verify no perceptible delay between provider receiving OpenAI tokens and forwarding them",
+      "Verify long responses stream smoothly without stalling",
+      "Verify streaming works identically to direct OpenAI mode from user perspective"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Functional",
+    "project": "chatbot",
+    "description": "Admin toggle switches between provider mode and direct OpenAI mode",
+    "steps": [
+      "Open chatbot admin settings",
+      "Verify toggle exists for provider/direct mode",
+      "Set to direct mode and verify chatbot connects to OpenAI directly (requires API key)",
+      "Set to provider mode and verify chatbot routes through provider",
+      "Verify direct mode still works as before (backwards compatible)",
+      "Verify switching modes does not lose other settings",
+      "Verify provider mode does not require user to enter their own OpenAI key"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Robustness",
+    "project": "chatbot",
+    "description": "Provider completion loop in chatbot has a max iteration limit to prevent infinite recursion when AI keeps returning tool_calls without a final text response.",
+    "steps": [
+      "Trigger provider mode with a request that causes tool calls",
+      "Verify normal tool-call loops (1-3 iterations) complete successfully",
+      "Simulate a scenario where every provider response contains tool_calls (never text)",
+      "Verify the loop stops after a reasonable max (e.g. 10 iterations)",
+      "Verify an error message is sent to the frontend when max iterations exceeded",
+      "Verify no PHP fatal errors or memory exhaustion occur"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Robustness",
+    "project": "chatbot",
+    "description": "Chatbot checks HTTP status code after fopen() to the provider, so auth failures (403), server errors (500), etc. produce meaningful error messages instead of a generic 'Failed to connect'.",
+    "steps": [
+      "Send a request with an invalid provider_site_key",
+      "Verify the error message distinguishes auth failure from connection failure",
+      "Simulate a provider returning 500",
+      "Verify the error message indicates a server error",
+      "Verify $http_response_header is inspected after fopen()",
+      "Verify the specific HTTP status code is included or mapped to a human-readable message"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Robustness",
+    "project": "chatbot",
+    "description": "Stream read failures in chatbot's stream_from_provider() are handled gracefully — fread() returning false closes the stream and sends an error to the frontend instead of silently breaking.",
+    "steps": [
+      "Simulate fread() returning false mid-stream",
+      "Verify the stream is closed (fclose called)",
+      "Verify an error is returned to the caller (not silent break)",
+      "Verify the frontend receives an error event, not a truncated response"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Robustness",
+    "project": "provider",
+    "description": "Provider clears all output buffer levels before streaming SSE, not just the top-level buffer. Other plugins/themes may add nested buffers that corrupt the SSE stream.",
+    "steps": [
+      "Simulate multiple nested output buffers (ob_start called 3+ times)",
+      "Trigger the provider SSE endpoint",
+      "Verify all buffer levels are cleared (while loop, not single if)",
+      "Verify SSE output is clean with no HTML/whitespace prepended"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Robustness",
+    "project": "provider",
+    "description": "Provider validates request size limits — max number of messages, max content length per message, and max number of tools — to prevent resource exhaustion and cost explosion.",
+    "steps": [
+      "Send a request with more than 200 messages",
+      "Verify it is rejected with a clear error",
+      "Send a request with a single message over 100KB content",
+      "Verify it is rejected with a clear error",
+      "Send a request with more than 50 tools",
+      "Verify it is rejected with a clear error",
+      "Verify normal-sized requests still pass validation"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Security",
+    "project": "provider",
+    "description": "Provider restricts which OpenAI models clients can request. Unrecognized or expensive models are rejected to prevent cost escalation.",
+    "steps": [
+      "Send a request with a whitelisted model (e.g. gpt-4o-mini)",
+      "Verify it succeeds",
+      "Send a request with an unknown model string",
+      "Verify it is rejected with an error",
+      "Send a request with no model specified",
+      "Verify it falls back to the default model (not rejected)",
+      "Verify the allowed models list is configurable via settings or a constant"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Security",
+    "project": "provider",
+    "description": "Provider sanitizes error messages before streaming to clients. Internal details (file paths, API key fragments, stack traces) must not leak through SSE error events.",
+    "steps": [
+      "Trigger an OpenAI SDK exception (e.g. invalid API key)",
+      "Verify the SSE error event does not contain file paths or stack traces",
+      "Trigger a network timeout exception",
+      "Verify the error message is generic (e.g. 'OpenAI request failed') not the raw cURL error",
+      "Verify known OpenAI error types (rate limit, auth) map to safe messages"
     ],
     "passes": false
   }

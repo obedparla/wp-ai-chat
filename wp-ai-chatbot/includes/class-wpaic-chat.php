@@ -229,6 +229,8 @@ class WPAIC_Chat {
 		$this->provider_completion_loop( $formatted_messages, $tools, $model, $on_chunk );
 	}
 
+	private const MAX_PROVIDER_ITERATIONS = 10;
+
 	/**
 	 * Provider completion loop: sends to provider, parses SSE, handles tool calls, recurses.
 	 *
@@ -236,8 +238,15 @@ class WPAIC_Chat {
 	 * @param array<int, array<string, mixed>> $tools Tool definitions.
 	 * @param string $model Model name.
 	 * @param callable(array<string, mixed>): void $on_chunk Frontend chunk callback.
+	 * @param int $iteration Current iteration count (guards against infinite recursion).
 	 */
-	private function provider_completion_loop( array $formatted_messages, array $tools, string $model, callable $on_chunk ): void {
+	private function provider_completion_loop( array $formatted_messages, array $tools, string $model, callable $on_chunk, int $iteration = 0 ): void {
+		if ( $iteration >= self::MAX_PROVIDER_ITERATIONS ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( '[WPAIC] Provider completion loop exceeded max iterations (' . self::MAX_PROVIDER_ITERATIONS . ')' );
+			$on_chunk( array( 'error' => 'The request required too many processing steps. Please try a simpler question.' ) );
+			return;
+		}
 		$provider_url      = $this->settings['provider_url'];
 		$provider_site_key = $this->settings['provider_site_key'];
 
@@ -306,7 +315,7 @@ class WPAIC_Chat {
 				);
 			}
 
-			$this->provider_completion_loop( $formatted_messages, $tools, $model, $on_chunk );
+			$this->provider_completion_loop( $formatted_messages, $tools, $model, $on_chunk, $iteration + 1 );
 			return;
 		}
 

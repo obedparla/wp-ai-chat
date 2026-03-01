@@ -1269,6 +1269,73 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringStartsWith( 'Failed to connect to provider', $result['error'] );
 	}
 
+	public function test_provider_completion_loop_stops_at_max_iterations(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'provider_completion_loop' );
+		$method->setAccessible( true );
+
+		$max_const = $reflection->getReflectionConstant( 'MAX_PROVIDER_ITERATIONS' );
+		$max_value = $max_const->getValue();
+
+		$collected_events = array();
+		$callback         = function ( $data ) use ( &$collected_events ) {
+			$collected_events[] = $data;
+		};
+
+		// Call with iteration = max to trigger the guard immediately
+		$method->invoke( $chat, array(), array(), 'gpt-4o-mini', $callback, $max_value );
+
+		$this->assertCount( 1, $collected_events );
+		$this->assertArrayHasKey( 'error', $collected_events[0] );
+		$this->assertStringContainsString( 'too many processing steps', $collected_events[0]['error'] );
+	}
+
+	public function test_provider_completion_loop_allows_normal_iterations(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+
+		$max_const = $reflection->getReflectionConstant( 'MAX_PROVIDER_ITERATIONS' );
+		$max_value = $max_const->getValue();
+		$this->assertEquals( 10, $max_value );
+
+		// Calling at iteration < max should NOT trigger the guard (it will attempt provider connection and fail)
+		$method = $reflection->getMethod( 'provider_completion_loop' );
+		$method->setAccessible( true );
+
+		$collected_events = array();
+		$callback         = function ( $data ) use ( &$collected_events ) {
+			$collected_events[] = $data;
+		};
+
+		$method->invoke( $chat, array(), array(), 'gpt-4o-mini', $callback, 0 );
+
+		// Should get a connection error (not max iterations error)
+		$has_max_iterations_error = false;
+		foreach ( $collected_events as $event ) {
+			if ( isset( $event['error'] ) && str_contains( $event['error'], 'too many processing steps' ) ) {
+				$has_max_iterations_error = true;
+			}
+		}
+		$this->assertFalse( $has_max_iterations_error, 'iteration 0 should not trigger max iterations guard' );
+	}
+
 	public function test_provider_mode_client_not_initialized(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
