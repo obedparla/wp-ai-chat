@@ -34,7 +34,7 @@ function getToolProgressMessage(tool: ActiveTool): string {
 export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: ChatWidgetProps) {
   const { messages, sendMessage, isLoading, stopGeneration, clearChat, activeTools, retry } = chat
   const [input, setInput] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const hasName = chatbotName && chatbotName.trim().length > 0
   const hasLogo = chatbotLogo && chatbotLogo.trim().length > 0

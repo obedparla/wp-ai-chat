@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useRef, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 
 interface ChatInputProps {
@@ -9,28 +9,57 @@ interface ChatInputProps {
   onStop: () => void
 }
 
-const ChatInput = forwardRef<HTMLInputElement, ChatInputProps>(function ChatInput({
+const MAX_HEIGHT = 130
+
+const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(function ChatInput({
   value,
   onChange,
   onSubmit,
   isLoading,
   onStop,
 }, ref) {
+  const internalRef = useRef<HTMLTextAreaElement | null>(null)
+
+  const setRefs = useCallback((node: HTMLTextAreaElement | null) => {
+    internalRef.current = node
+    if (typeof ref === 'function') ref(node)
+    else if (ref) Object.assign(ref, { current: node })
+  }, [ref])
+
+  useEffect(() => {
+    const textarea = internalRef.current
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    const clamped = Math.min(textarea.scrollHeight, MAX_HEIGHT)
+    textarea.style.height = `${clamped}px`
+    textarea.style.overflowY = textarea.scrollHeight > MAX_HEIGHT ? 'auto' : 'hidden'
+  }, [value])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (value.trim() && !isLoading) {
+        onSubmit(e as unknown as React.FormEvent)
+      }
+    }
+  }
+
   return (
     <form
-      className="flex p-4 bg-white border-t border-slate-200 gap-2.5 items-center max-[480px]:p-3.5 max-[480px]:pb-[max(14px,env(safe-area-inset-bottom))]"
+      className="flex p-4 bg-white border-t border-slate-200 gap-2.5 items-end max-[480px]:p-3.5 max-[480px]:pb-[max(14px,env(safe-area-inset-bottom))]"
       onSubmit={onSubmit}
     >
-      <input
-        ref={ref}
-        type="text"
+      <textarea
+        ref={setRefs}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder="Type a message..."
         disabled={isLoading}
+        rows={1}
         className={cn(
-          'flex-1 py-3 px-[18px] border-2 border-slate-200 rounded-full outline-none text-sm',
-          'bg-slate-50 text-slate-800 transition-all duration-200',
+          'flex-1 py-3 px-[18px] border-2 border-slate-200 rounded-2xl outline-none text-sm resize-none',
+          'bg-slate-50 text-slate-800 transition-[border-color,background-color,box-shadow] duration-200',
           'placeholder:text-slate-500',
           'focus:border-[var(--wpaic-primary)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(0,115,170,0.1)]',
           'disabled:opacity-60 disabled:cursor-not-allowed',
