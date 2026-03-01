@@ -45,6 +45,16 @@ class WPAIC_API {
 				'permission_callback' => '__return_true',
 			)
 		);
+
+		register_rest_route(
+			'wpaic/v1',
+			'/send-transcript',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'handle_send_transcript' ),
+				'permission_callback' => array( $this, 'verify_nonce' ),
+			)
+		);
 	}
 
 	/**
@@ -270,5 +280,57 @@ class WPAIC_API {
 		);
 
 		return rest_ensure_response( $products );
+	}
+
+	/**
+	 * @param WP_REST_Request<array<string, mixed>> $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function handle_send_transcript( WP_REST_Request $request ) {
+		$email      = $request->get_param( 'email' );
+		$transcript = $request->get_param( 'transcript' );
+
+		if ( empty( $email ) || ! is_string( $email ) || ! is_email( $email ) ) {
+			return new WP_Error( 'invalid_email', 'A valid email address is required.', array( 'status' => 400 ) );
+		}
+
+		if ( empty( $transcript ) || ! is_string( $transcript ) ) {
+			return new WP_Error( 'empty_transcript', 'Transcript is required.', array( 'status' => 400 ) );
+		}
+
+		$email      = sanitize_email( $email );
+		$transcript = sanitize_textarea_field( $transcript );
+
+		$settings     = get_option( 'wpaic_settings', array() );
+		$chatbot_name = ! empty( $settings['chatbot_name'] ) ? $settings['chatbot_name'] : 'AI Assistant';
+		$site_name    = get_bloginfo( 'name' );
+
+		$subject = sprintf(
+			/* translators: 1: chatbot name, 2: site name */
+			__( 'Your %1$s conversation — %2$s', 'wp-ai-chatbot' ),
+			$chatbot_name,
+			$site_name
+		);
+
+		$message  = sprintf(
+			/* translators: %s: chatbot name */
+			__( "Here's your conversation transcript from %s:\n\n", 'wp-ai-chatbot' ),
+			$chatbot_name
+		);
+		$message .= "---\n" . $transcript . "\n---\n\n";
+		$message .= sprintf(
+			/* translators: %s: site URL */
+			__( "Visit us: %s\n", 'wp-ai-chatbot' ),
+			home_url()
+		);
+
+		$headers = array( 'Content-Type: text/plain; charset=UTF-8' );
+		$sent    = wp_mail( $email, $subject, $message, $headers );
+
+		if ( ! $sent ) {
+			return new WP_Error( 'email_failed', 'Failed to send email. Please try again.', array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response( array( 'success' => true ) );
 	}
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Message, ActiveTool } from '../hooks/useChat'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
+import SendTranscriptDialog from './SendTranscriptDialog'
 
 interface ChatWidgetProps {
   onClose: () => void
@@ -34,6 +35,7 @@ function getToolProgressMessage(tool: ActiveTool): string {
 export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: ChatWidgetProps) {
   const { messages, sendMessage, isLoading, stopGeneration, clearChat, activeTools, retry } = chat
   const [input, setInput] = useState('')
+  const [showTranscriptDialog, setShowTranscriptDialog] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const hasName = chatbotName && chatbotName.trim().length > 0
@@ -64,7 +66,13 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
   }
 
   return (
-    <div className="fixed bottom-[100px] right-6 w-[380px] max-w-[calc(100vw-48px)] h-[600px] max-h-[calc(100vh-140px)] bg-white rounded-2xl shadow-xl flex flex-col z-[9998] overflow-hidden animate-wpaic-slideUp border border-slate-200 max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[calc(100vh-60px)] max-[480px]:max-h-[calc(100vh-60px)] max-[480px]:rounded-t-2xl max-[480px]:rounded-b-none max-[480px]:border-b-0 max-[480px]:animate-wpaic-slideUpMobile">
+    <div className="fixed bottom-[100px] right-6 w-[380px] max-w-[calc(100vw-48px)] h-[600px] max-h-[calc(100vh-140px)] bg-white rounded-2xl shadow-xl flex flex-col z-[9998] overflow-hidden animate-wpaic-slideUp border border-slate-200 max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[calc(100vh-60px)] max-[480px]:max-h-[calc(100vh-60px)] max-[480px]:rounded-t-2xl max-[480px]:rounded-b-none max-[480px]:border-b-0 max-[480px]:animate-wpaic-slideUpMobile relative">
+      {showTranscriptDialog && (
+        <SendTranscriptDialog
+          messages={messages}
+          onClose={() => setShowTranscriptDialog(false)}
+        />
+      )}
       <div className="bg-[var(--wpaic-primary)] text-white py-[14px] px-5 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2.5">
           {hasLogo && (
@@ -89,6 +97,17 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
             title="Clear chat"
           >
             ↺
+          </button>
+          <button
+            onClick={() => setShowTranscriptDialog(true)}
+            className="bg-white/15 border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-90 transition-all duration-200 flex items-center justify-center hover:opacity-100 hover:bg-white/25 hover:scale-105"
+            aria-label="Send transcript"
+            title="Send transcript"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <rect width="20" height="16" x="2" y="4" rx="2" />
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+            </svg>
           </button>
           <button
             onClick={onClose}

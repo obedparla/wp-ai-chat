@@ -136,6 +136,37 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 	}
 }
 
+if ( ! class_exists( 'WP_REST_Response' ) ) {
+	class WP_REST_Response {
+		/** @var mixed */
+		private mixed $data;
+		/** @var int */
+		private int $status;
+
+		public function __construct( mixed $data = null, int $status = 200 ) {
+			$this->data   = $data;
+			$this->status = $status;
+		}
+
+		public function get_data(): mixed {
+			return $this->data;
+		}
+
+		public function get_status(): int {
+			return $this->status;
+		}
+	}
+}
+
+if ( ! function_exists( 'rest_ensure_response' ) ) {
+	function rest_ensure_response( mixed $response ): WP_REST_Response {
+		if ( $response instanceof WP_REST_Response ) {
+			return $response;
+		}
+		return new WP_REST_Response( $response );
+	}
+}
+
 /**
  * Test helper for mocking WordPress data.
  */
@@ -491,6 +522,12 @@ if ( ! function_exists( 'get_bloginfo' ) ) {
 			'url' => 'http://example.com',
 			default => '',
 		};
+	}
+}
+
+if ( ! function_exists( 'home_url' ) ) {
+	function home_url( string $path = '' ): string {
+		return 'http://example.com' . $path;
 	}
 }
 

@@ -1,15 +1,15 @@
 {
   "admin.html": {
-    "file": "assets/admin-BmDXmbT8.css",
+    "file": "assets/admin-Dt8JZZnh.css",
     "src": "admin.html"
   },
   "index.html": {
-    "file": "assets/main-xUdtEj9Z.js",
+    "file": "assets/main-0BtQXRID.js",
     "name": "main",
     "src": "index.html",
     "isEntry": true,
     "css": [
-      "assets/main-BrfGnQve.css"
+      "assets/main-CWMD4R6r.css"
     ]
   }
 }
