@@ -1266,7 +1266,7 @@ class WPAIC_ChatTest extends TestCase {
 		);
 
 		$this->assertArrayHasKey( 'error', $result );
-		$this->assertEquals( 'Failed to connect to provider', $result['error'] );
+		$this->assertStringStartsWith( 'Failed to connect to provider', $result['error'] );
 	}
 
 	public function test_provider_mode_client_not_initialized(): void {

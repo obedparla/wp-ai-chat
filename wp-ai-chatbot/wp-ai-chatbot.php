@@ -19,6 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'WPAIC_VERSION', '1.0.0' );
+define( 'WPAIC_DB_VERSION', '1.0.0' );
 define( 'WPAIC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPAIC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'WPAIC_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -58,11 +59,20 @@ function wpaic_is_woocommerce_active(): bool {
 }
 
 function wpaic_init(): void {
+	wpaic_maybe_update_db();
 	$loader = new WPAIC_Loader();
 	$loader->init();
 }
 
 add_action( 'plugins_loaded', 'wpaic_init' );
+
+function wpaic_maybe_update_db(): void {
+	$installed_version = get_option( 'wpaic_db_version', '' );
+	if ( $installed_version !== WPAIC_DB_VERSION ) {
+		wpaic_create_tables();
+		update_option( 'wpaic_db_version', WPAIC_DB_VERSION );
+	}
+}
 
 register_activation_hook( __FILE__, 'wpaic_activate' );
 register_deactivation_hook( __FILE__, 'wpaic_deactivate' );

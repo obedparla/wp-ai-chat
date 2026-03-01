@@ -165,6 +165,10 @@ class WPAICTestHelper {
 		self::$mock_options    = array();
 		self::$mock_post_terms = array();
 		self::$mock_orders     = array();
+
+		if ( isset( $GLOBALS['wpdb'] ) && $GLOBALS['wpdb'] instanceof MockWpdb ) {
+			$GLOBALS['wpdb']->reset();
+		}
 	}
 
 	/**
@@ -573,9 +577,10 @@ class MockWpdb {
 
 	public function __construct() {
 		$this->tables = array(
-			'wp_wpaic_conversations' => array(),
-			'wp_wpaic_messages'      => array(),
-			'wp_wpaic_faqs'          => array(),
+			'wp_wpaic_conversations'   => array(),
+			'wp_wpaic_messages'        => array(),
+			'wp_wpaic_faqs'            => array(),
+			'wp_wpaic_support_requests' => array(),
 		);
 	}
 
@@ -742,14 +747,23 @@ class MockWpdb {
 			return $results;
 		}
 
+		if ( preg_match( '/FROM\s+\S+wpaic_support_requests/i', $query ) ) {
+			$results = array();
+			foreach ( $this->tables['wp_wpaic_support_requests'] as $row ) {
+				$results[] = (object) $row;
+			}
+			return $results;
+		}
+
 		return array();
 	}
 
 	public function reset(): void {
 		$this->tables = array(
-			'wp_wpaic_conversations' => array(),
-			'wp_wpaic_messages'      => array(),
-			'wp_wpaic_faqs'          => array(),
+			'wp_wpaic_conversations'   => array(),
+			'wp_wpaic_messages'        => array(),
+			'wp_wpaic_faqs'            => array(),
+			'wp_wpaic_support_requests' => array(),
 		);
 		$this->auto_increment = 1;
 		$this->insert_id      = 0;

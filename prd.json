@@ -1,17 +1,54 @@
 [
   {
-    "category": "Functional",
-    "project": "provider",
-    "description": "Provider admin settings page displays the site key and allows configuring the OpenAI API key. Minimal UI — just enough to copy the site key and set the API key without touching the database directly.",
+    "project": "chatbot",
+    "category": "Feature",
+    "description": "Chatbot Logo setting uses WordPress media uploader instead of a plain URL text field. Admin clicks 'Upload' button, selects/uploads an image via WP media library, and the resulting attachment URL is stored in the chatbot_logo setting. Frontend rendering unchanged.",
     "steps": [
-      "Open provider plugin admin settings page in WordPress",
-      "Verify the auto-generated site key is displayed (read-only, copyable)",
-      "Verify a 'Copy' button or similar mechanism exists for the site key",
-      "Verify an OpenAI API key input field exists (password-masked)",
-      "Save a new API key and verify it persists after page reload",
-      "Verify the default model setting is displayed and editable",
-      "Verify settings are sanitized on save (API key trimmed, model validated)"
+      "Open chatbot admin → Appearance tab",
+      "Verify 'Chatbot Logo' field shows an upload button (not a URL text input)",
+      "Click upload — verify WordPress media library modal opens",
+      "Select or upload an image — verify the selected image URL populates the setting",
+      "Verify a thumbnail preview of the selected logo appears next to the upload button",
+      "Verify a 'Remove' button appears when a logo is set",
+      "Click Remove — verify the logo preview disappears and the setting is cleared",
+      "Save settings — verify the logo URL persists in the database",
+      "Verify the frontend widget displays the uploaded logo correctly"
+    ],
+    "passes": false
+  },
+  {
+    "project": "chatbot",
+    "category": "Bug",
+    "description": "Handoff to Human flow fails after collecting name and email — bot reports an error to the user, no support request row is created in wpaic_support_requests, and no admin email is sent. The full handoff flow (collect info → call create_handoff_request tool → save to DB → send email → confirm to user) must complete without errors.",
+    "steps": [
+      "Enable 'Handoff to Human' in admin → Engagement tab",
+      "Open the chat widget and ask to speak to a human",
+      "Provide name and email when prompted by the bot",
+      "Verify the bot does NOT display an error message",
+      "Verify a new row exists in wpaic_support_requests table with correct name, email, and transcript",
+      "Verify the admin receives an email notification with customer details and conversation summary",
+      "Verify the bot confirms the request was submitted (e.g. 'Our team will contact you shortly')",
+      "Verify the support request appears in admin → Support Requests page with status 'new'"
     ],
     "passes": true
+  },
+  {
+    "project": "chatbot",
+    "category": "Feature",
+    "description": "Handoff to Human allows admin to configure which optional contact fields the bot collects before submitting the request. Fields are presented as selectable chips in admin UI. Available optional fields: phone number, company, order number, request message. Name and email are always required and cannot be deselected. No optional fields selected by default.",
+    "steps": [
+      "Open chatbot admin → Engagement tab with Handoff enabled",
+      "Verify a 'Required Fields' chip-select UI appears below the handoff toggle",
+      "Verify 'Name' and 'Email' chips are always present and visually locked (cannot be deselected)",
+      "Verify optional chips (phone number, company, order number, request message) are deselected by default",
+      "Select additional chips (e.g. phone number, request message) and save",
+      "Verify saved selections persist after page reload",
+      "Open chat widget and request to speak to a human",
+      "Verify the bot asks for name, email, and only the selected optional fields",
+      "Provide all requested info — verify the support request is created with all fields stored",
+      "Deselect 'Phone Number', save, and test again — verify bot no longer asks for phone",
+      "Verify the create_handoff_request tool schema parameters match the selected fields"
+    ],
+    "passes": false
   }
 ]

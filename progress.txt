@@ -67,3 +67,16 @@ What was done:
 - 15 new tests in WPAIP_AdminTest covering all PRD verification steps
 - All 60 provider tests passing
 - prd.json: all items now pass — PRD complete
+
+## 2026-03-01: Fix handoff-to-human bug (PRD item — Bug)
+
+Root cause: DB tables only created on plugin activation hook. If plugin files updated without deactivation/reactivation, tables never created — `$wpdb->insert()` into non-existent `wp_wpaic_support_requests` returned `false`, causing "Failed to create support request" error.
+
+What was done:
+- Added `WPAIC_DB_VERSION` constant and `wpaic_maybe_update_db()` — runs on `plugins_loaded`, checks stored DB version against current, runs `wpaic_create_tables()` + `wpaic_create_training_tables()` if mismatch
+- Added `wp_wpaic_support_requests` table to MockWpdb constructor and reset()
+- Added `get_results` support for support_requests in MockWpdb
+- Added `WPAICTestHelper::reset()` now also resets `$wpdb` (MockWpdb)
+- 6 new tests for `create_handoff_request`: missing name, missing email, invalid email, success, DB row verification, admin email verification
+- Fixed pre-existing test: `test_stream_from_provider_handles_connection_failure` used exact match on error message that now includes fopen detail
+- All 169 tests passing

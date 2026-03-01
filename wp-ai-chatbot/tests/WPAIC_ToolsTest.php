@@ -488,6 +488,102 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertArrayNotHasKey( 'tracking_url', $result );
 	}
 
+	// --- Handoff tests ---
+
+	public function test_create_handoff_request_returns_error_when_name_missing(): void {
+		$result = $this->tools->create_handoff_request( array(
+			'customer_email'       => 'test@example.com',
+			'conversation_summary' => 'Need help',
+		) );
+
+		$this->assertArrayHasKey( 'error', $result );
+		$this->assertStringContainsString( 'name', $result['error'] );
+	}
+
+	public function test_create_handoff_request_returns_error_when_email_missing(): void {
+		$result = $this->tools->create_handoff_request( array(
+			'customer_name'        => 'John',
+			'conversation_summary' => 'Need help',
+		) );
+
+		$this->assertArrayHasKey( 'error', $result );
+		$this->assertStringContainsString( 'email', $result['error'] );
+	}
+
+	public function test_create_handoff_request_returns_error_for_invalid_email(): void {
+		$result = $this->tools->create_handoff_request( array(
+			'customer_name'        => 'John',
+			'customer_email'       => 'not-an-email',
+			'conversation_summary' => 'Need help',
+		) );
+
+		$this->assertArrayHasKey( 'error', $result );
+		$this->assertStringContainsString( 'email', $result['error'] );
+	}
+
+	public function test_create_handoff_request_succeeds_with_valid_data(): void {
+		$result = $this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Customer needs help with order',
+		) );
+
+		$this->assertArrayNotHasKey( 'error', $result );
+		$this->assertTrue( $result['success'] );
+		$this->assertArrayHasKey( 'request_id', $result );
+		$this->assertStringContainsString( 'contact you shortly', $result['message'] );
+	}
+
+	public function test_create_handoff_request_inserts_row_in_db(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs product info',
+		) );
+
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+
+		$row = $rows[0];
+		$this->assertEquals( 'Jane Doe', $row->customer_name );
+		$this->assertEquals( 'jane@example.com', $row->customer_email );
+		$this->assertEquals( 'Needs product info', $row->transcript );
+		$this->assertEquals( 'new', $row->status );
+	}
+
+	public function test_create_handoff_request_sends_admin_email(): void {
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help with shipping',
+		) );
+
+		$mail = WPAICTestHelper::get_option( 'test_last_mail' );
+		$this->assertNotNull( $mail );
+		$this->assertStringContainsString( 'Jane Doe', $mail['subject'] );
+		$this->assertStringContainsString( 'jane@example.com', $mail['message'] );
+		$this->assertStringContainsString( 'Needs help with shipping', $mail['message'] );
+	}
+
+	public function test_create_handoff_request_status_is_new(): void {
+		global $wpdb;
+
+		$result = $this->tools->create_handoff_request( array(
+			'customer_name'        => 'Bob',
+			'customer_email'       => 'bob@example.com',
+			'conversation_summary' => 'Question about returns',
+		) );
+
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+		$this->assertEquals( 'new', $rows[0]->status );
+		$this->assertEquals( $result['request_id'], $rows[0]->id );
+	}
+
+	// --- End handoff tests ---
+
 	/**
 	 * Creates a mock WooCommerce order.
 	 *
