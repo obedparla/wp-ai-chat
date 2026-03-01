@@ -582,6 +582,57 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertEquals( $result['request_id'], $rows[0]->id );
 	}
 
+	public function test_create_handoff_request_stores_extra_fields_in_db(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+			'phone_number'         => '555-1234',
+			'company'              => 'Acme Corp',
+		) );
+
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+
+		$extra = json_decode( $rows[0]->extra_fields, true );
+		$this->assertEquals( '555-1234', $extra['phone_number'] );
+		$this->assertEquals( 'Acme Corp', $extra['company'] );
+		$this->assertArrayNotHasKey( 'order_number', $extra );
+	}
+
+	public function test_create_handoff_request_extra_fields_null_when_none_provided(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+		) );
+
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+		$this->assertNull( $rows[0]->extra_fields );
+	}
+
+	public function test_create_handoff_request_email_includes_extra_fields(): void {
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+			'phone_number'         => '555-1234',
+			'order_number'         => 'ORD-789',
+		) );
+
+		$mail = WPAICTestHelper::get_option( 'test_last_mail' );
+		$this->assertNotNull( $mail );
+		$this->assertStringContainsString( '555-1234', $mail['message'] );
+		$this->assertStringContainsString( 'ORD-789', $mail['message'] );
+		$this->assertStringContainsString( 'Phone', $mail['message'] );
+		$this->assertStringContainsString( 'Order Number', $mail['message'] );
+	}
+
 	// --- End handoff tests ---
 
 	/**

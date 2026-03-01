@@ -581,11 +581,29 @@ class WPAIC_Chat {
 	}
 
 	private function get_handoff_instruction(): string {
-		if ( $this->is_handoff_enabled() ) {
-			return ' When a customer asks to speak to a human, talk to support, or escalate their issue, first ask for their name, then ask for their email address. Once you have both, use the create_handoff_request tool to submit the request.';
+		if ( ! $this->is_handoff_enabled() ) {
+			return ' If a customer asks to speak to a human or escalate to support, apologize and explain that human support escalation is not currently available, but offer to help them with their question.';
 		}
 
-		return ' If a customer asks to speak to a human or escalate to support, apologize and explain that human support escalation is not currently available, but offer to help them with their question.';
+		$fields_to_collect = array( 'name', 'email address' );
+		$handoff_fields    = $this->settings['handoff_fields'] ?? array();
+		if ( is_array( $handoff_fields ) ) {
+			$field_labels = array(
+				'phone_number'    => 'phone number',
+				'company'         => 'company name',
+				'order_number'    => 'order number',
+				'request_message' => 'a message describing their issue',
+			);
+			foreach ( $handoff_fields as $field ) {
+				if ( isset( $field_labels[ $field ] ) ) {
+					$fields_to_collect[] = $field_labels[ $field ];
+				}
+			}
+		}
+
+		$fields_list = implode( ', ', $fields_to_collect );
+
+		return " When a customer asks to speak to a human, talk to support, or escalate their issue, collect the following information: {$fields_list}. Once you have all required info, use the create_handoff_request tool to submit the request.";
 	}
 
 	private function get_language_instruction(): string {
@@ -777,28 +795,60 @@ class WPAIC_Chat {
 		}
 
 		if ( $this->is_handoff_enabled() ) {
+			$handoff_properties = array(
+				'customer_name'        => array(
+					'type'        => 'string',
+					'description' => 'Customer name',
+				),
+				'customer_email'       => array(
+					'type'        => 'string',
+					'description' => 'Customer email address for support to contact them',
+				),
+				'conversation_summary' => array(
+					'type'        => 'string',
+					'description' => 'Brief summary of the conversation and what help the customer needs',
+				),
+			);
+			$handoff_required = array( 'customer_name', 'customer_email', 'conversation_summary' );
+
+			$handoff_fields = $this->settings['handoff_fields'] ?? array();
+			if ( is_array( $handoff_fields ) ) {
+				$optional_field_definitions = array(
+					'phone_number'    => array(
+						'type'        => 'string',
+						'description' => 'Customer phone number',
+					),
+					'company'         => array(
+						'type'        => 'string',
+						'description' => 'Customer company name',
+					),
+					'order_number'    => array(
+						'type'        => 'string',
+						'description' => 'Related order number',
+					),
+					'request_message' => array(
+						'type'        => 'string',
+						'description' => 'Customer message describing their issue',
+					),
+				);
+
+				foreach ( $handoff_fields as $field ) {
+					if ( isset( $optional_field_definitions[ $field ] ) ) {
+						$handoff_properties[ $field ] = $optional_field_definitions[ $field ];
+						$handoff_required[]           = $field;
+					}
+				}
+			}
+
 			$tools[] = array(
 				'type'     => 'function',
 				'function' => array(
 					'name'        => 'create_handoff_request',
-					'description' => 'Create a support request to hand off to a human agent. Use when customer explicitly asks to speak to a human, talk to support, or escalate. First ask for their name and email before calling this tool.',
+					'description' => 'Create a support request to hand off to a human agent. Use when customer explicitly asks to speak to a human, talk to support, or escalate. Collect all required fields before calling this tool.',
 					'parameters'  => array(
 						'type'       => 'object',
-						'properties' => array(
-							'customer_name'        => array(
-								'type'        => 'string',
-								'description' => 'Customer name',
-							),
-							'customer_email'       => array(
-								'type'        => 'string',
-								'description' => 'Customer email address for support to contact them',
-							),
-							'conversation_summary' => array(
-								'type'        => 'string',
-								'description' => 'Brief summary of the conversation and what help the customer needs',
-							),
-						),
-						'required'   => array( 'customer_name', 'customer_email', 'conversation_summary' ),
+						'properties' => $handoff_properties,
+						'required'   => $handoff_required,
 					),
 				),
 			);

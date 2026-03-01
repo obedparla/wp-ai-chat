@@ -1354,4 +1354,127 @@ class WPAIC_ChatTest extends TestCase {
 		// In provider mode, the OpenAI client should NOT be initialized
 		$this->assertNull( $property->getValue( $chat ) );
 	}
+
+	public function test_handoff_tool_includes_optional_fields_when_configured(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key'  => '',
+				'model'           => 'gpt-4o-mini',
+				'handoff_enabled' => true,
+				'handoff_fields'  => array( 'phone_number', 'company' ),
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_tool_definitions' );
+		$method->setAccessible( true );
+
+		$tools      = $method->invoke( $chat );
+		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
+		$this->assertContains( 'create_handoff_request', $tool_names );
+
+		$handoff_tool = null;
+		foreach ( $tools as $tool ) {
+			if ( 'create_handoff_request' === $tool['function']['name'] ) {
+				$handoff_tool = $tool;
+				break;
+			}
+		}
+
+		$properties = $handoff_tool['function']['parameters']['properties'];
+		$required   = $handoff_tool['function']['parameters']['required'];
+
+		$this->assertArrayHasKey( 'phone_number', $properties );
+		$this->assertArrayHasKey( 'company', $properties );
+		$this->assertArrayNotHasKey( 'order_number', $properties );
+		$this->assertArrayNotHasKey( 'request_message', $properties );
+		$this->assertContains( 'phone_number', $required );
+		$this->assertContains( 'company', $required );
+	}
+
+	public function test_handoff_tool_has_no_optional_fields_by_default(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key'  => '',
+				'model'           => 'gpt-4o-mini',
+				'handoff_enabled' => true,
+				'handoff_fields'  => array(),
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_tool_definitions' );
+		$method->setAccessible( true );
+
+		$tools        = $method->invoke( $chat );
+		$handoff_tool = null;
+		foreach ( $tools as $tool ) {
+			if ( 'create_handoff_request' === $tool['function']['name'] ) {
+				$handoff_tool = $tool;
+				break;
+			}
+		}
+
+		$properties = $handoff_tool['function']['parameters']['properties'];
+
+		$this->assertArrayHasKey( 'customer_name', $properties );
+		$this->assertArrayHasKey( 'customer_email', $properties );
+		$this->assertArrayHasKey( 'conversation_summary', $properties );
+		$this->assertArrayNotHasKey( 'phone_number', $properties );
+		$this->assertArrayNotHasKey( 'company', $properties );
+		$this->assertArrayNotHasKey( 'order_number', $properties );
+		$this->assertArrayNotHasKey( 'request_message', $properties );
+	}
+
+	public function test_handoff_instruction_includes_selected_optional_fields(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key'  => '',
+				'model'           => 'gpt-4o-mini',
+				'handoff_enabled' => true,
+				'handoff_fields'  => array( 'phone_number', 'request_message' ),
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_handoff_instruction' );
+		$method->setAccessible( true );
+
+		$instruction = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'phone number', $instruction );
+		$this->assertStringContainsString( 'describing their issue', $instruction );
+		$this->assertStringNotContainsString( 'company', $instruction );
+		$this->assertStringNotContainsString( 'order number', $instruction );
+	}
+
+	public function test_handoff_instruction_only_name_email_when_no_optional_fields(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key'  => '',
+				'model'           => 'gpt-4o-mini',
+				'handoff_enabled' => true,
+				'handoff_fields'  => array(),
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_handoff_instruction' );
+		$method->setAccessible( true );
+
+		$instruction = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'name', $instruction );
+		$this->assertStringContainsString( 'email', $instruction );
+		$this->assertStringNotContainsString( 'phone', $instruction );
+		$this->assertStringNotContainsString( 'company', $instruction );
+	}
 }

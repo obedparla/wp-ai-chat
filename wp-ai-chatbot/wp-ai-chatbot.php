@@ -132,6 +132,7 @@ function wpaic_create_tables(): void {
 		customer_email varchar(255) NOT NULL,
 		conversation_id bigint(20) unsigned DEFAULT NULL,
 		transcript longtext NOT NULL,
+		extra_fields longtext DEFAULT NULL,
 		status varchar(20) NOT NULL DEFAULT 'new',
 		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

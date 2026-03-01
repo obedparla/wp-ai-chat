@@ -72,6 +72,11 @@ class WPAIC_Admin {
 					'$("#wpaic_logo_preview").hide();' .
 					'$(this).hide();' .
 				'});' .
+				'$(".wpaic-handoff-field-checkbox").on("change",function(){' .
+					'var l=$(this).closest("label");' .
+					'if(this.checked){l.removeClass("bg-gray-200 text-gray-600 hover:bg-gray-300").addClass("bg-blue-100 text-blue-800");}' .
+					'else{l.removeClass("bg-blue-100 text-blue-800").addClass("bg-gray-200 text-gray-600 hover:bg-gray-300");}' .
+				'});' .
 			'});'
 		);
 
@@ -273,7 +278,7 @@ class WPAIC_Admin {
 			'general'    => array( 'enabled', 'greeting_message', 'language', 'system_prompt' ),
 			'api'        => array( 'openai_api_key', 'model', 'provider_url', 'provider_site_key' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color' ),
-			'engagement' => array( 'handoff_enabled', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages' ),
+			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages' ),
 		);
 
 		$active_tab = $input['active_tab'] ?? '';
@@ -305,6 +310,12 @@ class WPAIC_Admin {
 		$sanitized['chatbot_logo'] = esc_url_raw( $merged['chatbot_logo'] ?? '' );
 
 		$sanitized['handoff_enabled'] = ! empty( $merged['handoff_enabled'] );
+
+		$valid_handoff_fields         = array( 'phone_number', 'company', 'order_number', 'request_message' );
+		$raw_handoff_fields           = $merged['handoff_fields'] ?? array();
+		$sanitized['handoff_fields']  = is_array( $raw_handoff_fields )
+			? array_values( array_intersect( $raw_handoff_fields, $valid_handoff_fields ) )
+			: array();
 
 		$sanitized['provider_url']      = esc_url_raw( $merged['provider_url'] ?? '' );
 		$sanitized['provider_site_key'] = sanitize_text_field( $merged['provider_site_key'] ?? '' );
@@ -769,6 +780,16 @@ class WPAIC_Admin {
 		$proactive_message = $settings['proactive_message'] ?? '';
 		$proactive_pages   = $settings['proactive_pages'] ?? 'all';
 		$handoff_enabled   = ! empty( $settings['handoff_enabled'] );
+		$handoff_fields    = $settings['handoff_fields'] ?? array();
+		if ( ! is_array( $handoff_fields ) ) {
+			$handoff_fields = array();
+		}
+		$optional_fields   = array(
+			'phone_number'    => __( 'Phone Number', 'wp-ai-chatbot' ),
+			'company'         => __( 'Company', 'wp-ai-chatbot' ),
+			'order_number'    => __( 'Order Number', 'wp-ai-chatbot' ),
+			'request_message' => __( 'Request Message', 'wp-ai-chatbot' ),
+		);
 		$page_options      = array(
 			'all'      => __( 'All pages', 'wp-ai-chatbot' ),
 			'shop'     => __( 'Shop pages only', 'wp-ai-chatbot' ),
@@ -788,6 +809,30 @@ class WPAIC_Admin {
 					<input type="checkbox" name="wpaic_settings[handoff_enabled]" value="1" <?php checked( $handoff_enabled ); ?> class="sr-only peer">
 					<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
 				</label>
+			</div>
+
+			<div class="p-4 bg-gray-50 rounded-lg">
+				<h4 class="text-sm font-medium text-gray-900 mb-2"><?php esc_html_e( 'Required Fields', 'wp-ai-chatbot' ); ?></h4>
+				<p class="text-sm text-gray-500 mb-3"><?php esc_html_e( 'Select which fields the bot collects before submitting a support request.', 'wp-ai-chatbot' ); ?></p>
+				<div class="flex flex-wrap gap-2">
+					<span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 cursor-not-allowed opacity-75">
+						<?php esc_html_e( 'Name', 'wp-ai-chatbot' ); ?>
+						<svg class="ml-1 w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0 1 10 0v2a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2zm8-2v2H7V7a3 3 0 0 1 6 0z" clip-rule="evenodd"/></svg>
+					</span>
+					<span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 cursor-not-allowed opacity-75">
+						<?php esc_html_e( 'Email', 'wp-ai-chatbot' ); ?>
+						<svg class="ml-1 w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0 1 10 0v2a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2zm8-2v2H7V7a3 3 0 0 1 6 0z" clip-rule="evenodd"/></svg>
+					</span>
+					<?php foreach ( $optional_fields as $field_key => $field_label ) : ?>
+						<label class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors
+							<?php echo in_array( $field_key, $handoff_fields, true ) ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'; ?>">
+							<input type="checkbox" name="wpaic_settings[handoff_fields][]" value="<?php echo esc_attr( $field_key ); ?>"
+								<?php checked( in_array( $field_key, $handoff_fields, true ) ); ?>
+								class="sr-only wpaic-handoff-field-checkbox">
+							<?php echo esc_html( $field_label ); ?>
+						</label>
+					<?php endforeach; ?>
+				</div>
 			</div>
 
 			<h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2 mt-6"><?php esc_html_e( 'Proactive Engagement', 'wp-ai-chatbot' ); ?></h3>
@@ -1492,8 +1537,16 @@ class WPAIC_Admin {
 					},
 					success: function(response) {
 						if (response.success && response.data.transcript) {
-							var lines = response.data.transcript.split('\n');
 							var html = '';
+							if (response.data.extra_fields) {
+								var fieldLabels = {phone_number:'Phone',company:'Company',order_number:'Order Number',request_message:'Message'};
+								html += '<div style="margin-bottom:16px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">';
+								$.each(response.data.extra_fields, function(k,v) {
+									html += '<div style="margin-bottom:4px;font-size:13px;"><strong>' + $('<span>').text(fieldLabels[k]||k).html() + ':</strong> ' + $('<span>').text(v).html() + '</div>';
+								});
+								html += '</div>';
+							}
+							var lines = response.data.transcript.split('\n');
 							var currentRole = '';
 							var currentContent = '';
 
@@ -1621,13 +1674,17 @@ class WPAIC_Admin {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$request = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT transcript FROM $table WHERE id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT transcript, extra_fields FROM $table WHERE id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$request_id
 			)
 		);
 
 		if ( $request ) {
-			wp_send_json_success( array( 'transcript' => $request->transcript ) );
+			$data = array( 'transcript' => $request->transcript );
+			if ( ! empty( $request->extra_fields ) ) {
+				$data['extra_fields'] = json_decode( $request->extra_fields, true );
+			}
+			wp_send_json_success( $data );
 		} else {
 			wp_send_json_error();
 		}

@@ -318,7 +318,7 @@ class WPAIC_Tools {
 	/**
 	 * Create a handoff support request.
 	 *
-	 * @param array{customer_name: string, customer_email: string, conversation_summary: string} $args Handoff data.
+	 * @param array<string, mixed> $args Handoff data.
 	 * @return array<string, mixed> Success response or error.
 	 */
 	public function create_handoff_request( array $args ): array {
@@ -336,20 +336,29 @@ class WPAIC_Tools {
 			return array( 'error' => 'Valid email address is required.' );
 		}
 
+		$extra_fields     = array();
+		$optional_keys    = array( 'phone_number', 'company', 'order_number', 'request_message' );
+		foreach ( $optional_keys as $key ) {
+			if ( isset( $args[ $key ] ) && is_string( $args[ $key ] ) && '' !== $args[ $key ] ) {
+				$extra_fields[ $key ] = sanitize_text_field( $args[ $key ] );
+			}
+		}
+		$extra_fields_json = ! empty( $extra_fields ) ? wp_json_encode( $extra_fields ) : null;
+
 		$table_name = $wpdb->prefix . 'wpaic_support_requests';
 
-		$inserted = $wpdb->insert(
-			$table_name,
-			array(
-				'customer_name'  => $customer_name,
-				'customer_email' => $customer_email,
-				'transcript'     => $transcript,
-				'status'         => 'new',
-				'created_at'     => current_time( 'mysql' ),
-				'updated_at'     => current_time( 'mysql' ),
-			),
-			array( '%s', '%s', '%s', '%s', '%s', '%s' )
+		$insert_data    = array(
+			'customer_name'  => $customer_name,
+			'customer_email' => $customer_email,
+			'transcript'     => $transcript,
+			'extra_fields'   => $extra_fields_json,
+			'status'         => 'new',
+			'created_at'     => current_time( 'mysql' ),
+			'updated_at'     => current_time( 'mysql' ),
 		);
+		$insert_formats = array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' );
+
+		$inserted = $wpdb->insert( $table_name, $insert_data, $insert_formats );
 
 		if ( false === $inserted ) {
 			return array( 'error' => 'Failed to create support request. Please try again.' );
@@ -357,7 +366,7 @@ class WPAIC_Tools {
 
 		$request_id = $wpdb->insert_id;
 
-		$this->send_handoff_email( $request_id, $customer_name, $customer_email, $transcript );
+		$this->send_handoff_email( $request_id, $customer_name, $customer_email, $transcript, $extra_fields );
 
 		return array(
 			'success'    => true,
@@ -369,12 +378,13 @@ class WPAIC_Tools {
 	/**
 	 * Send handoff notification email to admin.
 	 *
-	 * @param int    $request_id     Support request ID.
-	 * @param string $customer_name  Customer name.
-	 * @param string $customer_email Customer email.
-	 * @param string $transcript     Conversation transcript.
+	 * @param int                   $request_id     Support request ID.
+	 * @param string                $customer_name  Customer name.
+	 * @param string                $customer_email Customer email.
+	 * @param string                $transcript     Conversation transcript.
+	 * @param array<string, string> $extra_fields   Optional extra contact fields.
 	 */
-	private function send_handoff_email( int $request_id, string $customer_name, string $customer_email, string $transcript ): void {
+	private function send_handoff_email( int $request_id, string $customer_name, string $customer_email, string $transcript, array $extra_fields = array() ): void {
 		$admin_email = get_option( 'admin_email' );
 		$site_name   = get_bloginfo( 'name' );
 
@@ -395,12 +405,23 @@ class WPAIC_Tools {
 
 		$message = sprintf(
 			/* translators: 1: customer name, 2: customer email */
-			__( "A customer has requested human support.\n\nCustomer: %1\$s\nEmail: %2\$s\n\n", 'wp-ai-chatbot' ),
+			__( "A customer has requested human support.\n\nCustomer: %1\$s\nEmail: %2\$s\n", 'wp-ai-chatbot' ),
 			$customer_name,
 			$customer_email
 		);
 
-		$message .= __( "Conversation Summary:\n", 'wp-ai-chatbot' );
+		$field_labels = array(
+			'phone_number'    => __( 'Phone', 'wp-ai-chatbot' ),
+			'company'         => __( 'Company', 'wp-ai-chatbot' ),
+			'order_number'    => __( 'Order Number', 'wp-ai-chatbot' ),
+			'request_message' => __( 'Message', 'wp-ai-chatbot' ),
+		);
+		foreach ( $extra_fields as $key => $value ) {
+			$label   = $field_labels[ $key ] ?? $key;
+			$message .= "{$label}: {$value}\n";
+		}
+
+		$message .= "\n" . __( "Conversation Summary:\n", 'wp-ai-chatbot' );
 		$message .= "---\n" . $transcript . "\n---\n\n";
 		$message .= sprintf(
 			/* translators: %s: support page URL */

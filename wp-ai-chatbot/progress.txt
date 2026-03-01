@@ -443,3 +443,33 @@ Keep entries concise. Sacrifice grammar for the sake of concision. This file hel
   - wp-ai-provider/tests/stubs/wp-stubs.php
   - wp-ai-provider/tests/WPAIP_PluginTest.php
 - All checks pass: 7 PHP tests
+
+## 2026-03-01: Configurable optional handoff fields
+
+- PRD feature: "Handoff to Human allows admin to configure which optional contact fields the bot collects"
+- Admin (class-wpaic-admin.php):
+  - Added chip-select UI in Engagement tab below handoff toggle
+  - Name/Email chips locked (always required), optional: phone_number, company, order_number, request_message
+  - JS toggles chip styling on check/uncheck
+  - handoff_fields added to tab_fields, sanitized as array filtered against valid keys
+- Chat (class-wpaic-chat.php):
+  - get_handoff_instruction() dynamically lists fields to collect based on handoff_fields setting
+  - Tool definition dynamically adds optional field parameters + required entries
+- Tools (class-wpaic-tools.php):
+  - create_handoff_request() extracts optional fields, stores as JSON in extra_fields column
+  - send_handoff_email() includes optional fields with labels in email body
+- DB (wp-ai-chatbot.php):
+  - Added extra_fields longtext column to wpaic_support_requests table
+- Support page (class-wpaic-admin.php):
+  - Transcript AJAX returns extra_fields, modal displays them in info box above transcript
+- Tests: 12 new tests (5 admin, 4 chat, 3 tools)
+- Files changed:
+  - includes/class-wpaic-admin.php
+  - includes/class-wpaic-chat.php
+  - includes/class-wpaic-tools.php
+  - wp-ai-chatbot.php
+  - tests/WPAIC_AdminTest.php
+  - tests/WPAIC_ChatTest.php
+  - tests/WPAIC_ToolsTest.php
+  - prd.json
+- All checks pass: 185 PHP tests, 147 frontend tests

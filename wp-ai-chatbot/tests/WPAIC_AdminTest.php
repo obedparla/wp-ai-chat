@@ -996,4 +996,85 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertMatchesRegularExpression( '/id="wpaic_logo_preview"[^>]*style="display:none"/', $output );
 		unset( $_GET['tab'] );
 	}
+
+	public function test_sanitize_settings_handoff_fields_filters_invalid_values(): void {
+		$input = array(
+			'active_tab'      => 'engagement',
+			'handoff_enabled' => '1',
+			'handoff_fields'  => array( 'phone_number', 'invalid_field', 'company', 'xss_attempt' ),
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertEquals( array( 'phone_number', 'company' ), $sanitized['handoff_fields'] );
+	}
+
+	public function test_sanitize_settings_handoff_fields_defaults_to_empty(): void {
+		$input = array(
+			'active_tab'      => 'engagement',
+			'handoff_enabled' => '1',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertEquals( array(), $sanitized['handoff_fields'] );
+	}
+
+	public function test_sanitize_settings_handoff_fields_accepts_all_valid_fields(): void {
+		$input = array(
+			'active_tab'      => 'engagement',
+			'handoff_enabled' => '1',
+			'handoff_fields'  => array( 'phone_number', 'company', 'order_number', 'request_message' ),
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertCount( 4, $sanitized['handoff_fields'] );
+		$this->assertContains( 'phone_number', $sanitized['handoff_fields'] );
+		$this->assertContains( 'company', $sanitized['handoff_fields'] );
+		$this->assertContains( 'order_number', $sanitized['handoff_fields'] );
+		$this->assertContains( 'request_message', $sanitized['handoff_fields'] );
+	}
+
+	public function test_engagement_tab_renders_handoff_field_chips(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array(
+			'handoff_enabled' => true,
+			'handoff_fields'  => array( 'phone_number' ),
+		) );
+		$_GET['tab'] = 'engagement';
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Required Fields', $output );
+		$this->assertStringContainsString( 'Phone Number', $output );
+		$this->assertStringContainsString( 'Company', $output );
+		$this->assertStringContainsString( 'Order Number', $output );
+		$this->assertStringContainsString( 'Request Message', $output );
+		$this->assertStringContainsString( 'wpaic-handoff-field-checkbox', $output );
+		unset( $_GET['tab'] );
+	}
+
+	public function test_sanitize_settings_handoff_fields_preserved_across_tabs(): void {
+		WPAICTestHelper::set_option( 'wpaic_settings', array(
+			'handoff_enabled' => true,
+			'handoff_fields'  => array( 'phone_number', 'company' ),
+		) );
+
+		$input = array(
+			'active_tab'     => 'general',
+			'enabled'        => '1',
+			'greeting_message' => 'Hi',
+			'language'       => 'auto',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertEquals( array( 'phone_number', 'company' ), $sanitized['handoff_fields'] );
+		$this->assertTrue( $sanitized['handoff_enabled'] );
+	}
 }

@@ -49,6 +49,6 @@
       "Deselect 'Phone Number', save, and test again — verify bot no longer asks for phone",
       "Verify the create_handoff_request tool schema parameters match the selected fields"
     ],
-    "passes": false
+    "passes": true
   }
 ]
