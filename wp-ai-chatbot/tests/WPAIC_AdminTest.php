@@ -997,7 +997,25 @@ class WPAIC_AdminTest extends TestCase {
 		unset( $_GET['tab'] );
 	}
 
-	public function test_sanitize_settings_handoff_fields_filters_invalid_values(): void {
+	public function test_logo_preview_constrained_to_32px_height(): void {
+		$_GET['tab'] = 'appearance';
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array(
+			'chatbot_logo' => 'https://example.com/big-logo.png',
+		) );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'max-h-8', $output );
+		$this->assertStringNotContainsString( 'max-h-16', $output );
+		unset( $_GET['tab'] );
+	}
+
+public function test_sanitize_settings_handoff_fields_filters_invalid_values(): void {
 		$input = array(
 			'active_tab'      => 'engagement',
 			'handoff_enabled' => '1',

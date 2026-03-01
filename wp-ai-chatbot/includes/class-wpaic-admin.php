@@ -60,6 +60,7 @@ class WPAIC_Admin {
 					'frame=wp.media({title:"Select Chatbot Logo",button:{text:"Use as Logo"},multiple:false,library:{type:"image"}});' .
 					'frame.on("select",function(){' .
 						'var a=frame.state().get("selection").first().toJSON();' .
+						'if(!a.type||a.type!=="image"){alert("Please select an image file (JPEG, PNG, GIF, WebP, or SVG).");return;}' .
 						'$("#wpaic_chatbot_logo").val(a.url);' .
 						'$("#wpaic_logo_preview").attr("src",a.url).show();' .
 						'$("#wpaic_logo_remove").show();' .
@@ -752,7 +753,7 @@ class WPAIC_Admin {
 					</button>
 				</div>
 				<img id="wpaic_logo_preview" src="<?php echo esc_attr( $chatbot_logo ); ?>"
-					alt="" class="mt-2 max-h-16 w-auto object-contain border border-gray-200 rounded p-1"
+					alt="" class="mt-2 max-h-8 w-auto object-contain border border-gray-200 rounded p-1"
 					style="<?php echo empty( $chatbot_logo ) ? 'display:none' : ''; ?>">
 				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Upload a logo image (max 32px height in widget). Leave empty for no logo.', 'wp-ai-chatbot' ); ?></p>
 			</div>

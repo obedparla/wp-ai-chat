@@ -50,5 +50,85 @@
       "Verify the create_handoff_request tool schema parameters match the selected fields"
     ],
     "passes": true
+  },
+  {
+    "project": "chatbot",
+    "category": "Bug",
+    "description": "Chatbot Logo media uploader allows selecting any file type (PDFs, videos, etc.). The WP media modal must restrict selectable files to web-safe image formats only (JPEG, PNG, GIF, WebP, SVG). Additionally, the logo preview in the admin Appearance tab can render at full size if the source image is large — cap the admin preview height to match the frontend widget constraint (~32px).",
+    "steps": [
+      "Open chatbot admin → Appearance tab",
+      "Click 'Upload Logo' — verify WP media library opens",
+      "Verify non-image files (PDFs, videos, docs) are either hidden or greyed out / unselectable",
+      "Verify only image files (JPEG, PNG, GIF, WebP, SVG) can be selected",
+      "Select a very large image (e.g. 2000×2000px) as the logo",
+      "Verify the admin preview thumbnail does not exceed ~32px in height",
+      "Save and reload — verify the preview remains constrained",
+      "Open the frontend widget — verify the logo displays at the same constrained 32px max-height"
+    ],
+    "passes": true
+  },
+  {
+    "project": "chatbot",
+    "category": "Bug",
+    "description": "Sending a chat message causes the text input to lose focus. After submitting a message (Enter or Send button), the input field must retain keyboard focus so the user can immediately type the next message without clicking the field again.",
+    "steps": [
+      "Open the chat widget on the frontend",
+      "Click the text input to focus it",
+      "Type a message and press Enter to send",
+      "Verify the text input remains focused (cursor blinking in the field) after the message is sent",
+      "Type another message immediately without clicking the input — verify it works",
+      "Send a message using the Send button — verify input re-focuses after send",
+      "Verify focus is retained even while the bot response is streaming"
+    ],
+    "passes": false
+  },
+  {
+    "project": "chatbot",
+    "category": "Feature",
+    "description": "Chat text input supports multiline entry. Pressing Shift+Enter inserts a newline instead of sending. The input field (currently a single-line <input>) must become a <textarea> that auto-grows in height as lines are added, up to a maximum of ~5-6 visible lines. Beyond that, the textarea becomes scrollable. Pressing Enter alone (without Shift) still sends the message.",
+    "steps": [
+      "Open the chat widget on the frontend",
+      "Verify the input renders as a textarea (not a single-line input)",
+      "Type text and press Shift+Enter — verify a new line is inserted and the message is NOT sent",
+      "Verify the textarea grows taller to accommodate 2, 3, 4, 5 lines",
+      "Verify the textarea stops growing after ~5-6 lines and becomes vertically scrollable",
+      "Type text across multiple lines and press Enter (without Shift) — verify the message is sent",
+      "Verify the sent message preserves line breaks when displayed in the chat",
+      "Verify the textarea resets to single-line height after sending",
+      "Verify the textarea is still disabled during bot response streaming"
+    ],
+    "passes": false
+  },
+  {
+    "project": "chatbot",
+    "category": "Feature",
+    "description": "Clicking 'Clear chat' in the frontend widget saves the current conversation as a completed chat log entry before clearing. Currently, clearing the chat discards session messages without persisting them. After this change: the frontend calls an endpoint to finalize/close the current conversation, then starts a fresh session. The cleared conversation appears in admin Chat Logs as a separate entry.",
+    "steps": [
+      "Open the chat widget and send 3+ messages, receiving bot responses",
+      "Note the current session's conversation content",
+      "Click the 'Clear chat' button (↺) in the chat header",
+      "Verify the chat clears and shows the greeting/welcome state",
+      "Send a new message — verify it starts a fresh conversation (new session ID)",
+      "Open admin → Chat Logs",
+      "Verify the previous conversation (before clear) appears as its own log entry with correct message count",
+      "Verify the new conversation (after clear) is tracked as a separate entry",
+      "Verify the cleared conversation's messages are viewable via the 'View' button in Chat Logs"
+    ],
+    "passes": false
+  },
+  {
+    "project": "chatbot",
+    "category": "UI",
+    "description": "Remove the 'ID', 'User', and 'Session' columns from the Chat Logs table in admin. These fields add clutter without providing actionable information to the admin. The remaining columns (Messages, Started, Last Activity, Actions) are sufficient.",
+    "steps": [
+      "Open admin → Chat Logs page",
+      "Verify the table does NOT show an 'ID' column",
+      "Verify the table does NOT show a 'User' column",
+      "Verify the table does NOT show a 'Session' column",
+      "Verify the table still shows: Messages, Started, Last Activity, and Actions columns",
+      "Verify the 'View' and 'Delete' action buttons still work correctly",
+      "Verify pagination still works with the reduced column set"
+    ],
+    "passes": false
   }
 ]

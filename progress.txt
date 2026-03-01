@@ -106,3 +106,17 @@ What was done:
 - Added `wp_enqueue_media` stub in test stubs
 - 2 new tests: media uploader elements rendered with logo set, preview/remove hidden when no logo
 - All 173 tests passing
+
+## 2026-03-01: Fix logo media uploader file type restriction + preview height (PRD Bug)
+
+Media uploader allowed any file type selection; admin preview rendered at full size.
+
+What was done:
+- wp.media config already had `library:{type:"image"}` — filters media library to images only
+- Added defensive JS validation on select callback: rejects if `a.type !== "image"` with alert
+- Changed admin preview from `max-h-16` (64px) to `max-h-8` (32px) matching frontend's `h-8 max-h-8`
+- 1 new test: verifies admin preview uses max-h-8 and not max-h-16
+- Files changed:
+  - includes/class-wpaic-admin.php (select validation + preview height)
+  - tests/WPAIC_AdminTest.php (1 new test)
+- All checks pass: 186 PHP tests, 147 frontend tests
