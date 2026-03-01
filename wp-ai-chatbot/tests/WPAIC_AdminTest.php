@@ -524,6 +524,27 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertStringContainsString( 'wp-list-table', $output );
 	}
 
+	public function test_render_logs_page_hides_id_user_session_columns(): void {
+		global $wpdb;
+		$wpdb = new MockWpdb();
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_logs_page();
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( '>ID<', $output );
+		$this->assertStringNotContainsString( '>Session<', $output );
+		$this->assertStringNotContainsString( '>User<', $output );
+		$this->assertStringContainsString( 'Messages', $output );
+		$this->assertStringContainsString( 'Started', $output );
+		$this->assertStringContainsString( 'Last Activity', $output );
+		$this->assertStringContainsString( 'Actions', $output );
+	}
+
 	public function test_all_settings_fields_have_correct_names(): void {
 		WPAICTestHelper::set_option( 'wpaic_settings', array() );
 

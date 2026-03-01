@@ -1013,9 +1013,6 @@ class WPAIC_Admin {
 			<table class="wp-list-table widefat fixed striped">
 				<thead>
 					<tr>
-						<th scope="col"><?php esc_html_e( 'ID', 'wp-ai-chatbot' ); ?></th>
-						<th scope="col"><?php esc_html_e( 'Session', 'wp-ai-chatbot' ); ?></th>
-						<th scope="col"><?php esc_html_e( 'User', 'wp-ai-chatbot' ); ?></th>
 						<th scope="col"><?php esc_html_e( 'Messages', 'wp-ai-chatbot' ); ?></th>
 						<th scope="col"><?php esc_html_e( 'Started', 'wp-ai-chatbot' ); ?></th>
 						<th scope="col"><?php esc_html_e( 'Last Activity', 'wp-ai-chatbot' ); ?></th>
@@ -1025,23 +1022,11 @@ class WPAIC_Admin {
 				<tbody>
 					<?php if ( empty( $conversations ) ) : ?>
 						<tr>
-							<td colspan="7"><?php esc_html_e( 'No conversations found.', 'wp-ai-chatbot' ); ?></td>
+							<td colspan="4"><?php esc_html_e( 'No conversations found.', 'wp-ai-chatbot' ); ?></td>
 						</tr>
 					<?php else : ?>
 						<?php foreach ( $conversations as $conv ) : ?>
 							<tr>
-								<td><?php echo esc_html( (string) $conv->id ); ?></td>
-								<td><code><?php echo esc_html( substr( $conv->session_id, 0, 8 ) . '...' ); ?></code></td>
-								<td>
-									<?php
-									if ( $conv->user_id ) {
-										$user = get_user_by( 'id', $conv->user_id );
-										echo esc_html( $user ? $user->display_name : 'User #' . $conv->user_id );
-									} else {
-										echo esc_html( $conv->user_ip ?? __( 'Anonymous', 'wp-ai-chatbot' ) );
-									}
-									?>
-								</td>
 								<td><?php echo esc_html( (string) $conv->message_count ); ?></td>
 								<td><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $conv->created_at ) ) ); ?></td>
 								<td><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $conv->updated_at ) ) ); ?></td>
