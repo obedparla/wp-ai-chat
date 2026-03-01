@@ -179,7 +179,7 @@ function extractActiveTools(uiMessages: UIMessage[]): ActiveTool[] {
 
 export function useChat() {
   const config = window.wpaicConfig
-  const [sessionId] = useState(initialSessionId)
+  const [sessionId, setSessionId] = useState(initialSessionId)
   const greetingAddedRef = useRef(false)
   const lastUserMessageRef = useRef<string | null>(null)
   const restoredFromStorageRef = useRef(false)
@@ -324,19 +324,11 @@ export function useChat() {
     stop()
     clearStoredMessages()
     greetingAddedRef.current = false
-    setMessages([])
-    const greeting = getGreetingMessage()
-    if (greeting) {
-      setMessages([
-        {
-          id: 'greeting',
-          role: 'assistant',
-          parts: [{ type: 'text', text: greeting }],
-        },
-      ])
-      greetingAddedRef.current = true
-    }
-  }, [stop, setMessages])
+    restoredFromStorageRef.current = false
+    const newSessionId = generateSessionId()
+    sessionStorage.setItem('wpaic_session_id', newSessionId)
+    setSessionId(newSessionId)
+  }, [stop])
 
   return {
     messages: messagesWithError,
