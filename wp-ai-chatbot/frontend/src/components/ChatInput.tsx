@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 
 interface ChatInputProps {
@@ -8,19 +9,20 @@ interface ChatInputProps {
   onStop: () => void
 }
 
-export default function ChatInput({
+const ChatInput = forwardRef<HTMLInputElement, ChatInputProps>(function ChatInput({
   value,
   onChange,
   onSubmit,
   isLoading,
   onStop,
-}: ChatInputProps) {
+}, ref) {
   return (
     <form
       className="flex p-4 bg-white border-t border-slate-200 gap-2.5 items-center max-[480px]:p-3.5 max-[480px]:pb-[max(14px,env(safe-area-inset-bottom))]"
       onSubmit={onSubmit}
     >
       <input
+        ref={ref}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -60,4 +62,6 @@ export default function ChatInput({
       )}
     </form>
   )
-}
+})
+
+export default ChatInput

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Message, ActiveTool } from '../hooks/useChat'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
@@ -34,6 +34,7 @@ function getToolProgressMessage(tool: ActiveTool): string {
 export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: ChatWidgetProps) {
   const { messages, sendMessage, isLoading, stopGeneration, clearChat, activeTools, retry } = chat
   const [input, setInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const hasName = chatbotName && chatbotName.trim().length > 0
   const hasLogo = chatbotLogo && chatbotLogo.trim().length > 0
@@ -59,6 +60,7 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
     if (!input.trim() || isLoading) return
     sendMessage(input.trim())
     setInput('')
+    requestAnimationFrame(() => inputRef.current?.focus())
   }
 
   return (
@@ -117,6 +119,7 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
         </div>
       )}
       <ChatInput
+        ref={inputRef}
         value={input}
         onChange={setInput}
         onSubmit={handleSubmit}
