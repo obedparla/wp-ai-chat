@@ -66,7 +66,7 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
   }
 
   return (
-    <div className="fixed bottom-[100px] right-6 w-[380px] max-w-[calc(100vw-48px)] h-[600px] max-h-[calc(100vh-140px)] bg-white rounded-2xl shadow-xl flex flex-col z-[9998] overflow-hidden animate-wpaic-slideUp border border-slate-200 max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[calc(100vh-60px)] max-[480px]:max-h-[calc(100vh-60px)] max-[480px]:rounded-t-2xl max-[480px]:rounded-b-none max-[480px]:border-b-0 max-[480px]:animate-wpaic-slideUpMobile relative">
+    <div className="fixed bottom-[100px] right-6 w-[380px] max-w-[calc(100vw-48px)] h-[600px] max-h-[calc(100vh-140px)] bg-white rounded-2xl shadow-xl flex flex-col z-[9998] overflow-hidden animate-wpaic-slideUp border border-slate-200 max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[calc(100vh-60px)] max-[480px]:max-h-[calc(100vh-60px)] max-[480px]:rounded-t-2xl max-[480px]:rounded-b-none max-[480px]:border-b-0 max-[480px]:animate-wpaic-slideUpMobile">
       {showTranscriptDialog && (
         <SendTranscriptDialog
           messages={messages}
