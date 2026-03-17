@@ -18,6 +18,7 @@ class WPAIC_Admin {
 		add_action( 'wp_ajax_wpaic_get_conversation', array( $this, 'ajax_get_conversation' ) );
 		add_action( 'wp_ajax_wpaic_delete_conversation', array( $this, 'ajax_delete_conversation' ) );
 		add_action( 'wp_ajax_wpaic_rebuild_index', array( $this, 'ajax_rebuild_index' ) );
+		add_action( 'wp_ajax_wpaic_rebuild_content_index', array( $this, 'ajax_rebuild_content_index' ) );
 		add_action( 'wp_ajax_wpaic_update_support_status', array( $this, 'ajax_update_support_status' ) );
 		add_action( 'wp_ajax_wpaic_get_support_transcript', array( $this, 'ajax_get_support_transcript' ) );
 		add_action( 'wp_ajax_wpaic_upload_csv', array( $this, 'ajax_upload_csv' ) );
@@ -280,6 +281,7 @@ class WPAIC_Admin {
 			'api'        => array( 'openai_api_key', 'model', 'provider_url', 'provider_site_key' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color' ),
 			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages' ),
+			'search'     => array( 'content_index_post_types' ),
 		);
 
 		$active_tab = $input['active_tab'] ?? '';
@@ -320,6 +322,18 @@ class WPAIC_Admin {
 
 		$sanitized['provider_url']      = esc_url_raw( $merged['provider_url'] ?? '' );
 		$sanitized['provider_site_key'] = sanitize_text_field( $merged['provider_site_key'] ?? '' );
+
+		$raw_content_post_types                  = $merged['content_index_post_types'] ?? array( 'page', 'post' );
+		$sanitized['content_index_post_types']   = is_array( $raw_content_post_types )
+			? array_map( 'sanitize_key', $raw_content_post_types )
+			: array( 'page', 'post' );
+
+		$old_content_types = $existing['content_index_post_types'] ?? array( 'page', 'post' );
+		if ( $sanitized['content_index_post_types'] !== $old_content_types ) {
+			update_option( 'wpaic_settings', $sanitized );
+			$content_index = new WPAIC_Content_Index();
+			$content_index->build_index();
+		}
 
 		return $sanitized;
 	}
@@ -953,6 +967,84 @@ class WPAIC_Admin {
 			</div>
 		</div>
 
+			<h3 class="text-base font-semibold text-gray-900 mt-6"><?php esc_html_e( 'Site Content Index', 'wp-ai-chatbot' ); ?></h3>
+
+			<div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+				<p class="text-sm text-gray-600"><?php esc_html_e( 'Select which post types to include in the content index. This index allows the chatbot to search and reference your site content.', 'wp-ai-chatbot' ); ?></p>
+				<div class="flex flex-wrap gap-4 mt-3">
+					<?php
+					$settings              = get_option( 'wpaic_settings', array() );
+					$selected_post_types   = is_array( $settings ) ? ( $settings['content_index_post_types'] ?? array( 'page', 'post' ) ) : array( 'page', 'post' );
+					$public_post_types     = get_post_types( array( 'public' => true ), 'objects' );
+					$excluded_post_types   = array( 'product', 'attachment' );
+					foreach ( $public_post_types as $post_type_object ) :
+						if ( in_array( $post_type_object->name, $excluded_post_types, true ) ) {
+							continue;
+						}
+						$checked = in_array( $post_type_object->name, $selected_post_types, true );
+						?>
+						<label class="inline-flex items-center gap-2 text-sm text-gray-700">
+							<input type="checkbox"
+								name="wpaic_settings[content_index_post_types][]"
+								value="<?php echo esc_attr( $post_type_object->name ); ?>"
+								<?php checked( $checked ); ?>
+								class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+							<?php echo esc_html( $post_type_object->labels->name ); ?>
+						</label>
+					<?php endforeach; ?>
+				</div>
+			</div>
+
+			<?php
+			$content_index        = new WPAIC_Content_Index();
+			$content_status       = $content_index->get_index_status();
+			$content_exists       = $content_status['exists'];
+			$content_count        = $content_status['post_count'];
+			$content_updated      = $content_status['last_updated'];
+			?>
+			<div class="p-6 border border-gray-200 rounded-lg">
+				<div class="flex items-center justify-between">
+					<div class="flex items-center gap-3">
+						<?php if ( $content_exists ) : ?>
+							<span class="flex items-center justify-center w-10 h-10 bg-green-100 rounded-full">
+								<span class="dashicons dashicons-yes-alt text-green-600"></span>
+							</span>
+							<div>
+								<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Index Active', 'wp-ai-chatbot' ); ?></h3>
+								<p class="text-sm text-gray-500">
+									<?php
+									printf(
+										/* translators: 1: post count, 2: last updated date */
+										esc_html__( '%1$d pages/posts indexed. Last updated: %2$s', 'wp-ai-chatbot' ),
+										esc_html( (string) $content_count ),
+										esc_html( $content_updated ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $content_updated ) ) : __( 'Unknown', 'wp-ai-chatbot' ) )
+									);
+									?>
+								</p>
+							</div>
+						<?php else : ?>
+							<span class="flex items-center justify-center w-10 h-10 bg-red-100 rounded-full">
+								<span class="dashicons dashicons-warning text-red-600"></span>
+							</span>
+							<div>
+								<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Index Missing', 'wp-ai-chatbot' ); ?></h3>
+								<p class="text-sm text-gray-500"><?php esc_html_e( 'Click Rebuild Content Index to create it.', 'wp-ai-chatbot' ); ?></p>
+							</div>
+						<?php endif; ?>
+					</div>
+
+					<div class="flex items-center gap-3">
+						<button type="button" id="wpaic-rebuild-content-index"
+								class="inline-flex items-center px-4 py-2 bg-white text-gray-700 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+							<span class="dashicons dashicons-update mr-2" style="font-size: 16px; width: 16px; height: 16px;"></span>
+							<?php esc_html_e( 'Rebuild Content Index', 'wp-ai-chatbot' ); ?>
+						</button>
+						<span id="wpaic-rebuild-content-status" class="text-sm"></span>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<script>
 		jQuery(document).ready(function($) {
 			$('#wpaic-rebuild-index').on('click', function() {
@@ -977,6 +1069,38 @@ class WPAIC_Admin {
 							setTimeout(function() { location.reload(); }, 1500);
 						} else {
 							$status.html('<span class="text-red-600">' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Error rebuilding index.', 'wp-ai-chatbot' ) ); ?>') + '</span>');
+						}
+					},
+					error: function() {
+						$btn.prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
+						$btn.find('.dashicons').removeClass('animate-spin');
+						$status.html('<span class="text-red-600"><?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?></span>');
+					}
+				});
+			});
+
+			$('#wpaic-rebuild-content-index').on('click', function() {
+				var $btn = $(this);
+				var $status = $('#wpaic-rebuild-content-status');
+				$btn.prop('disabled', true).addClass('opacity-50 cursor-not-allowed');
+				$btn.find('.dashicons').addClass('animate-spin');
+				$status.html('<span class="text-gray-500"><?php echo esc_js( __( 'Rebuilding...', 'wp-ai-chatbot' ) ); ?></span>');
+
+				$.ajax({
+					url: ajaxurl,
+					type: 'POST',
+					data: {
+						action: 'wpaic_rebuild_content_index',
+						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_rebuild_content_index' ) ); ?>'
+					},
+					success: function(response) {
+						$btn.prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
+						$btn.find('.dashicons').removeClass('animate-spin');
+						if (response.success) {
+							$status.html('<span class="text-green-600">' + response.data.message + '</span>');
+							setTimeout(function() { location.reload(); }, 1500);
+						} else {
+							$status.html('<span class="text-red-600">' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Error rebuilding content index.', 'wp-ai-chatbot' ) ); ?>') + '</span>');
 						}
 					},
 					error: function() {
@@ -1285,6 +1409,32 @@ class WPAIC_Admin {
 			);
 		} else {
 			wp_send_json_error( array( 'message' => __( 'Failed to rebuild index. Check file permissions.', 'wp-ai-chatbot' ) ) );
+		}
+	}
+
+	public function ajax_rebuild_content_index(): void {
+		check_ajax_referer( 'wpaic_rebuild_content_index', '_wpnonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'wp-ai-chatbot' ) ) );
+		}
+
+		$content_index = new WPAIC_Content_Index();
+		$result        = $content_index->build_index();
+
+		if ( $result ) {
+			$status = $content_index->get_index_status();
+			wp_send_json_success(
+				array(
+					'message' => sprintf(
+						/* translators: %d: number of content items indexed */
+						__( 'Content index rebuilt successfully. %d items indexed.', 'wp-ai-chatbot' ),
+						$status['post_count']
+					),
+				)
+			);
+		} else {
+			wp_send_json_error( array( 'message' => __( 'Failed to rebuild content index. Check file permissions.', 'wp-ai-chatbot' ) ) );
 		}
 	}
 

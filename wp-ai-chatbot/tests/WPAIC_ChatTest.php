@@ -111,7 +111,7 @@ class WPAIC_ChatTest extends TestCase {
 
 		$tools = $method->invoke( $chat );
 
-		$this->assertCount( 5, $tools );
+		$this->assertCount( 7, $tools );
 
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertContains( 'search_products', $tool_names );
@@ -119,6 +119,8 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertContains( 'get_categories', $tool_names );
 		$this->assertContains( 'compare_products', $tool_names );
 		$this->assertContains( 'get_order_status', $tool_names );
+		$this->assertContains( 'search_site_content', $tool_names );
+		$this->assertContains( 'get_page_content', $tool_names );
 
 		foreach ( $tools as $tool ) {
 			$this->assertEquals( 'function', $tool['type'] );
@@ -513,7 +515,10 @@ class WPAIC_ChatTest extends TestCase {
 		$tools = $method->invoke( $chat );
 
 		$this->assertIsArray( $tools );
-		$this->assertEmpty( $tools );
+		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
+		$this->assertNotContains( 'search_products', $tool_names );
+		$this->assertContains( 'search_site_content', $tool_names );
+		$this->assertContains( 'get_page_content', $tool_names );
 	}
 
 	public function test_execute_tool_returns_error_when_woocommerce_not_active(): void {

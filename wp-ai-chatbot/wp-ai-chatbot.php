@@ -92,6 +92,10 @@ function wpaic_activate(): void {
 
 	wpaic_create_tables();
 	flush_rewrite_rules();
+
+	require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-content-index.php';
+	$content_index = new WPAIC_Content_Index();
+	$content_index->build_index();
 }
 
 function wpaic_create_tables(): void {

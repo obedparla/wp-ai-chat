@@ -13,6 +13,7 @@ if ( ! class_exists( 'WP_Post' ) ) {
 		public string $post_excerpt = '';
 		public string $post_type = 'post';
 		public string $post_status = 'publish';
+		public string $post_password = '';
 
 		/**
 		 * @param array<string, mixed> $data
@@ -246,9 +247,32 @@ class WPAICTestHelper {
 		$posts = array_values( self::$mock_posts );
 
 		if ( ! empty( $query_args['post_type'] ) ) {
+			$type = $query_args['post_type'];
+			if ( is_array( $type ) ) {
+				$posts = array_filter(
+					$posts,
+					fn( $p ) => in_array( $p->post_type, $type, true )
+				);
+			} else {
+				$posts = array_filter(
+					$posts,
+					fn( $p ) => $p->post_type === $type
+				);
+			}
+		}
+
+		if ( ! empty( $query_args['post_status'] ) ) {
+			$status = $query_args['post_status'];
+			$posts  = array_filter(
+				$posts,
+				fn( $p ) => $p->post_status === $status
+			);
+		}
+
+		if ( isset( $query_args['has_password'] ) && false === $query_args['has_password'] ) {
 			$posts = array_filter(
 				$posts,
-				fn( $p ) => $p->post_type === $query_args['post_type']
+				fn( $p ) => '' === $p->post_password
 			);
 		}
 
@@ -314,7 +338,11 @@ class WPAICTestHelper {
 		}
 
 		$limit = $query_args['posts_per_page'] ?? 10;
-		return array_slice( array_values( $posts ), 0, $limit );
+		$posts = array_values( $posts );
+		if ( -1 === $limit ) {
+			return $posts;
+		}
+		return array_slice( $posts, 0, $limit );
 	}
 
 	public static function set_post_meta( int $post_id, string $key, mixed $value ): void {
@@ -427,6 +455,33 @@ if ( ! function_exists( 'wp_strip_all_tags' ) ) {
 			$text = preg_replace( '/[\r\n\t ]+/', ' ', $text );
 		}
 		return trim( $text );
+	}
+}
+
+if ( ! function_exists( 'strip_shortcodes' ) ) {
+	function strip_shortcodes( string $content ): string {
+		return preg_replace( '/\[.*?\]/', '', $content );
+	}
+}
+
+if ( ! function_exists( 'get_posts' ) ) {
+	/**
+	 * @param array<string, mixed> $args
+	 * @return array<int, WP_Post>
+	 */
+	function get_posts( array $args = array() ): array {
+		return WPAICTestHelper::get_mock_query_posts( $args );
+	}
+}
+
+if ( ! function_exists( 'get_post_types' ) ) {
+	/**
+	 * @param array<string, mixed> $args
+	 * @param string $output
+	 * @return array<int, string>
+	 */
+	function get_post_types( array $args = array(), string $output = 'names' ): array {
+		return array( 'post', 'page' );
 	}
 }
 

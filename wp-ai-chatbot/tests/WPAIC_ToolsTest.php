@@ -6,6 +6,7 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-search-index.php';
+require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-tools.php';
 
 class WPAIC_ToolsTest extends TestCase {
@@ -634,6 +635,59 @@ class WPAIC_ToolsTest extends TestCase {
 	}
 
 	// --- End handoff tests ---
+
+	// --- Content index tool tests ---
+
+	public function test_search_site_content_returns_empty_for_empty_query(): void {
+		$result = $this->tools->search_site_content( array( 'query' => '' ) );
+
+		$this->assertEmpty( $result );
+	}
+
+	public function test_search_site_content_returns_results(): void {
+		WPAICTestHelper::add_mock_post(
+			array(
+				'ID'           => 10,
+				'post_title'   => 'Shipping Policy',
+				'post_content' => 'We ship worldwide with free shipping on orders over $50.',
+				'post_type'    => 'page',
+				'post_status'  => 'publish',
+			)
+		);
+
+		$result = $this->tools->search_site_content( array( 'query' => 'shipping' ) );
+
+		$this->assertNotEmpty( $result );
+		$this->assertEquals( 10, $result[0]['post_id'] );
+		$this->assertEquals( 'Shipping Policy', $result[0]['title'] );
+	}
+
+	public function test_get_page_content_returns_null_for_nonexistent_post(): void {
+		$result = $this->tools->get_page_content( array( 'post_id' => 999 ) );
+
+		$this->assertNull( $result );
+	}
+
+	public function test_get_page_content_returns_content_for_valid_post(): void {
+		WPAICTestHelper::add_mock_post(
+			array(
+				'ID'           => 20,
+				'post_title'   => 'Return Policy',
+				'post_content' => 'You can return items within 30 days.',
+				'post_type'    => 'page',
+				'post_status'  => 'publish',
+			)
+		);
+
+		$result = $this->tools->get_page_content( array( 'post_id' => 20 ) );
+
+		$this->assertNotNull( $result );
+		$this->assertEquals( 20, $result['post_id'] );
+		$this->assertEquals( 'Return Policy', $result['title'] );
+		$this->assertStringContainsString( 'return items', $result['content'] );
+	}
+
+	// --- End content index tool tests ---
 
 	/**
 	 * Creates a mock WooCommerce order.

@@ -12,6 +12,7 @@ class WPAIC_Loader {
 		$this->init_api();
 		$this->init_cart();
 		$this->init_search_index();
+		$this->init_content_index();
 	}
 
 	private function load_dependencies(): void {
@@ -23,6 +24,7 @@ class WPAIC_Loader {
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-logs.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-cart.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-search-index.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-content-index.php';
 	}
 
 	private function init_admin(): void {
@@ -45,6 +47,55 @@ class WPAIC_Loader {
 	private function init_cart(): void {
 		$cart = new WPAIC_Cart();
 		$cart->init();
+	}
+
+	private function init_content_index(): void {
+		$content_index  = new WPAIC_Content_Index();
+		$selected_types = $content_index->get_selected_post_types();
+
+		add_action(
+			'save_post',
+			function ( int $post_id ) use ( $content_index, $selected_types ): void {
+				if ( ! in_array( get_post_type( $post_id ), $selected_types, true ) ) {
+					return;
+				}
+				$post = get_post( $post_id );
+				if ( $post && 'publish' === $post->post_status ) {
+					$content_index->index_post( $post_id );
+				}
+			}
+		);
+		add_action(
+			'before_delete_post',
+			function ( int $post_id ) use ( $content_index, $selected_types ): void {
+				if ( in_array( get_post_type( $post_id ), $selected_types, true ) ) {
+					$content_index->remove_post( $post_id );
+				}
+			}
+		);
+		add_action(
+			'wp_trash_post',
+			function ( int $post_id ) use ( $content_index, $selected_types ): void {
+				if ( in_array( get_post_type( $post_id ), $selected_types, true ) ) {
+					$content_index->remove_post( $post_id );
+				}
+			}
+		);
+		add_action(
+			'transition_post_status',
+			function ( string $new_status, string $old_status, WP_Post $post ) use ( $content_index, $selected_types ): void {
+				if ( ! in_array( $post->post_type, $selected_types, true ) ) {
+					return;
+				}
+				if ( 'publish' === $new_status && 'publish' !== $old_status ) {
+					$content_index->index_post( $post->ID );
+				} elseif ( 'publish' !== $new_status && 'publish' === $old_status ) {
+					$content_index->remove_post( $post->ID );
+				}
+			},
+			10,
+			3
+		);
 	}
 
 	private function init_search_index(): void {

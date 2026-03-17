@@ -535,6 +535,18 @@ class WPAIC_Tools {
 		return $result;
 	}
 
+	public function search_site_content( array $args ): array {
+		$query         = isset( $args['query'] ) && is_string( $args['query'] ) ? sanitize_text_field( $args['query'] ) : '';
+		$content_index = new WPAIC_Content_Index();
+		return $content_index->search( $query );
+	}
+
+	public function get_page_content( array $args ): ?array {
+		$post_id       = isset( $args['post_id'] ) && is_numeric( $args['post_id'] ) ? (int) $args['post_id'] : 0;
+		$content_index = new WPAIC_Content_Index();
+		return $content_index->get_page_content( $post_id );
+	}
+
 	/**
 	 * Get variable product attributes and variations data.
 	 *

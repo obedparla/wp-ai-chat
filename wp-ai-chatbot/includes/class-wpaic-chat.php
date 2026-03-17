@@ -539,16 +539,16 @@ class WPAIC_Chat {
 		$faq_section   = $this->get_faq_instruction();
 
 		if ( is_string( $custom_prompt ) && '' !== trim( $custom_prompt ) ) {
-			return $custom_prompt . $faq_section . $this->get_tool_response_instruction() . $this->get_handoff_instruction() . $this->get_language_instruction();
+			return $custom_prompt . $faq_section . $this->get_tool_response_instruction() . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
 		}
 
 		$site_name = get_bloginfo( 'name' );
 
 		if ( wpaic_is_woocommerce_active() ) {
-			return "You are a helpful assistant for {$site_name}. Help customers find products and answer questions. Be friendly and concise. Use tools to search products when asked." . $faq_section . $this->get_tool_response_instruction() . $this->get_handoff_instruction() . $this->get_language_instruction();
+			return "You are a helpful assistant for {$site_name}. Help customers find products and answer questions. Be friendly and concise. Use tools to search products when asked." . $faq_section . $this->get_tool_response_instruction() . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
 		}
 
-		return "You are a helpful assistant for {$site_name}. Answer questions and help visitors. Be friendly and concise." . $faq_section . $this->get_handoff_instruction() . $this->get_language_instruction();
+		return "You are a helpful assistant for {$site_name}. Answer questions and help visitors. Be friendly and concise." . $faq_section . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
 	}
 
 	/**
@@ -604,6 +604,15 @@ class WPAIC_Chat {
 		$fields_list = implode( ', ', $fields_to_collect );
 
 		return " When a customer asks to speak to a human, talk to support, or escalate their issue, collect the following information: {$fields_list}. Once you have all required info, use the create_handoff_request tool to submit the request.";
+	}
+
+	private function get_content_index_instruction(): string {
+		$content_index = new WPAIC_Content_Index();
+		$status        = $content_index->get_index_status();
+		if ( ! $status['exists'] ) {
+			return '';
+		}
+		return ' You have access to the website\'s pages and posts. When users ask about policies, contact info, company details, or other non-product topics, use the search_site_content tool. If a snippet doesn\'t contain enough detail, use get_page_content to read the full page. Answer naturally from the content and cite the source page.';
 	}
 
 	private function get_language_instruction(): string {
@@ -859,6 +868,42 @@ class WPAIC_Chat {
 			$tools[] = $custom_data_tool;
 		}
 
+		$tools[] = array(
+			'type'     => 'function',
+			'function' => array(
+				'name'        => 'search_site_content',
+				'description' => 'Search the website\'s pages, posts, and other content. Use when the user asks about policies, contact info, FAQs, company info, or any non-product question.',
+				'parameters'  => array(
+					'type'       => 'object',
+					'properties' => array(
+						'query' => array(
+							'type'        => 'string',
+							'description' => 'Search query',
+						),
+					),
+					'required'   => array( 'query' ),
+				),
+			),
+		);
+
+		$tools[] = array(
+			'type'     => 'function',
+			'function' => array(
+				'name'        => 'get_page_content',
+				'description' => 'Get the full text content of a specific page or post. Use when search_site_content returned a relevant result but the snippet doesn\'t contain enough detail to answer the user\'s question.',
+				'parameters'  => array(
+					'type'       => 'object',
+					'properties' => array(
+						'post_id' => array(
+							'type'        => 'integer',
+							'description' => 'The post ID from search_site_content results',
+						),
+					),
+					'required'   => array( 'post_id' ),
+				),
+			),
+		);
+
 		return $tools;
 	}
 
@@ -1023,6 +1068,16 @@ class WPAIC_Chat {
 		if ( 'query_custom_data' === $name ) {
 			$tools = new WPAIC_Tools();
 			return $tools->query_custom_data( $arguments );
+		}
+
+		if ( 'search_site_content' === $name ) {
+			$tools = new WPAIC_Tools();
+			return $tools->search_site_content( $arguments );
+		}
+
+		if ( 'get_page_content' === $name ) {
+			$tools = new WPAIC_Tools();
+			return $tools->get_page_content( $arguments );
 		}
 
 		if ( null === $this->tools ) {
