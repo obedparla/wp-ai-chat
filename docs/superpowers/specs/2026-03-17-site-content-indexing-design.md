@@ -58,6 +58,12 @@ Register in a new `init_content_index()` method in `WPAIC_Loader` — separate f
 
 Guard: only fire if the post type is in the admin's selected post types list.
 
+### Activation
+
+On plugin activation, call `WPAIC_Content_Index::build_index()` synchronously with default post types (`page`, `post`). Pages/posts are lightweight to index — even 1000 posts takes a couple seconds.
+
+Also trigger a rebuild when the admin changes post type selections in settings — compare old vs new value in the settings save hook, and if different, rebuild immediately.
+
 ### New AI tools
 
 Added to `get_tool_definitions()` in `class-wpaic-chat.php`. Placed after the WooCommerce tools block and before the handoff tool — same level as the custom data tool. These tools are NOT gated behind WooCommerce — they work on any WordPress site.
@@ -165,9 +171,9 @@ New option key: `wpaic_content_index_meta` with `post_count`, `last_updated`, `p
 
 ## Edge cases
 
-- **Empty index**: if no post types selected or index not built, `search_site_content` tool should not appear in tool definitions (same pattern as custom data tool — only add if there's something to search)
+- **Empty index**: tools are always registered regardless of index state. If the index doesn't exist or returns no results, the tool returns an empty results array. The AI handles "no results found" naturally.
 - **Post type deregistered**: if a previously-indexed post type plugin is deactivated, the index still has stale entries. Next rebuild cleans them up. No runtime error — TNTSearch returns IDs, and `get_post()` returns null for missing posts, which we skip.
 - **Very long pages**: `get_page_content` returns the full stripped text. For extremely long pages (10k+ words), this could burn tokens. Accept this for now — the two-tool pattern means this only happens when the AI specifically needs more context, which is rare.
 - **Password-protected posts**: exclude from indexing (`post_status = 'publish'` already handles this, but also check `post_password` is empty)
 - **Shortcode-heavy content**: use `wp_strip_all_tags(strip_shortcodes($content))` — strips shortcodes without rendering them, keeping only raw text. Page builder shortcodes would produce garbled output if rendered.
-- **Plugin activation**: content index does NOT auto-build on activation. Admin must select post types and click "Rebuild Content Index" manually. This avoids a slow activation on sites with thousands of posts.
+- **Plugin activation**: content index builds synchronously on activation with default post types (`page`, `post`). Lightweight enough that even 1000 posts takes seconds. Also rebuilds automatically when admin changes post type selections.
