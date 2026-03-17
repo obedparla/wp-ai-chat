@@ -13,7 +13,7 @@ Index WordPress pages, posts, and custom post types into a separate TNTSearch in
 ### Index
 
 - New file: `content.index` in the same directory as `products.index` (`wp-content/uploads/wpaic/search/`)
-- Indexed fields per post: title + full body text (HTML stripped, shortcodes stripped via `wp_strip_all_tags(do_shortcode(...))`)
+- Indexed fields per post: title + full body text (HTML stripped, shortcodes stripped via `wp_strip_all_tags(strip_shortcodes($content))`)
 - No meta fields, no ACF, no Yoex — just core post content
 - All published posts of admin-selected post types, no count or recency caps
 - Separate from product index — no changes to `products.index`
@@ -24,8 +24,8 @@ Lives in `wp-ai-chatbot/includes/class-wpaic-content-index.php`. Follows the sam
 
 **Methods:**
 
-- `build_index(): bool` — full rebuild. Queries all published posts of selected types, strips HTML/shortcodes, inserts into `content.index`
-- `search(string $query, int $limit = 5): array` — fuzzy search, returns array of `[post_id, title, url, snippet]`. Snippet is ~500 chars around the matched text
+- `build_index(): bool` — full rebuild. Queries all published posts of selected types (with `'has_password' => false`), strips HTML/shortcodes, inserts into `content.index`
+- `search(string $query, int $limit = 5): array` — fuzzy search, returns array of associative arrays `['post_id' => int, 'title' => string, 'url' => string, 'snippet' => string]`. Snippet is ~500 chars around the matched text. Falls back to `WP_Query` with `'s' => $query` on the selected post types if index file is missing.
 - `get_page_content(int $post_id): ?array` — returns full post content (title, url, full text stripped of HTML) for a single post
 - `index_post(int $post_id): bool` — add/update a single post in the index
 - `remove_post(int $post_id): bool` — remove a single post from the index
@@ -49,7 +49,7 @@ This keeps tool responses token-efficient while giving the AI enough context to 
 
 ### Hooks for real-time sync
 
-Register in `WPAIC_Loader` (same pattern as product hooks):
+Register in a new `init_content_index()` method in `WPAIC_Loader` — separate from `init_search_index()` which is WooCommerce-specific. Content hooks use WordPress core hooks and run unconditionally (no WooCommerce dependency).
 
 - `save_post` → if post type is in selected types and status is `publish`, call `index_post()`
 - `before_delete_post` → call `remove_post()`
@@ -60,7 +60,7 @@ Guard: only fire if the post type is in the admin's selected post types list.
 
 ### New AI tools
 
-Added to `get_tool_definitions()` in `class-wpaic-chat.php`. These tools are NOT gated behind WooCommerce — they work on any WordPress site.
+Added to `get_tool_definitions()` in `class-wpaic-chat.php`. Placed after the WooCommerce tools block and before the handoff tool — same level as the custom data tool. These tools are NOT gated behind WooCommerce — they work on any WordPress site.
 
 **Tool 1: `search_site_content`**
 
@@ -93,11 +93,17 @@ Added to `class-wpaic-tools.php`:
 
 ### Tool execution
 
-Added to `execute_tool()` in `class-wpaic-chat.php`:
+Added to `execute_tool()` in `class-wpaic-chat.php`, before the WooCommerce null-check on `$this->tools`. Same pattern as `create_handoff_request` and `query_custom_data` — instantiate the tools class inline:
 
 ```php
-'search_site_content' => $this->execute_content_tool('search_site_content', $arguments),
-'get_page_content' => $this->execute_content_tool('get_page_content', $arguments),
+if ( 'search_site_content' === $name ) {
+    $tools = new WPAIC_Tools();
+    return $tools->search_site_content( $arguments );
+}
+if ( 'get_page_content' === $name ) {
+    $tools = new WPAIC_Tools();
+    return $tools->get_page_content( $arguments );
+}
 ```
 
 These are NOT inside the `wpaic_is_woocommerce_active()` gate — content indexing works without WooCommerce.
@@ -108,7 +114,7 @@ The AI answers from the content naturally, citing the source with an inline link
 
 The system prompt gets a small addition when content indexing is active:
 
-> "You have access to the website's pages and posts. When users ask about policies, contact info, company details, or other non-product topics, use the search_site_content tool. Answer naturally from the content and cite the source page."
+> "You have access to the website's pages and posts. When users ask about policies, contact info, company details, or other non-product topics, use the search_site_content tool. If a snippet doesn't contain enough detail, use get_page_content to read the full page. Answer naturally from the content and cite the source page."
 
 ## Admin UI
 
@@ -155,8 +161,7 @@ New option key: `wpaic_content_index_meta` with `post_count`, `last_updated`, `p
 | `includes/class-wpaic-chat.php` | Add tool definitions for `search_site_content` and `get_page_content`; add to `execute_tool()`; add system prompt addition |
 | `includes/class-wpaic-tools.php` | Add `search_site_content()` and `get_page_content()` methods |
 | `includes/class-wpaic-admin.php` | Extend Search Index tab with content index UI; add AJAX handler |
-| `includes/class-wpaic-loader.php` | Register post save/delete/trash hooks for content index sync; require new class file |
-| `wp-ai-chatbot.php` | Require `class-wpaic-content-index.php` (if not autoloaded) |
+| `includes/class-wpaic-loader.php` | Add `init_content_index()` method; register post save/delete/trash hooks; require new class file |
 
 ## Edge cases
 
@@ -164,4 +169,5 @@ New option key: `wpaic_content_index_meta` with `post_count`, `last_updated`, `p
 - **Post type deregistered**: if a previously-indexed post type plugin is deactivated, the index still has stale entries. Next rebuild cleans them up. No runtime error — TNTSearch returns IDs, and `get_post()` returns null for missing posts, which we skip.
 - **Very long pages**: `get_page_content` returns the full stripped text. For extremely long pages (10k+ words), this could burn tokens. Accept this for now — the two-tool pattern means this only happens when the AI specifically needs more context, which is rare.
 - **Password-protected posts**: exclude from indexing (`post_status = 'publish'` already handles this, but also check `post_password` is empty)
-- **Shortcode-heavy content**: `wp_strip_all_tags(do_shortcode($content))` will render simple shortcodes but page builder shortcodes will produce garbled text. `wp_strip_all_tags(strip_shortcodes($content))` is safer — strips shortcodes without rendering them, keeping only raw text. Use `strip_shortcodes()`.
+- **Shortcode-heavy content**: use `wp_strip_all_tags(strip_shortcodes($content))` — strips shortcodes without rendering them, keeping only raw text. Page builder shortcodes would produce garbled output if rendered.
+- **Plugin activation**: content index does NOT auto-build on activation. Admin must select post types and click "Rebuild Content Index" manually. This avoids a slow activation on sites with thousands of posts.
