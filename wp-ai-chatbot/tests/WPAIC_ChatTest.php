@@ -13,6 +13,8 @@ class WPAIC_ChatTest extends TestCase {
 		parent::setUp();
 		WPAICTestHelper::reset();
 		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		global $mock_wc;
+		$mock_wc = new MockWooCommerce();
 		global $wpdb;
 		if ( $wpdb instanceof MockWpdb ) {
 			$wpdb->reset();
@@ -21,6 +23,8 @@ class WPAIC_ChatTest extends TestCase {
 
 	protected function tearDown(): void {
 		WPAICTestHelper::reset();
+		global $mock_wc;
+		$mock_wc = null;
 		global $wpdb;
 		if ( $wpdb instanceof MockWpdb ) {
 			$wpdb->reset();
@@ -111,12 +115,13 @@ class WPAIC_ChatTest extends TestCase {
 
 		$tools = $method->invoke( $chat );
 
-		$this->assertCount( 7, $tools );
+		$this->assertCount( 8, $tools );
 
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertContains( 'search_products', $tool_names );
 		$this->assertContains( 'get_product_details', $tool_names );
 		$this->assertContains( 'get_categories', $tool_names );
+		$this->assertContains( 'get_cart_contents', $tool_names );
 		$this->assertContains( 'compare_products', $tool_names );
 		$this->assertContains( 'get_order_status', $tool_names );
 		$this->assertContains( 'search_site_content', $tool_names );
@@ -156,6 +161,28 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertArrayHasKey( 'min_price', $search_properties );
 		$this->assertArrayHasKey( 'max_price', $search_properties );
 		$this->assertArrayHasKey( 'limit', $search_properties );
+	}
+
+	public function test_get_cart_contents_tool_uses_empty_object_properties_schema(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_tool_definitions' );
+		$method->setAccessible( true );
+
+		$tools     = $method->invoke( $chat );
+		$cart_tool = array_values( array_filter( $tools, fn( $t ) => $t['function']['name'] === 'get_cart_contents' ) )[0];
+
+		$this->assertSame( 'object', $cart_tool['function']['parameters']['type'] );
+		$this->assertInstanceOf( stdClass::class, $cart_tool['function']['parameters']['properties'] );
 	}
 
 	public function test_execute_tool_search_products(): void {
@@ -232,6 +259,35 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertIsArray( $result );
 		$this->assertCount( 1, $result );
 		$this->assertEquals( 'Clothing', $result[0]['name'] );
+	}
+
+	public function test_execute_tool_get_cart_contents(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		global $mock_wc;
+		$mock_wc = new MockWooCommerce();
+
+		$this->create_mock_product( 7, 'Cart Test Product', '12.50' );
+		$mock_wc->get_persisted_cart()->add_to_cart( 7, 2 );
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'execute_tool' );
+		$method->setAccessible( true );
+
+		$result = $method->invoke( $chat, 'get_cart_contents', array() );
+
+		$this->assertIsArray( $result );
+		$this->assertFalse( $result['is_empty'] );
+		$this->assertSame( 2, $result['item_count'] );
+		$this->assertSame( '$25.00', $result['total'] );
+		$this->assertSame( 'Cart Test Product', $result['items'][0]['name'] );
 	}
 
 	public function test_execute_tool_compare_products(): void {
@@ -428,6 +484,26 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContains( 'helpful assistant', $prompt );
 	}
 
+	public function test_get_system_prompt_mentions_cart_tool_for_cart_questions(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'get_cart_contents', $prompt );
+		$this->assertStringContainsString( 'current cart questions', $prompt );
+	}
+
 	public function test_get_system_prompt_uses_default_when_whitespace_only(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
@@ -517,6 +593,7 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertIsArray( $tools );
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertNotContains( 'search_products', $tool_names );
+		$this->assertNotContains( 'get_cart_contents', $tool_names );
 		$this->assertContains( 'search_site_content', $tool_names );
 		$this->assertContains( 'get_page_content', $tool_names );
 	}
