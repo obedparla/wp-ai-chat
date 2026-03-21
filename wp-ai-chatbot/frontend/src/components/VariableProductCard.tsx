@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Product, ProductVariation } from './ProductCard'
 import { cn } from '@/lib/utils'
+import { applyCartUpdate, hasCartUpdateError } from '@/lib/cart'
 
 interface VariableProductCardProps {
   product: Product
@@ -88,25 +89,20 @@ export default function VariableProductCard({ product }: VariableProductCardProp
 
       const data = await response.json()
 
-      if (data.error) {
+      if (hasCartUpdateError(data)) {
         // eslint-disable-next-line react-hooks/immutability
         window.location.href = product.url
         return
       }
 
       setCartState('success')
-      triggerCartUpdate()
+      applyCartUpdate(data)
 
       setTimeout(() => setCartState('idle'), 2000)
     } catch {
       // eslint-disable-next-line react-hooks/immutability
       window.location.href = product.url
     }
-  }
-
-  const triggerCartUpdate = () => {
-    document.body.dispatchEvent(new Event('wc_fragment_refresh'))
-    document.body.dispatchEvent(new CustomEvent('added_to_cart'))
   }
 
   return (

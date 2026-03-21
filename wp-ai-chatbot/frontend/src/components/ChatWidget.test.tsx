@@ -18,7 +18,7 @@ interface MockChat {
   sendMessage: ReturnType<typeof vi.fn>
   isLoading: boolean
   stopGeneration: ReturnType<typeof vi.fn>
-  clearChat: ReturnType<typeof vi.fn>
+  startNewConversation: ReturnType<typeof vi.fn>
   activeTools: ActiveTool[]
   retry: ReturnType<typeof vi.fn>
 }
@@ -32,7 +32,7 @@ function createMockChat(overrides: Partial<MockChat> = {}): MockChat {
     sendMessage: vi.fn(),
     isLoading: false,
     stopGeneration: vi.fn(),
-    clearChat: vi.fn(),
+    startNewConversation: vi.fn(),
     activeTools: [],
     retry: vi.fn(),
     ...overrides,
@@ -245,20 +245,20 @@ describe('ChatWidget retry button', () => {
   })
 })
 
-describe('ChatWidget clear chat', () => {
-  it('renders clear button in header', () => {
+describe('ChatWidget new conversation', () => {
+  it('renders new conversation button in header', () => {
     render(<ChatWidget onClose={vi.fn()} chat={createMockChat()} />)
-    expect(screen.getByRole('button', { name: 'Clear chat' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New conversation' })).toBeInTheDocument()
   })
 
-  it('calls clearChat when clear button clicked', async () => {
+  it('calls startNewConversation when new conversation button clicked', async () => {
     const mockChat = createMockChat()
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
 
-    const clearBtn = screen.getByRole('button', { name: 'Clear chat' })
-    await userEvent.click(clearBtn)
+    const newConversationBtn = screen.getByRole('button', { name: 'New conversation' })
+    await userEvent.click(newConversationBtn)
 
-    expect(mockChat.clearChat).toHaveBeenCalled()
+    expect(mockChat.startNewConversation).toHaveBeenCalled()
   })
 })
 

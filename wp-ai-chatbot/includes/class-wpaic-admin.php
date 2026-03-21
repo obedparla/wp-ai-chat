@@ -17,8 +17,7 @@ class WPAIC_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 		add_action( 'wp_ajax_wpaic_get_conversation', array( $this, 'ajax_get_conversation' ) );
 		add_action( 'wp_ajax_wpaic_delete_conversation', array( $this, 'ajax_delete_conversation' ) );
-		add_action( 'wp_ajax_wpaic_rebuild_index', array( $this, 'ajax_rebuild_index' ) );
-		add_action( 'wp_ajax_wpaic_rebuild_content_index', array( $this, 'ajax_rebuild_content_index' ) );
+		add_action( 'wp_ajax_wpaic_update_search_indexes', array( $this, 'ajax_update_search_indexes' ) );
 		add_action( 'wp_ajax_wpaic_update_support_status', array( $this, 'ajax_update_support_status' ) );
 		add_action( 'wp_ajax_wpaic_get_support_transcript', array( $this, 'ajax_get_support_transcript' ) );
 		add_action( 'wp_ajax_wpaic_upload_csv', array( $this, 'ajax_upload_csv' ) );
@@ -250,20 +249,6 @@ class WPAIC_Admin {
 			'wpaic_proactive_section'
 		);
 
-		add_settings_section(
-			'wpaic_search_section',
-			__( 'Search Index', 'wp-ai-chatbot' ),
-			array( $this, 'render_search_section_description' ),
-			'wp-ai-chatbot'
-		);
-
-		add_settings_field(
-			'search_index_status',
-			__( 'Index Status', 'wp-ai-chatbot' ),
-			array( $this, 'render_search_index_status_field' ),
-			'wp-ai-chatbot',
-			'wpaic_search_section'
-		);
 	}
 
 	/**
@@ -281,7 +266,7 @@ class WPAIC_Admin {
 			'api'        => array( 'openai_api_key', 'model', 'provider_url', 'provider_site_key' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color' ),
 			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages' ),
-			'search'     => array( 'content_index_post_types' ),
+			'search'     => array( 'product_index_enabled', 'content_index_post_types' ),
 		);
 
 		$active_tab = $input['active_tab'] ?? '';
@@ -323,17 +308,9 @@ class WPAIC_Admin {
 		$sanitized['provider_url']      = esc_url_raw( $merged['provider_url'] ?? '' );
 		$sanitized['provider_site_key'] = sanitize_text_field( $merged['provider_site_key'] ?? '' );
 
-		$raw_content_post_types                  = $merged['content_index_post_types'] ?? array( 'page', 'post' );
-		$sanitized['content_index_post_types']   = is_array( $raw_content_post_types )
-			? array_map( 'sanitize_key', $raw_content_post_types )
-			: array( 'page', 'post' );
-
-		$old_content_types = $existing['content_index_post_types'] ?? array( 'page', 'post' );
-		if ( $sanitized['content_index_post_types'] !== $old_content_types ) {
-			update_option( 'wpaic_settings', $sanitized );
-			$content_index = new WPAIC_Content_Index();
-			$content_index->build_index();
-		}
+		$search_settings                         = $this->sanitize_search_index_settings( $merged, 'search' === $active_tab );
+		$sanitized['product_index_enabled']      = $search_settings['product_index_enabled'];
+		$sanitized['content_index_post_types']   = $search_settings['content_index_post_types'];
 
 		return $sanitized;
 	}
@@ -446,70 +423,83 @@ class WPAIC_Admin {
 		echo '<p class="description">' . esc_html__( 'Which pages should trigger the proactive popup.', 'wp-ai-chatbot' ) . '</p>';
 	}
 
-	public function render_search_section_description(): void {
-		echo '<p>' . esc_html__( 'The search index enables fast fuzzy search across product titles, descriptions, SKUs, categories, and attributes.', 'wp-ai-chatbot' ) . '</p>';
-	}
+	/**
+	 * @return array<string, string>
+	 */
+	private function get_available_content_post_types(): array {
+		$post_type_labels    = array();
+		$public_post_types   = get_post_types( array( 'public' => true ), 'objects' );
+		$excluded_post_types = array( 'product', 'attachment' );
 
-	public function render_search_index_status_field(): void {
-		$search_index = new WPAIC_Search_Index();
-		$status       = $search_index->get_index_status();
-		$exists       = $status['exists'];
-		$count        = $status['product_count'];
-		$updated      = $status['last_updated'];
+		foreach ( $public_post_types as $post_type ) {
+			if ( is_object( $post_type ) && isset( $post_type->name ) ) {
+				$name = sanitize_key( (string) $post_type->name );
+				if ( in_array( $name, $excluded_post_types, true ) ) {
+					continue;
+				}
 
-		if ( $exists ) {
-			echo '<span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> ';
-			printf(
-				/* translators: 1: product count, 2: last updated date */
-				esc_html__( '%1$d products indexed. Last updated: %2$s', 'wp-ai-chatbot' ),
-				esc_html( (string) $count ),
-				esc_html( $updated ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $updated ) ) : __( 'Unknown', 'wp-ai-chatbot' ) )
-			);
-		} else {
-			echo '<span class="dashicons dashicons-warning" style="color: #dc3232;"></span> ';
-			echo esc_html__( 'Index missing. Click Rebuild Index to create it.', 'wp-ai-chatbot' );
+				$label = isset( $post_type->labels->name ) && is_string( $post_type->labels->name )
+					? $post_type->labels->name
+					: ucwords( str_replace( '_', ' ', $name ) );
+
+				$post_type_labels[ $name ] = $label;
+				continue;
+			}
+
+			if ( is_string( $post_type ) ) {
+				$name = sanitize_key( $post_type );
+				if ( in_array( $name, $excluded_post_types, true ) ) {
+					continue;
+				}
+
+				$post_type_labels[ $name ] = ucwords( str_replace( '_', ' ', $name ) );
+			}
 		}
 
-		echo '<br><br>';
-		echo '<button type="button" id="wpaic-rebuild-index" class="button button-secondary">';
-		echo esc_html__( 'Rebuild Index', 'wp-ai-chatbot' );
-		echo '</button>';
-		echo '<span id="wpaic-rebuild-status" style="margin-left: 10px;"></span>';
+		return $post_type_labels;
+	}
 
-		?>
-		<script>
-		jQuery(document).ready(function($) {
-			$('#wpaic-rebuild-index').on('click', function() {
-				var $btn = $(this);
-				var $status = $('#wpaic-rebuild-status');
-				$btn.prop('disabled', true);
-				$status.html('<span class="spinner is-active" style="float: none; margin: 0;"></span> <?php echo esc_js( __( 'Rebuilding...', 'wp-ai-chatbot' ) ); ?>');
+	/**
+	 * @param array<string, mixed> $input
+	 * @return array{product_index_enabled: bool, content_index_post_types: array<int, string>}
+	 */
+	private function sanitize_search_index_settings( array $input, bool $allow_empty_content_selection = false ): array {
+		$available_post_types = array_keys( $this->get_available_content_post_types() );
 
-				$.ajax({
-					url: ajaxurl,
-					type: 'POST',
-					data: {
-						action: 'wpaic_rebuild_index',
-						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_rebuild_index' ) ); ?>'
-					},
-					success: function(response) {
-						$btn.prop('disabled', false);
-						if (response.success) {
-							$status.html('<span style="color: #46b450;">&#10003; ' + response.data.message + '</span>');
-							setTimeout(function() { location.reload(); }, 1500);
-						} else {
-							$status.html('<span style="color: #dc3232;">&#10007; ' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Error rebuilding index.', 'wp-ai-chatbot' ) ); ?>') + '</span>');
-						}
-					},
-					error: function() {
-						$btn.prop('disabled', false);
-						$status.html('<span style="color: #dc3232;">&#10007; <?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?></span>');
-					}
-				});
-			});
-		});
-		</script>
-		<?php
+		$product_index_enabled = true;
+		if ( array_key_exists( 'product_index_enabled', $input ) ) {
+			$product_index_enabled = ! empty( $input['product_index_enabled'] );
+		}
+
+		$raw_content_post_types = $input['content_index_post_types'] ?? null;
+		if ( is_array( $raw_content_post_types ) ) {
+			$content_index_post_types = array_values(
+				array_intersect(
+					array_map( 'sanitize_key', $raw_content_post_types ),
+					$available_post_types
+				)
+			);
+		} elseif ( ! $allow_empty_content_selection ) {
+			$content_index_post_types = array( 'page', 'post' );
+		} else {
+			$content_index_post_types = array();
+		}
+
+		return array(
+			'product_index_enabled'    => $product_index_enabled,
+			'content_index_post_types' => $content_index_post_types,
+		);
+	}
+
+	private function format_index_updated_at( ?string $updated ): string {
+		if ( empty( $updated ) ) {
+			return (string) __( 'Unknown', 'wp-ai-chatbot' );
+		}
+
+		return wp_date(
+			get_option( 'date_format' ) . ' ' . get_option( 'time_format' ),
+			strtotime( $updated )
+		);
 	}
 
 	public function render_settings_page(): void {
@@ -913,200 +903,334 @@ class WPAIC_Admin {
 	 * Render the Search Index settings tab.
 	 */
 	private function render_search_tab(): void {
-		$search_index = new WPAIC_Search_Index();
-		$status       = $search_index->get_index_status();
-		$exists       = $status['exists'];
-		$count        = $status['product_count'];
-		$updated      = $status['last_updated'];
+		$settings               = get_option( 'wpaic_settings', array() );
+		$settings               = is_array( $settings ) ? $settings : array();
+		$product_index_enabled  = ! array_key_exists( 'product_index_enabled', $settings ) || ! empty( $settings['product_index_enabled'] );
+		$available_post_types   = $this->get_available_content_post_types();
+		$selected_post_types    = array_key_exists( 'content_index_post_types', $settings ) && is_array( $settings['content_index_post_types'] )
+			? array_values( array_intersect( array_map( 'sanitize_key', $settings['content_index_post_types'] ), array_keys( $available_post_types ) ) )
+			: array( 'page', 'post' );
+		$selected_post_labels   = array_values( array_intersect_key( $available_post_types, array_flip( $selected_post_types ) ) );
+		$search_index           = new WPAIC_Search_Index();
+		$product_status         = $search_index->get_index_status();
+		$content_index          = new WPAIC_Content_Index();
+		$content_status         = $content_index->get_index_status();
+		$content_sources_active = ! empty( $selected_post_types );
 		?>
 		<div class="space-y-4">
 			<div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-				<p class="text-sm text-gray-600"><?php esc_html_e( 'The search index enables fast fuzzy search across product titles, descriptions, SKUs, categories, and attributes.', 'wp-ai-chatbot' ); ?></p>
+				<p class="text-sm text-gray-600"><?php esc_html_e( 'Choose which storefront and site-content sources should be indexed for fast chatbot search.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 
 			<div class="p-6 border border-gray-200 rounded-lg">
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-3">
-						<?php if ( $exists ) : ?>
-							<span class="flex items-center justify-center w-10 h-10 bg-green-100 rounded-full">
-								<span class="dashicons dashicons-yes-alt text-green-600"></span>
-							</span>
-							<div>
-								<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Index Active', 'wp-ai-chatbot' ); ?></h3>
-								<p class="text-sm text-gray-500">
-									<?php
-									printf(
-										/* translators: 1: product count, 2: last updated date */
-										esc_html__( '%1$d products indexed. Last updated: %2$s', 'wp-ai-chatbot' ),
-										esc_html( (string) $count ),
-										esc_html( $updated ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $updated ) ) : __( 'Unknown', 'wp-ai-chatbot' ) )
-									);
-									?>
-								</p>
-							</div>
-						<?php else : ?>
-							<span class="flex items-center justify-center w-10 h-10 bg-red-100 rounded-full">
-								<span class="dashicons dashicons-warning text-red-600"></span>
-							</span>
-							<div>
-								<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Index Missing', 'wp-ai-chatbot' ); ?></h3>
-								<p class="text-sm text-gray-500"><?php esc_html_e( 'Click Rebuild Index to create it.', 'wp-ai-chatbot' ); ?></p>
-							</div>
-						<?php endif; ?>
+				<div class="space-y-6">
+					<div>
+						<h3 class="text-base font-semibold text-gray-900"><?php esc_html_e( 'Indexed Sources', 'wp-ai-chatbot' ); ?></h3>
+						<p class="mt-1 text-sm text-gray-600"><?php esc_html_e( 'Products use the WooCommerce product index. Site content uses the post types selected below.', 'wp-ai-chatbot' ); ?></p>
 					</div>
 
-					<div class="flex items-center gap-3">
-						<button type="button" id="wpaic-rebuild-index"
-								class="inline-flex items-center px-4 py-2 bg-white text-gray-700 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
-							<span class="dashicons dashicons-update mr-2" style="font-size: 16px; width: 16px; height: 16px;"></span>
-							<?php esc_html_e( 'Rebuild Index', 'wp-ai-chatbot' ); ?>
-						</button>
-						<span id="wpaic-rebuild-status" class="text-sm"></span>
-					</div>
-				</div>
-			</div>
-		</div>
-
-			<h3 class="text-base font-semibold text-gray-900 mt-6"><?php esc_html_e( 'Site Content Index', 'wp-ai-chatbot' ); ?></h3>
-
-			<div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-				<p class="text-sm text-gray-600"><?php esc_html_e( 'Select which post types to include in the content index. This index allows the chatbot to search and reference your site content.', 'wp-ai-chatbot' ); ?></p>
-				<div class="flex flex-wrap gap-4 mt-3">
-					<?php
-					$settings              = get_option( 'wpaic_settings', array() );
-					$selected_post_types   = is_array( $settings ) ? ( $settings['content_index_post_types'] ?? array( 'page', 'post' ) ) : array( 'page', 'post' );
-					$public_post_types     = get_post_types( array( 'public' => true ), 'objects' );
-					$excluded_post_types   = array( 'product', 'attachment' );
-					foreach ( $public_post_types as $post_type_object ) :
-						if ( in_array( $post_type_object->name, $excluded_post_types, true ) ) {
-							continue;
-						}
-						$checked = in_array( $post_type_object->name, $selected_post_types, true );
-						?>
+					<div class="flex flex-wrap gap-4">
 						<label class="inline-flex items-center gap-2 text-sm text-gray-700">
 							<input type="checkbox"
-								name="wpaic_settings[content_index_post_types][]"
-								value="<?php echo esc_attr( $post_type_object->name ); ?>"
-								<?php checked( $checked ); ?>
+								id="wpaic_product_index_enabled"
+								name="product_index_enabled"
+								value="1"
+								<?php checked( $product_index_enabled ); ?>
 								class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-							<?php echo esc_html( $post_type_object->labels->name ); ?>
+							<?php esc_html_e( 'Products', 'wp-ai-chatbot' ); ?>
 						</label>
-					<?php endforeach; ?>
-				</div>
-			</div>
 
-			<?php
-			$content_index        = new WPAIC_Content_Index();
-			$content_status       = $content_index->get_index_status();
-			$content_exists       = $content_status['exists'];
-			$content_count        = $content_status['post_count'];
-			$content_updated      = $content_status['last_updated'];
-			?>
-			<div class="p-6 border border-gray-200 rounded-lg">
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-3">
-						<?php if ( $content_exists ) : ?>
-							<span class="flex items-center justify-center w-10 h-10 bg-green-100 rounded-full">
-								<span class="dashicons dashicons-yes-alt text-green-600"></span>
-							</span>
-							<div>
-								<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Index Active', 'wp-ai-chatbot' ); ?></h3>
-								<p class="text-sm text-gray-500">
+						<?php foreach ( $available_post_types as $post_type => $label ) : ?>
+							<label class="inline-flex items-center gap-2 text-sm text-gray-700">
+								<input type="checkbox"
+									name="content_index_post_types[]"
+									value="<?php echo esc_attr( $post_type ); ?>"
+									<?php checked( in_array( $post_type, $selected_post_types, true ) ); ?>
+									class="wpaic-content-index-post-type rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+								<?php echo esc_html( $label ); ?>
+							</label>
+						<?php endforeach; ?>
+					</div>
+
+					<div class="grid gap-4 md:grid-cols-2">
+						<div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+							<div class="flex items-start gap-3">
+								<span id="wpaic-search-product-icon-wrapper" class="flex items-center justify-center w-10 h-10 rounded-full <?php echo $product_index_enabled ? ( $product_status['exists'] ? 'bg-green-100' : 'bg-red-100' ) : 'bg-gray-200'; ?>">
+									<span id="wpaic-search-product-icon" class="dashicons <?php echo $product_index_enabled ? ( $product_status['exists'] ? 'dashicons-yes-alt text-green-600' : 'dashicons-warning text-red-600' ) : 'dashicons-minus text-gray-500'; ?>"></span>
+								</span>
+								<div>
+									<h4 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Products', 'wp-ai-chatbot' ); ?></h4>
+									<p id="wpaic-search-product-summary" class="text-sm text-gray-500">
 									<?php
-									printf(
-										/* translators: 1: post count, 2: last updated date */
-										esc_html__( '%1$d pages/posts indexed. Last updated: %2$s', 'wp-ai-chatbot' ),
-										esc_html( (string) $content_count ),
-										esc_html( $content_updated ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $content_updated ) ) : __( 'Unknown', 'wp-ai-chatbot' ) )
-									);
+									if ( ! $product_index_enabled ) {
+										esc_html_e( 'Products are not selected.', 'wp-ai-chatbot' );
+									} elseif ( $product_status['exists'] ) {
+										printf(
+											/* translators: 1: product count, 2: last updated date */
+											esc_html__( '%1$d products indexed. Last updated: %2$s', 'wp-ai-chatbot' ),
+											esc_html( (string) $product_status['product_count'] ),
+											esc_html( $this->format_index_updated_at( $product_status['last_updated'] ) )
+										);
+									} else {
+										esc_html_e( 'Products are selected, but the index has not been built yet.', 'wp-ai-chatbot' );
+									}
 									?>
-								</p>
+									</p>
+								</div>
 							</div>
-						<?php else : ?>
-							<span class="flex items-center justify-center w-10 h-10 bg-red-100 rounded-full">
-								<span class="dashicons dashicons-warning text-red-600"></span>
-							</span>
-							<div>
-								<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Index Missing', 'wp-ai-chatbot' ); ?></h3>
-								<p class="text-sm text-gray-500"><?php esc_html_e( 'Click Rebuild Content Index to create it.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+
+						<div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+							<div class="flex items-start gap-3">
+								<span id="wpaic-search-content-icon-wrapper" class="flex items-center justify-center w-10 h-10 rounded-full <?php echo $content_sources_active ? ( $content_status['exists'] ? 'bg-green-100' : 'bg-red-100' ) : 'bg-gray-200'; ?>">
+									<span id="wpaic-search-content-icon" class="dashicons <?php echo $content_sources_active ? ( $content_status['exists'] ? 'dashicons-yes-alt text-green-600' : 'dashicons-warning text-red-600' ) : 'dashicons-minus text-gray-500'; ?>"></span>
+								</span>
+								<div>
+									<h4 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Site Content', 'wp-ai-chatbot' ); ?></h4>
+									<p id="wpaic-search-content-selected" class="text-sm text-gray-500">
+										<?php
+										if ( empty( $selected_post_labels ) ) {
+											esc_html_e( 'No content types selected.', 'wp-ai-chatbot' );
+										} else {
+											printf(
+												/* translators: %s: selected post type labels */
+												esc_html__( 'Selected: %s', 'wp-ai-chatbot' ),
+												esc_html( implode( ', ', $selected_post_labels ) )
+											);
+										}
+										?>
+									</p>
+									<p id="wpaic-search-content-summary" class="text-sm text-gray-500 mt-1">
+									<?php
+									if ( ! $content_sources_active ) {
+										esc_html_e( 'Site content indexing is disabled until at least one content type is selected.', 'wp-ai-chatbot' );
+									} elseif ( $content_status['exists'] ) {
+										printf(
+											/* translators: 1: content count, 2: last updated date */
+											esc_html__( '%1$d items indexed. Last updated: %2$s', 'wp-ai-chatbot' ),
+											esc_html( (string) $content_status['post_count'] ),
+											esc_html( $this->format_index_updated_at( $content_status['last_updated'] ) )
+										);
+									} else {
+										esc_html_e( 'Selected content types have not been indexed yet.', 'wp-ai-chatbot' );
+									}
+									?>
+									</p>
+								</div>
 							</div>
-						<?php endif; ?>
+						</div>
 					</div>
 
 					<div class="flex items-center gap-3">
-						<button type="button" id="wpaic-rebuild-content-index"
+						<button type="button" id="wpaic-update-search-indexes"
 								class="inline-flex items-center px-4 py-2 bg-white text-gray-700 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
 							<span class="dashicons dashicons-update mr-2" style="font-size: 16px; width: 16px; height: 16px;"></span>
-							<?php esc_html_e( 'Rebuild Content Index', 'wp-ai-chatbot' ); ?>
+							<?php esc_html_e( 'Update Search Indexes', 'wp-ai-chatbot' ); ?>
 						</button>
-						<span id="wpaic-rebuild-content-status" class="text-sm"></span>
+						<span id="wpaic-update-search-indexes-status" class="text-sm"></span>
 					</div>
 				</div>
 			</div>
 		</div>
-
 		<script>
 		jQuery(document).ready(function($) {
-			$('#wpaic-rebuild-index').on('click', function() {
-				var $btn = $(this);
-				var $status = $('#wpaic-rebuild-status');
-				$btn.prop('disabled', true).addClass('opacity-50 cursor-not-allowed');
-				$btn.find('.dashicons').addClass('animate-spin');
-				$status.html('<span class="text-gray-500"><?php echo esc_js( __( 'Rebuilding...', 'wp-ai-chatbot' ) ); ?></span>');
+			var postTypeLabels = <?php echo wp_json_encode( $available_post_types ); ?>;
+			var uiText = {
+				updating: '<?php echo esc_js( __( 'Updating indexes...', 'wp-ai-chatbot' ) ); ?>',
+				error: '<?php echo esc_js( __( 'Error updating search indexes.', 'wp-ai-chatbot' ) ); ?>',
+				requestFailed: '<?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?>',
+				productDisabled: '<?php echo esc_js( __( 'Products are not selected.', 'wp-ai-chatbot' ) ); ?>',
+				productMissing: '<?php echo esc_js( __( 'Products are selected, but the index has not been built yet.', 'wp-ai-chatbot' ) ); ?>',
+				productPendingEnabled: '<?php echo esc_js( __( 'Products will be indexed after you update the search indexes.', 'wp-ai-chatbot' ) ); ?>',
+				productPendingDisabled: '<?php echo esc_js( __( 'Products will be removed from the search index after you update.', 'wp-ai-chatbot' ) ); ?>',
+				contentNoneSelected: '<?php echo esc_js( __( 'No content types selected.', 'wp-ai-chatbot' ) ); ?>',
+				contentDisabled: '<?php echo esc_js( __( 'Site content indexing is disabled until at least one content type is selected.', 'wp-ai-chatbot' ) ); ?>',
+				contentMissing: '<?php echo esc_js( __( 'Selected content types have not been indexed yet.', 'wp-ai-chatbot' ) ); ?>',
+				contentPendingSelected: '<?php echo esc_js( __( 'Selected content will be reindexed after you update the search indexes.', 'wp-ai-chatbot' ) ); ?>',
+				contentPendingDisabled: '<?php echo esc_js( __( 'Site content indexing will be disabled after you update.', 'wp-ai-chatbot' ) ); ?>',
+				selectedPrefix: '<?php echo esc_js( __( 'Selected: ', 'wp-ai-chatbot' ) ); ?>',
+				productIndexed: '<?php echo esc_js( __( '%1$d products indexed. Last updated: %2$s', 'wp-ai-chatbot' ) ); ?>',
+				contentIndexed: '<?php echo esc_js( __( '%1$d items indexed. Last updated: %2$s', 'wp-ai-chatbot' ) ); ?>',
+				unknown: '<?php echo esc_js( __( 'Unknown', 'wp-ai-chatbot' ) ); ?>'
+			};
+			var appliedState = {
+				productEnabled: <?php echo wp_json_encode( $product_index_enabled ); ?>,
+				productExists: <?php echo wp_json_encode( (bool) $product_status['exists'] ); ?>,
+				productCount: <?php echo (int) $product_status['product_count']; ?>,
+				productLastUpdated: <?php echo wp_json_encode( $this->format_index_updated_at( $product_status['last_updated'] ) ); ?>,
+				contentTypes: <?php echo wp_json_encode( $selected_post_types ); ?>,
+				contentExists: <?php echo wp_json_encode( (bool) $content_status['exists'] ); ?>,
+				contentCount: <?php echo (int) $content_status['post_count']; ?>,
+				contentLastUpdated: <?php echo wp_json_encode( $this->format_index_updated_at( $content_status['last_updated'] ) ); ?>
+			};
 
-				$.ajax({
-					url: ajaxurl,
-					type: 'POST',
-					data: {
-						action: 'wpaic_rebuild_index',
-						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_rebuild_index' ) ); ?>'
-					},
-					success: function(response) {
-						$btn.prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
-						$btn.find('.dashicons').removeClass('animate-spin');
-						if (response.success) {
-							$status.html('<span class="text-green-600">' + response.data.message + '</span>');
-							setTimeout(function() { location.reload(); }, 1500);
-						} else {
-							$status.html('<span class="text-red-600">' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Error rebuilding index.', 'wp-ai-chatbot' ) ); ?>') + '</span>');
-						}
-					},
-					error: function() {
-						$btn.prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
-						$btn.find('.dashicons').removeClass('animate-spin');
-						$status.html('<span class="text-red-600"><?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?></span>');
+			function getSelectedContentTypes() {
+				return $('.wpaic-content-index-post-type:checked').map(function() {
+					return $(this).val();
+				}).get();
+			}
+
+			function arraysEqual(left, right) {
+				if (left.length !== right.length) {
+					return false;
+				}
+
+				var sortedLeft = left.slice().sort();
+				var sortedRight = right.slice().sort();
+
+				for (var i = 0; i < sortedLeft.length; i++) {
+					if (sortedLeft[i] !== sortedRight[i]) {
+						return false;
 					}
-				});
-			});
+				}
 
-			$('#wpaic-rebuild-content-index').on('click', function() {
+				return true;
+			}
+
+			function formatIndexedMessage(template, count, updated) {
+				return template
+					.replace('%1$d', count)
+					.replace('%2$s', updated || uiText.unknown);
+			}
+
+			function applyIndicatorState($wrapper, $icon, state) {
+				$wrapper.removeClass('bg-green-100 bg-red-100 bg-gray-200 bg-blue-100');
+				$icon.removeClass('dashicons-yes-alt dashicons-warning dashicons-minus dashicons-update text-green-600 text-red-600 text-gray-500 text-blue-600');
+
+				if (state === 'success') {
+					$wrapper.addClass('bg-green-100');
+					$icon.addClass('dashicons-yes-alt text-green-600');
+					return;
+				}
+
+				if (state === 'pending') {
+					$wrapper.addClass('bg-blue-100');
+					$icon.addClass('dashicons-update text-blue-600');
+					return;
+				}
+
+				if (state === 'disabled') {
+					$wrapper.addClass('bg-gray-200');
+					$icon.addClass('dashicons-minus text-gray-500');
+					return;
+				}
+
+				$wrapper.addClass('bg-red-100');
+				$icon.addClass('dashicons-warning text-red-600');
+			}
+
+			function syncProductStatus() {
+				var isEnabled = $('#wpaic_product_index_enabled').is(':checked');
+				var hasPendingChanges = isEnabled !== appliedState.productEnabled;
+				var $wrapper = $('#wpaic-search-product-icon-wrapper');
+				var $icon = $('#wpaic-search-product-icon');
+				var $summary = $('#wpaic-search-product-summary');
+
+				if (!isEnabled) {
+					applyIndicatorState($wrapper, $icon, hasPendingChanges ? 'pending' : 'disabled');
+					$summary.text(hasPendingChanges ? uiText.productPendingDisabled : uiText.productDisabled);
+					return;
+				}
+
+				if (hasPendingChanges) {
+					applyIndicatorState($wrapper, $icon, 'pending');
+					$summary.text(uiText.productPendingEnabled);
+					return;
+				}
+
+				if (appliedState.productExists) {
+					applyIndicatorState($wrapper, $icon, 'success');
+					$summary.text(formatIndexedMessage(uiText.productIndexed, appliedState.productCount, appliedState.productLastUpdated));
+					return;
+				}
+
+				applyIndicatorState($wrapper, $icon, 'missing');
+				$summary.text(uiText.productMissing);
+			}
+
+			function syncContentStatus() {
+				var selectedTypes = getSelectedContentTypes();
+				var hasPendingChanges = !arraysEqual(selectedTypes, appliedState.contentTypes);
+				var selectedLabels = selectedTypes.map(function(type) {
+					return postTypeLabels[type];
+				}).filter(Boolean);
+				var $wrapper = $('#wpaic-search-content-icon-wrapper');
+				var $icon = $('#wpaic-search-content-icon');
+				var $selected = $('#wpaic-search-content-selected');
+				var $summary = $('#wpaic-search-content-summary');
+
+				$selected.text(selectedLabels.length ? uiText.selectedPrefix + selectedLabels.join(', ') : uiText.contentNoneSelected);
+
+				if (selectedTypes.length === 0) {
+					applyIndicatorState($wrapper, $icon, hasPendingChanges ? 'pending' : 'disabled');
+					$summary.text(hasPendingChanges ? uiText.contentPendingDisabled : uiText.contentDisabled);
+					return;
+				}
+
+				if (hasPendingChanges) {
+					applyIndicatorState($wrapper, $icon, 'pending');
+					$summary.text(uiText.contentPendingSelected);
+					return;
+				}
+
+				if (appliedState.contentExists) {
+					applyIndicatorState($wrapper, $icon, 'success');
+					$summary.text(formatIndexedMessage(uiText.contentIndexed, appliedState.contentCount, appliedState.contentLastUpdated));
+					return;
+				}
+
+				applyIndicatorState($wrapper, $icon, 'missing');
+				$summary.text(uiText.contentMissing);
+			}
+
+			function syncSearchIndexStatus() {
+				syncProductStatus();
+				syncContentStatus();
+			}
+
+			$('#wpaic_product_index_enabled, .wpaic-content-index-post-type').on('change', syncSearchIndexStatus);
+			syncSearchIndexStatus();
+
+			$('#wpaic-update-search-indexes').on('click', function() {
 				var $btn = $(this);
-				var $status = $('#wpaic-rebuild-content-status');
+				var $status = $('#wpaic-update-search-indexes-status');
+				var contentTypes = getSelectedContentTypes();
+
 				$btn.prop('disabled', true).addClass('opacity-50 cursor-not-allowed');
 				$btn.find('.dashicons').addClass('animate-spin');
-				$status.html('<span class="text-gray-500"><?php echo esc_js( __( 'Rebuilding...', 'wp-ai-chatbot' ) ); ?></span>');
+				$status.html('<span class="text-gray-500">' + uiText.updating + '</span>');
 
 				$.ajax({
 					url: ajaxurl,
 					type: 'POST',
 					data: {
-						action: 'wpaic_rebuild_content_index',
-						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_rebuild_content_index' ) ); ?>'
+						action: 'wpaic_update_search_indexes',
+						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_update_search_indexes' ) ); ?>',
+						product_index_enabled: $('#wpaic_product_index_enabled').is(':checked') ? '1' : '',
+						content_index_post_types: contentTypes
 					},
 					success: function(response) {
 						$btn.prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
 						$btn.find('.dashicons').removeClass('animate-spin');
 						if (response.success) {
+							appliedState.productEnabled = !!response.data.product.enabled;
+							appliedState.productExists = !!response.data.product.exists;
+							appliedState.productCount = Number(response.data.product.count || 0);
+							appliedState.productLastUpdated = response.data.product.last_updated_label || uiText.unknown;
+							appliedState.contentTypes = Array.isArray(response.data.content.post_types) ? response.data.content.post_types : [];
+							appliedState.contentExists = !!response.data.content.exists;
+							appliedState.contentCount = Number(response.data.content.count || 0);
+							appliedState.contentLastUpdated = response.data.content.last_updated_label || uiText.unknown;
+							syncSearchIndexStatus();
 							$status.html('<span class="text-green-600">' + response.data.message + '</span>');
-							setTimeout(function() { location.reload(); }, 1500);
 						} else {
-							$status.html('<span class="text-red-600">' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Error rebuilding content index.', 'wp-ai-chatbot' ) ); ?>') + '</span>');
+							$status.html('<span class="text-red-600">' + (response.data ? response.data.message : uiText.error) + '</span>');
 						}
 					},
 					error: function() {
 						$btn.prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
 						$btn.find('.dashicons').removeClass('animate-spin');
-						$status.html('<span class="text-red-600"><?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?></span>');
+						$status.html('<span class="text-red-600">' + uiText.requestFailed + '</span>');
 					}
 				});
 			});
@@ -1386,56 +1510,51 @@ class WPAIC_Admin {
 		}
 	}
 
-	public function ajax_rebuild_index(): void {
-		check_ajax_referer( 'wpaic_rebuild_index', '_wpnonce' );
+	public function ajax_update_search_indexes(): void {
+		check_ajax_referer( 'wpaic_update_search_indexes', '_wpnonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'wp-ai-chatbot' ) ) );
 		}
 
-		$search_index = new WPAIC_Search_Index();
-		$result       = $search_index->build_index();
+		$existing_settings = get_option( 'wpaic_settings', array() );
+		$existing_settings = is_array( $existing_settings ) ? $existing_settings : array();
 
-		if ( $result ) {
-			$status = $search_index->get_index_status();
-			wp_send_json_success(
-				array(
-					'message' => sprintf(
-						/* translators: %d: number of products indexed */
-						__( 'Index rebuilt successfully. %d products indexed.', 'wp-ai-chatbot' ),
-						$status['product_count']
-					),
-				)
-			);
-		} else {
-			wp_send_json_error( array( 'message' => __( 'Failed to rebuild index. Check file permissions.', 'wp-ai-chatbot' ) ) );
-		}
-	}
+		$sanitized_search_settings = $this->sanitize_search_index_settings( $_POST, true );
+		update_option( 'wpaic_settings', array_merge( $existing_settings, $sanitized_search_settings ) );
 
-	public function ajax_rebuild_content_index(): void {
-		check_ajax_referer( 'wpaic_rebuild_content_index', '_wpnonce' );
+		$search_index          = new WPAIC_Search_Index();
+		$content_index         = new WPAIC_Content_Index();
+		$product_index_result  = $search_index->build_index();
+		$content_index_result  = $content_index->build_index();
 
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'wp-ai-chatbot' ) ) );
+		if ( ! $product_index_result || ! $content_index_result ) {
+			wp_send_json_error( array( 'message' => __( 'Failed to update search indexes. Check file permissions.', 'wp-ai-chatbot' ) ) );
 		}
 
-		$content_index = new WPAIC_Content_Index();
-		$result        = $content_index->build_index();
+		$product_status = $search_index->get_index_status();
+		$content_status = $content_index->get_index_status();
 
-		if ( $result ) {
-			$status = $content_index->get_index_status();
-			wp_send_json_success(
-				array(
-					'message' => sprintf(
-						/* translators: %d: number of content items indexed */
-						__( 'Content index rebuilt successfully. %d items indexed.', 'wp-ai-chatbot' ),
-						$status['post_count']
-					),
-				)
-			);
-		} else {
-			wp_send_json_error( array( 'message' => __( 'Failed to rebuild content index. Check file permissions.', 'wp-ai-chatbot' ) ) );
-		}
+		wp_send_json_success(
+			array(
+				'message' => __( 'Search indexes updated successfully.', 'wp-ai-chatbot' ),
+				'product' => array(
+					'enabled'            => $search_index->is_enabled(),
+					'exists'             => $product_status['exists'],
+					'count'              => $product_status['product_count'],
+					'last_updated'       => $product_status['last_updated'],
+					'last_updated_label' => $this->format_index_updated_at( $product_status['last_updated'] ),
+				),
+				'content' => array(
+					'enabled'            => ! empty( $content_status['indexed_post_types'] ),
+					'exists'             => $content_status['exists'],
+					'count'              => $content_status['post_count'],
+					'last_updated'       => $content_status['last_updated'],
+					'last_updated_label' => $this->format_index_updated_at( $content_status['last_updated'] ),
+					'post_types'         => $content_status['indexed_post_types'],
+				),
+			)
+		);
 	}
 
 	/**
