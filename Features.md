@@ -33,8 +33,7 @@ The bot has zero awareness of what the user is doing on the site right now.
 - Enables responses like "I see you're looking at the Blue Widget — would you like to know about sizing?"
 - Minimal frontend change (read `window.location` + `wpaicConfig.pageContext`), huge UX leap
 
-### 3. Cart Awareness — Done: false — Priority: low
-
+### 3. Cart Awareness — Done: true
 The bot can add to cart but has no idea what's already in it.
 
 - New tool: `get_cart_contents()` — returns items, quantities, totals
@@ -61,10 +60,12 @@ After every bot response, show 2-3 clickable suggestion buttons.
 Empty chat state shows predefined prompt buttons instead of just a greeting.
 
 - Admin configures 3-5 starter prompts in settings
-- Display as cards/buttons in the empty chat: "Find a product", "Track my order", "Shipping info", "Talk to support"
+- Display as little chips at the bottom of the chat, above the text field in the empty chat: "Find a product", "Track my order", "Shipping info" if Woocommerce is enabled. Otherwise come up with 3 good ones for non-commerce sites.
 - Auto-generate starters based on enabled features (WooCommerce tools, handoff, etc.)
 - Reduces the "blank page" problem — users don't know what to ask
 - Mobile-friendly tap targets
+- Add the option in the admin to edit these starting chips. Add the options to the "Engagement" settings section.
+- On the chatbot frontend the chips could be scrollable vertically to save on space. Keep it simple but looking good.
 
 ### 6. Coupon & Promotion Support — Done: false
 
