@@ -577,7 +577,7 @@ class WPAIC_Chat {
 	}
 
 	private function get_tool_response_instruction(): string {
-		return ' When presenting tool results (products, comparisons, order info), provide ONLY a single short sentence intro (max 10 words) that relates to the query. Example: "Here are some red shoes:" - NEVER list product names, prices, or details in your text response. The product cards will show all details. Your text should be a brief intro only, not a summary of results. If no results found, explain briefly.';
+		return ' When presenting product search or comparison results, provide ONLY a single short sentence intro (max 10 words) that relates to the query. Example: "Here are some red shoes:" - NEVER list product names, prices, or details in your text response. The product cards will show all details. Your text should be a brief intro only, not a summary of results. For current cart questions, use get_cart_contents and answer directly from its totals and items in plain text. If no results found, explain briefly.';
 	}
 
 	private function get_handoff_instruction(): string {
@@ -754,6 +754,17 @@ class WPAIC_Chat {
 				'function' => array(
 					'name'        => 'get_categories',
 					'description' => 'Get all product categories',
+					'parameters'  => array(
+						'type'       => 'object',
+						'properties' => new \stdClass(),
+					),
+				),
+			);
+			$tools[] = array(
+				'type'     => 'function',
+				'function' => array(
+					'name'        => 'get_cart_contents',
+					'description' => 'Get the current customer cart contents and totals. Use when they ask what is in their cart or what their total is.',
 					'parameters'  => array(
 						'type'       => 'object',
 						'properties' => new \stdClass(),
@@ -1056,7 +1067,7 @@ class WPAIC_Chat {
 	/**
 	 * @param string $name
 	 * @param array<string, mixed> $arguments
-	 * @return array<string, mixed>|null
+	 * @return array<string, mixed>|array<int, array<string, mixed>>|null
 	 */
 	private function execute_tool( string $name, array $arguments ): array|null {
 		// Handoff and custom data tools work without WooCommerce
@@ -1088,6 +1099,7 @@ class WPAIC_Chat {
 			'search_products' => $this->tools->search_products( $arguments ),
 			'get_product_details' => $this->tools->get_product_details( (int) ( $arguments['product_id'] ?? 0 ) ),
 			'get_categories' => $this->tools->get_categories(),
+			'get_cart_contents' => $this->tools->get_cart_contents(),
 			'compare_products' => $this->tools->compare_products( isset( $arguments['product_ids'] ) && is_array( $arguments['product_ids'] ) ? $arguments['product_ids'] : array() ),
 			'get_order_status' => $this->tools->get_order_status( $arguments ),
 			default => array( 'error' => 'Unknown tool' ),

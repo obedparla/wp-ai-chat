@@ -61,6 +61,10 @@ if (!function_exists('WC')) {
     }
 }
 
+if (!function_exists('wc_load_cart')) {
+    function wc_load_cart(): void {}
+}
+
 if (!class_exists('WooCommerce')) {
     class WooCommerce {
         /** @var WC_Cart */
@@ -68,6 +72,8 @@ if (!class_exists('WooCommerce')) {
         public function __construct() {
             $this->cart = new WC_Cart();
         }
+        public function initialize_session(): void {}
+        public function initialize_cart(): void {}
     }
 }
 
@@ -85,6 +91,16 @@ if (!class_exists('WC_Cart')) {
             return 0;
         }
         public function get_cart_total(): string {
+            return '';
+        }
+        public function get_cart_subtotal(): string {
+            return '';
+        }
+        /** @return array<string, array<string, mixed>> */
+        public function get_cart(): array {
+            return [];
+        }
+        public function get_product_subtotal($product, int $quantity): string {
             return '';
         }
     }

@@ -15,10 +15,14 @@ class WPAIC_ToolsTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		WPAICTestHelper::reset();
+		global $mock_wc;
+		$mock_wc    = new MockWooCommerce();
 		$this->tools = new WPAIC_Tools();
 	}
 
 	protected function tearDown(): void {
+		global $mock_wc;
+		$mock_wc = null;
 		WPAICTestHelper::reset();
 		parent::tearDown();
 	}
@@ -250,6 +254,86 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertEquals( 'clothing', $result[0]['slug'] );
 		$this->assertEquals( 5, $result[0]['count'] );
 		$this->assertEquals( 'Electronics', $result[1]['name'] );
+	}
+
+	public function test_get_cart_contents_returns_empty_cart(): void {
+		$result = $this->tools->get_cart_contents();
+
+		$this->assertFalse( isset( $result['error'] ) );
+		$this->assertTrue( $result['is_empty'] );
+		$this->assertSame( 0, $result['item_count'] );
+		$this->assertSame( '$0.00', $result['subtotal'] );
+		$this->assertSame( '$0.00', $result['total'] );
+		$this->assertSame( array(), $result['items'] );
+	}
+
+	public function test_get_cart_contents_returns_items_and_totals(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
+		$this->create_mock_product( 2, 'Blue Hat', '10.00' );
+
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 2 );
+		$mock_wc->get_persisted_cart()->add_to_cart( 2, 1 );
+
+		$result = $this->tools->get_cart_contents();
+
+		$this->assertFalse( $result['is_empty'] );
+		$this->assertSame( 3, $result['item_count'] );
+		$this->assertSame( '$49.98', $result['subtotal'] );
+		$this->assertSame( '$49.98', $result['total'] );
+		$this->assertCount( 2, $result['items'] );
+		$this->assertSame( 1, $result['items'][0]['product_id'] );
+		$this->assertSame( 'Red Shirt', $result['items'][0]['name'] );
+		$this->assertSame( 2, $result['items'][0]['quantity'] );
+		$this->assertSame( '$39.98', $result['items'][0]['line_total'] );
+		$this->assertSame( 'Blue Hat', $result['items'][1]['name'] );
+		$this->assertSame( '$10.00', $result['items'][1]['line_total'] );
+	}
+
+	public function test_get_cart_contents_initializes_cart_when_missing(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 3, 'Delayed Cart Product', '15.00' );
+
+		$mock_wc = new MockWooCommerce( false, true );
+		$mock_wc->get_persisted_cart()->add_to_cart( 3, 2 );
+
+		$result = $this->tools->get_cart_contents();
+
+		$this->assertFalse( $result['is_empty'] );
+		$this->assertSame( 2, $result['item_count'] );
+		$this->assertSame( '$30.00', $result['total'] );
+		$this->assertSame( 'Delayed Cart Product', $result['items'][0]['name'] );
+	}
+
+	public function test_get_cart_contents_strips_html_from_totals(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 4, 'HTML Total Product', '15.00' );
+
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 4, 2 );
+		$mock_wc->get_persisted_cart()->set_return_html_totals( true );
+
+		$result = $this->tools->get_cart_contents();
+
+		$this->assertSame( '$30.00', $result['subtotal'] );
+		$this->assertSame( '$30.00', $result['total'] );
+		$this->assertSame( '$30.00', $result['items'][0]['line_total'] );
+		$this->assertStringNotContainsString( '<', $result['subtotal'] );
+		$this->assertStringNotContainsString( '<', $result['items'][0]['line_total'] );
+	}
+
+	public function test_get_cart_contents_returns_error_when_cart_unavailable(): void {
+		global $mock_wc;
+
+		$mock_wc = new MockWooCommerce( false, false );
+
+		$result = $this->tools->get_cart_contents();
+
+		$this->assertSame( 'Cart unavailable', $result['error'] );
 	}
 
 	public function test_compare_products_returns_empty_when_no_ids(): void {

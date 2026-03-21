@@ -1512,6 +1512,9 @@ if ( ! class_exists( 'MockWCCart' ) ) {
 	class MockWCCart {
 		/** @var array<string, array<string, mixed>> */
 		private array $cart = array();
+		private ?string $cart_total_override = null;
+		private ?string $cart_subtotal_override = null;
+		private bool $return_html_totals = false;
 
 		/**
 		 * @param int $product_id
@@ -1523,8 +1526,16 @@ if ( ! class_exists( 'MockWCCart' ) ) {
 			$this->cart[ $key ] = array(
 				'product_id' => $product_id,
 				'quantity'   => $quantity,
+				'data'       => wc_get_product( $product_id ),
 			);
 			return $key;
+		}
+
+		/**
+		 * @return array<string, array<string, mixed>>
+		 */
+		public function get_cart(): array {
+			return $this->cart;
 		}
 
 		public function get_cart_contents_count(): int {
@@ -1536,20 +1547,100 @@ if ( ! class_exists( 'MockWCCart' ) ) {
 		}
 
 		public function get_cart_total(): string {
-			return '$99.00';
+			if ( null !== $this->cart_total_override ) {
+				return $this->cart_total_override;
+			}
+
+			return $this->format_price( $this->get_numeric_total() );
+		}
+
+		public function get_cart_subtotal(): string {
+			if ( null !== $this->cart_subtotal_override ) {
+				return $this->cart_subtotal_override;
+			}
+
+			return $this->format_price( $this->get_numeric_total() );
+		}
+
+		/**
+		 * @param MockWCProduct $product
+		 */
+		public function get_product_subtotal( MockWCProduct $product, int $quantity ): string {
+			return $this->format_price( $this->get_product_price( $product ) * $quantity );
+		}
+
+		public function set_totals( string $subtotal, string $total ): void {
+			$this->cart_subtotal_override = $subtotal;
+			$this->cart_total_override    = $total;
+		}
+
+		public function set_return_html_totals( bool $return_html_totals ): void {
+			$this->return_html_totals = $return_html_totals;
 		}
 
 		public function clear(): void {
-			$this->cart = array();
+			$this->cart                  = array();
+			$this->cart_total_override   = null;
+			$this->cart_subtotal_override = null;
+			$this->return_html_totals    = false;
+		}
+
+		private function get_numeric_total(): float {
+			$total = 0.0;
+			foreach ( $this->cart as $item ) {
+				$product = isset( $item['data'] ) && $item['data'] instanceof MockWCProduct ? $item['data'] : null;
+				if ( null === $product && isset( $item['product_id'] ) ) {
+					$loaded_product = wc_get_product( (int) $item['product_id'] );
+					$product        = $loaded_product instanceof MockWCProduct ? $loaded_product : null;
+				}
+
+				if ( null === $product ) {
+					continue;
+				}
+
+				$quantity = isset( $item['quantity'] ) ? (int) $item['quantity'] : 0;
+				$total   += $this->get_product_price( $product ) * $quantity;
+			}
+
+			return $total;
+		}
+
+		private function get_product_price( MockWCProduct $product ): float {
+			return (float) WPAICTestHelper::get_post_meta( $product->get_id(), '_price', true );
+		}
+
+		private function format_price( float $amount ): string {
+			$formatted = '$' . number_format( $amount, 2 );
+			if ( ! $this->return_html_totals ) {
+				return $formatted;
+			}
+
+			return '<span class="woocommerce-Price-amount amount">' . $formatted . '</span>';
 		}
 	}
 }
 
 class MockWooCommerce {
-	public MockWCCart $cart;
+	public ?MockWCCart $cart;
+	private MockWCCart $persisted_cart;
+	private bool $can_initialize_cart;
 
-	public function __construct() {
-		$this->cart = new MockWCCart();
+	public function __construct( bool $autoload_cart = true, bool $can_initialize_cart = true ) {
+		$this->persisted_cart      = new MockWCCart();
+		$this->cart                = $autoload_cart ? $this->persisted_cart : null;
+		$this->can_initialize_cart = $can_initialize_cart;
+	}
+
+	public function initialize_session(): void {}
+
+	public function initialize_cart(): void {
+		if ( $this->can_initialize_cart ) {
+			$this->cart = $this->persisted_cart;
+		}
+	}
+
+	public function get_persisted_cart(): MockWCCart {
+		return $this->persisted_cart;
 	}
 }
 
@@ -1563,6 +1654,14 @@ if ( ! function_exists( 'WC' ) ) {
 			$mock_wc = new MockWooCommerce();
 		}
 		return $mock_wc;
+	}
+}
+
+if ( ! function_exists( 'wc_load_cart' ) ) {
+	function wc_load_cart(): void {
+		$woocommerce = WC();
+		$woocommerce->initialize_session();
+		$woocommerce->initialize_cart();
 	}
 }
 

@@ -229,6 +229,52 @@ class WPAIC_Tools {
 	}
 
 	/**
+	 * Get the current cart contents and totals for the active WooCommerce session.
+	 *
+	 * @return array<string, mixed> Cart state or error payload.
+	 */
+	public function get_cart_contents(): array {
+		$cart = $this->get_initialized_cart();
+		if ( null === $cart ) {
+			return array( 'error' => 'Cart unavailable' );
+		}
+
+		$cart_items = method_exists( $cart, 'get_cart' ) ? $cart->get_cart() : array();
+		if ( ! is_array( $cart_items ) ) {
+			$cart_items = array();
+		}
+
+		$items = array();
+		foreach ( $cart_items as $cart_item ) {
+			if ( ! is_array( $cart_item ) ) {
+				continue;
+			}
+
+			$product_id = isset( $cart_item['product_id'] ) && is_numeric( $cart_item['product_id'] ) ? (int) $cart_item['product_id'] : 0;
+			$quantity   = isset( $cart_item['quantity'] ) && is_numeric( $cart_item['quantity'] ) ? (int) $cart_item['quantity'] : 0;
+			$product    = $this->get_cart_item_product( $cart_item, $product_id );
+			$name       = $this->get_cart_item_name( $cart_item, $product );
+
+			$items[] = array(
+				'product_id' => $product_id,
+				'name'       => $name,
+				'quantity'   => $quantity,
+				'line_total' => $this->get_cart_item_total_text( $cart, $cart_item, $product, $quantity ),
+			);
+		}
+
+		$item_count = method_exists( $cart, 'get_cart_contents_count' ) ? (int) $cart->get_cart_contents_count() : count( $items );
+
+		return array(
+			'is_empty'   => 0 === $item_count,
+			'item_count' => $item_count,
+			'subtotal'   => $this->get_cart_total_text( $cart, 'get_cart_subtotal' ),
+			'total'      => $this->get_cart_total_text( $cart, 'get_cart_total' ),
+			'items'      => $items,
+		);
+	}
+
+	/**
 	 * Format product for comparison view.
 	 *
 	 * @param WP_Post $post Product post.
@@ -535,16 +581,121 @@ class WPAIC_Tools {
 		return $result;
 	}
 
+	/**
+	 * @param array<string, mixed> $args
+	 * @return array<int, array<string, mixed>>
+	 */
 	public function search_site_content( array $args ): array {
 		$query         = isset( $args['query'] ) && is_string( $args['query'] ) ? sanitize_text_field( $args['query'] ) : '';
 		$content_index = new WPAIC_Content_Index();
 		return $content_index->search( $query );
 	}
 
+	/**
+	 * @param array<string, mixed> $args
+	 * @return array<string, mixed>|null
+	 */
 	public function get_page_content( array $args ): ?array {
 		$post_id       = isset( $args['post_id'] ) && is_numeric( $args['post_id'] ) ? (int) $args['post_id'] : 0;
 		$content_index = new WPAIC_Content_Index();
 		return $content_index->get_page_content( $post_id );
+	}
+
+	/**
+	 * WooCommerce does not auto-load the cart for REST requests, so bootstrap it on demand.
+	 *
+	 * @return object|null
+	 */
+	private function get_initialized_cart(): ?object {
+		if ( ! function_exists( 'WC' ) ) {
+			return null;
+		}
+
+		$woocommerce = WC();
+		if ( $this->has_usable_cart( $woocommerce ) ) {
+			return $woocommerce->cart;
+		}
+
+		if ( function_exists( 'wc_load_cart' ) && ( ! function_exists( 'did_action' ) || did_action( 'woocommerce_init' ) > 0 ) ) {
+			wc_load_cart();
+		} else {
+			$woocommerce->initialize_session();
+			$woocommerce->initialize_cart();
+		}
+
+		$woocommerce = WC();
+		if ( ! $this->has_usable_cart( $woocommerce ) ) {
+			return null;
+		}
+
+		return $woocommerce->cart;
+	}
+
+	private function has_usable_cart( object $woocommerce ): bool {
+		return isset( $woocommerce->cart ) && is_object( $woocommerce->cart );
+	}
+
+	/**
+	 * @param array<string, mixed> $cart_item
+	 * @return object|false|null
+	 */
+	private function get_cart_item_product( array $cart_item, int $product_id ): object|false|null {
+		if ( isset( $cart_item['data'] ) && is_object( $cart_item['data'] ) ) {
+			return $cart_item['data'];
+		}
+
+		if ( $product_id <= 0 || ! function_exists( 'wc_get_product' ) ) {
+			return null;
+		}
+
+		return wc_get_product( $product_id );
+	}
+
+	/**
+	 * @param array<string, mixed> $cart_item
+	 * @param object|false|null $product
+	 */
+	private function get_cart_item_name( array $cart_item, object|false|null $product ): string {
+		if ( is_object( $product ) && method_exists( $product, 'get_name' ) ) {
+			$name = $product->get_name();
+			if ( is_string( $name ) ) {
+				return $name;
+			}
+		}
+
+		return isset( $cart_item['name'] ) && is_string( $cart_item['name'] ) ? $cart_item['name'] : '';
+	}
+
+	/**
+	 * @param array<string, mixed> $cart_item
+	 * @param object|false|null $product
+	 */
+	private function get_cart_item_total_text( object $cart, array $cart_item, object|false|null $product, int $quantity ): string {
+		if ( is_object( $product ) && method_exists( $cart, 'get_product_subtotal' ) ) {
+			return $this->normalize_price_text( (string) $cart->get_product_subtotal( $product, $quantity ) );
+		}
+
+		if ( isset( $cart_item['line_total'] ) ) {
+			return $this->normalize_price_text( (string) $cart_item['line_total'] );
+		}
+
+		return '';
+	}
+
+	private function get_cart_total_text( object $cart, string $method ): string {
+		if ( ! method_exists( $cart, $method ) ) {
+			return '';
+		}
+
+		return $this->normalize_price_text( (string) $cart->$method() );
+	}
+
+	private function normalize_price_text( string $price_text ): string {
+		$decoded = html_entity_decode( $price_text, ENT_QUOTES, 'UTF-8' );
+		$stripped = wp_strip_all_tags( $decoded, true );
+		$normalized = preg_replace( '/\s+/u', ' ', $stripped );
+
+		return trim( is_string( $normalized ) ? $normalized : $stripped );
 	}
 
 	/**
