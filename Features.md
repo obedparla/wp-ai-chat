@@ -1,3 +1,5 @@
+Feature ideas. Mark as "Done: true" when one is finished.
+
 # WP AI Chatbot — Feature Ideas
 
 Features organized by impact. `Done: false` means unimplemented.
@@ -8,7 +10,7 @@ Features organized by impact. `Done: false` means unimplemented.
 
 ## Tier 1: Transformative (High Impact, High Value)
 
-### 1. Site Content Indexing (Pages, Posts, Policies) — Done: false
+### 1. Site Content Indexing (Pages, Posts, Policies) — Done: true
 
 The biggest gap today. The bot understands WooCommerce products but knows **nothing** about the rest of the website — pages, blog posts, shipping policies, return policies, about us, contact info, FAQs pages, etc.
 
@@ -31,7 +33,7 @@ The bot has zero awareness of what the user is doing on the site right now.
 - Enables responses like "I see you're looking at the Blue Widget — would you like to know about sizing?"
 - Minimal frontend change (read `window.location` + `wpaicConfig.pageContext`), huge UX leap
 
-### 3. Cart Awareness — Done: false
+### 3. Cart Awareness — Done: false — Priority: low
 
 The bot can add to cart but has no idea what's already in it.
 
@@ -40,6 +42,8 @@ The bot can add to cart but has no idea what's already in it.
 - Bot can answer "what's in my cart?", "remove the blue shirt", "how much is my total?"
 - Enables cross-sell: "You have running shoes in your cart — want to add socks?"
 - Read cart via WC session/cookie on the server side
+
+**Brainstorm notes (2026-03-18):** Users rarely ask a chatbot "what's in my cart?" — the cart icon is faster. Write operations (remove/update) same story. The real value is cart as **passive context** (bot knows cart contents to give smarter answers about shipping, cross-sells, coupons) rather than as user-facing tools. But even passive context feels like bloat until higher-impact features are done. Revisit after Current Page Context (#2) is built — similar "inject context into every message" pattern, could share the plumbing.
 
 ### 4. Quick-Reply Chips / Suggested Actions — Done: false
 
@@ -145,15 +149,28 @@ One of the most common pre-purchase questions.
 
 ### 14. GDPR Compliance Kit — Done: false
 
-Legal requirement for EU users — many WooCommerce stores sell to EU.
+Legal requirement for EU users. EU AI Act Article 50 makes AI disclosure mandatory from Aug 2, 2026.
 
-- Data retention policy: auto-delete conversations older than X days
-- "Delete my data" tool — user can request deletion from chat
-- Admin data export (per user/email)
-- Cookie consent integration (respect existing consent plugins)
-- Privacy policy link in chat footer
-- IP anonymization option
-- Provider-side: data retention policies for request logs, no long-term storage of conversation content
+**Chat widget:**
+- Passive consent notice at bottom of widget: "By chatting, you agree to our [Privacy Policy]" (industry standard)
+- Privacy policy URL configurable in admin
+- AI disclosure in first bot message or widget header — must be visible, not buried in ToS
+- "Delete my data" — user can request erasure of their chat history from within the chat
+
+**Chatbot admin:**
+- Data retention setting: auto-delete conversations older than X days (default 12 months)
+- Data export: download all conversations for a user/email as JSON/CSV (right to portability)
+- IP anonymization toggle
+
+**Provider-side:**
+- Sign OpenAI's Data Processing Addendum (DPA) — we hold the API key, we're the processor
+- No long-term storage of conversation content on provider
+- Data retention policies for request logs
+- Document sub-processor chain (us → OpenAI) for customers' privacy policies
+
+**Open legal questions:**
+- Are we processor (customers = controllers) or joint controller? Affects DPA chain
+- Anonymous sessions with no login — still personal data if IP is logged
 
 ---
 
