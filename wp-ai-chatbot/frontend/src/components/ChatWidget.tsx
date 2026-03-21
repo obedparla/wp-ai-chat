@@ -11,7 +11,7 @@ interface ChatWidgetProps {
     sendMessage: (content: string) => void
     isLoading: boolean
     stopGeneration: () => void
-    clearChat: () => void
+    startNewConversation: () => void
     activeTools: ActiveTool[]
     retry: () => void
   }
@@ -33,7 +33,7 @@ function getToolProgressMessage(tool: ActiveTool): string {
 }
 
 export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: ChatWidgetProps) {
-  const { messages, sendMessage, isLoading, stopGeneration, clearChat, activeTools, retry } = chat
+  const { messages, sendMessage, isLoading, stopGeneration, startNewConversation, activeTools, retry } = chat
   const [input, setInput] = useState('')
   const [showTranscriptDialog, setShowTranscriptDialog] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -91,12 +91,16 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
         </div>
         <div className="flex gap-1 items-center">
           <button
-            onClick={clearChat}
+            onClick={startNewConversation}
             className="bg-white/15 border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-90 transition-all duration-200 flex items-center justify-center text-base hover:opacity-100 hover:bg-white/25 hover:scale-105"
-            aria-label="Clear chat"
-            title="Clear chat"
+            aria-label="New conversation"
+            title="New conversation"
           >
-            ↺
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M12 6H7a2 2 0 0 0-2 2v9l3-2h4a2 2 0 0 0 2-2v-1" />
+              <path d="M15 3v6" />
+              <path d="M12 6h6" />
+            </svg>
           </button>
           <button
             onClick={() => setShowTranscriptDialog(true)}

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { applyCartUpdate, hasCartUpdateError } from '@/lib/cart'
 
 export interface ComparisonProduct {
   id: number
@@ -77,15 +78,14 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
 
       const resData = await response.json()
 
-      if (resData.error) {
+      if (hasCartUpdateError(resData)) {
         // eslint-disable-next-line react-hooks/immutability
         window.location.href = product.add_to_cart_url || product.url
         return
       }
 
       setCartStates((prev) => ({ ...prev, [product.id]: 'success' }))
-      document.body.dispatchEvent(new Event('wc_fragment_refresh'))
-      document.body.dispatchEvent(new CustomEvent('added_to_cart'))
+      applyCartUpdate(resData)
 
       setTimeout(() => {
         setCartStates((prev) => ({ ...prev, [product.id]: 'idle' }))

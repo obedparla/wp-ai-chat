@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(vendor/bin/phpunit tests/WPAIC_ContentIndexTest.php tests/WPAIC_ToolsTest.php)",
+      "Bash(vendor/bin/phpunit)",
+      "WebFetch(domain:developer.woocommerce.com)"
+    ]
+  }
+}

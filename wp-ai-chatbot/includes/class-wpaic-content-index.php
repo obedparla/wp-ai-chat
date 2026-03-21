@@ -40,13 +40,18 @@ class WPAIC_Content_Index {
 
 	public function get_selected_post_types(): array {
 		$settings = get_option( 'wpaic_settings', array() );
-		if ( ! empty( $settings['content_index_post_types'] ) && is_array( $settings['content_index_post_types'] ) ) {
+		if ( is_array( $settings ) && array_key_exists( 'content_index_post_types', $settings ) && is_array( $settings['content_index_post_types'] ) ) {
 			return $settings['content_index_post_types'];
 		}
 		return array( 'page', 'post' );
 	}
 
 	public function build_index(): bool {
+		$post_types = $this->get_selected_post_types();
+		if ( empty( $post_types ) ) {
+			return $this->clear_index();
+		}
+
 		if ( ! $this->ensure_directory() ) {
 			return false;
 		}
@@ -59,8 +64,6 @@ class WPAIC_Content_Index {
 		$tnt     = $this->get_tnt();
 		$indexer = $tnt->createIndex( $this->index_name );
 		$indexer->setLanguage( 'no' );
-
-		$post_types = $this->get_selected_post_types();
 
 		$posts = get_posts(
 			array(
@@ -84,6 +87,17 @@ class WPAIC_Content_Index {
 		}
 
 		$this->update_index_meta( count( $posts ), $post_types );
+
+		return true;
+	}
+
+	public function clear_index(): bool {
+		$index_file = $this->index_path . $this->index_name;
+		if ( file_exists( $index_file ) ) {
+			wp_delete_file( $index_file );
+		}
+
+		$this->clear_index_meta();
 
 		return true;
 	}
@@ -208,6 +222,17 @@ class WPAIC_Content_Index {
 				'post_count'   => $count,
 				'last_updated' => current_time( 'mysql' ),
 				'post_types'   => $post_types,
+			)
+		);
+	}
+
+	private function clear_index_meta(): void {
+		update_option(
+			'wpaic_content_index_meta',
+			array(
+				'post_count'   => 0,
+				'last_updated' => null,
+				'post_types'   => array(),
 			)
 		);
 	}

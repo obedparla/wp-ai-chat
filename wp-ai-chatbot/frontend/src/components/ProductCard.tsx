@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { applyCartUpdate, hasCartUpdateError } from '@/lib/cart'
 
 export interface ProductAttribute {
   name: string
@@ -63,11 +64,6 @@ export default function ProductCard({ product }: ProductCardProps) {
     }
 
     try {
-      const formData = new FormData()
-      formData.append('action', 'woocommerce_ajax_add_to_cart')
-      formData.append('product_id', String(product.id))
-      formData.append('quantity', '1')
-
       const response = await fetch(
         `${wcAjaxUrl}?action=woocommerce_ajax_add_to_cart&product_id=${product.id}&quantity=1`,
         {
@@ -84,25 +80,20 @@ export default function ProductCard({ product }: ProductCardProps) {
 
       const data = await response.json()
 
-      if (data.error) {
+      if (hasCartUpdateError(data)) {
         // eslint-disable-next-line react-hooks/immutability
         window.location.href = product.add_to_cart_url || product.url
         return
       }
 
       setCartState('success')
-      triggerCartUpdate()
+      applyCartUpdate(data)
 
       setTimeout(() => setCartState('idle'), 2000)
     } catch {
       // eslint-disable-next-line react-hooks/immutability
       window.location.href = product.add_to_cart_url || product.url
     }
-  }
-
-  const triggerCartUpdate = () => {
-    document.body.dispatchEvent(new Event('wc_fragment_refresh'))
-    document.body.dispatchEvent(new CustomEvent('added_to_cart'))
   }
 
   return (
