@@ -11,7 +11,6 @@ interface ChatWidgetProps {
     messages: Message[]
     sendMessage: (content: string) => void
     isLoading: boolean
-    stopGeneration: () => void
     startNewConversation: () => void
     activeTools: ActiveTool[]
     retry: () => void
@@ -19,6 +18,7 @@ interface ChatWidgetProps {
   chatbotName?: string
   chatbotLogo?: string
   conversationStarters?: string[]
+  autoFocusInput?: boolean
 }
 
 function getToolProgressMessage(tool: ActiveTool): string {
@@ -40,8 +40,9 @@ export default function ChatWidget({
   chatbotName,
   chatbotLogo,
   conversationStarters = [],
+  autoFocusInput = false,
 }: ChatWidgetProps) {
-  const { messages, sendMessage, isLoading, stopGeneration, startNewConversation, activeTools, retry } = chat
+  const { messages, sendMessage, isLoading, startNewConversation, activeTools, retry } = chat
   const [input, setInput] = useState('')
   const [showTranscriptDialog, setShowTranscriptDialog] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -70,9 +71,19 @@ export default function ChatWidget({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
+  useEffect(() => {
+    if (!autoFocusInput) return
+
+    const focusInput = () => inputRef.current?.focus()
+    focusInput()
+    const timeoutId = window.setTimeout(focusInput, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [autoFocusInput])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isLoading) return
+    if (!input.trim()) return
     sendMessage(input.trim())
     setInput('')
     requestAnimationFrame(() => inputRef.current?.focus())
@@ -80,11 +91,10 @@ export default function ChatWidget({
 
   const handleStarterSelect = useCallback(
     (starter: string) => {
-      if (isLoading) return
       sendMessage(starter)
       requestAnimationFrame(() => inputRef.current?.focus())
     },
-    [isLoading, sendMessage]
+    [sendMessage]
   )
 
   return (
@@ -175,8 +185,6 @@ export default function ChatWidget({
         value={input}
         onChange={setInput}
         onSubmit={handleSubmit}
-        isLoading={isLoading}
-        onStop={stopGeneration}
       />
     </div>
   )

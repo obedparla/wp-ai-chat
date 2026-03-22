@@ -10,7 +10,6 @@ const createMockChat = () => ({
   messages: [{ role: 'assistant' as const, content: 'Hello! How can I help?' }],
   sendMessage: vi.fn(),
   isLoading: false,
-  stopGeneration: vi.fn(),
   showProactiveGreeting: vi.fn(),
   startNewConversation: vi.fn(),
   activeTools: [],
@@ -80,6 +79,14 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
 
     expect(screen.getByPlaceholderText('Type a message...')).toBeInTheDocument()
+  })
+
+  it('focuses the message input when the widget is opened from the button', async () => {
+    render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
+
+    expect(screen.getByPlaceholderText('Type a message...')).toHaveFocus()
   })
 
   it('preserves chat history when widget is closed and reopened', async () => {
@@ -163,7 +170,6 @@ describe('ChatButton', () => {
       messages: [],
       sendMessage: vi.fn(),
       isLoading: false,
-      stopGeneration: vi.fn(),
       showProactiveGreeting: vi.fn(),
       startNewConversation: vi.fn(),
       activeTools: [],
@@ -210,7 +216,6 @@ describe('Proactive engagement', () => {
       messages: [{ role: 'assistant', content: 'Hello!' }],
       sendMessage: vi.fn(),
       isLoading: false,
-      stopGeneration: vi.fn(),
       showProactiveGreeting: vi.fn(),
       startNewConversation: vi.fn(),
       activeTools: [],

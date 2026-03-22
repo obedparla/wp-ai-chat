@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChatWidget from './ChatWidget'
 import type { ActiveTool } from '../hooks/useChat'
@@ -17,7 +17,6 @@ interface MockChat {
   messages: MockMessage[]
   sendMessage: ReturnType<typeof vi.fn>
   isLoading: boolean
-  stopGeneration: ReturnType<typeof vi.fn>
   startNewConversation: ReturnType<typeof vi.fn>
   activeTools: ActiveTool[]
   retry: ReturnType<typeof vi.fn>
@@ -31,7 +30,6 @@ function createMockChat(overrides: Partial<MockChat> = {}): MockChat {
     ],
     sendMessage: vi.fn(),
     isLoading: false,
-    stopGeneration: vi.fn(),
     startNewConversation: vi.fn(),
     activeTools: [],
     retry: vi.fn(),
@@ -107,6 +105,14 @@ describe('ChatWidget', () => {
     expect(screen.getByPlaceholderText('Type a message...')).toBeInTheDocument()
   })
 
+  it('auto-focuses the input when requested', async () => {
+    render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} autoFocusInput />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Type a message...')).toHaveFocus()
+    })
+  })
+
   it('renders send button', () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} />)
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
@@ -144,6 +150,18 @@ describe('ChatWidget', () => {
     if (form) fireEvent.submit(form)
 
     expect(mockChat.sendMessage).toHaveBeenCalledWith('Hello')
+  })
+
+  it('re-focuses the input after submitting a message', async () => {
+    render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} />)
+
+    const input = screen.getByPlaceholderText('Type a message...')
+    await userEvent.type(input, 'Hello')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(input).toHaveFocus()
+    })
   })
 
   it('sends message when Enter key pressed', async () => {
@@ -315,11 +333,11 @@ describe('ChatWidget loading state', () => {
     expect(screen.getByText('Typing...')).toBeInTheDocument()
   })
 
-  it('disables input when loading', () => {
+  it('keeps input enabled when loading', () => {
     const mockChat = createMockChat({ messages: [], isLoading: true })
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
     const input = screen.getByPlaceholderText('Type a message...')
-    expect(input).toBeDisabled()
+    expect(input).not.toBeDisabled()
   })
 
   it('does not show typing indicator when not loading', () => {
@@ -328,27 +346,21 @@ describe('ChatWidget loading state', () => {
     expect(screen.queryByText('Typing...')).not.toBeInTheDocument()
   })
 
-  it('shows stop button when loading', () => {
+  it('keeps the send button visible while loading', () => {
     const mockChat = createMockChat({ messages: [], isLoading: true })
-    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
-  })
-
-  it('shows send button when not loading', () => {
-    const mockChat = createMockChat({ messages: [], isLoading: false })
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
   })
 
-  it('calls stopGeneration when stop button clicked', async () => {
+  it('allows sending another message while loading', async () => {
     const mockChat = createMockChat({ messages: [], isLoading: true })
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
-    const stopBtn = screen.getByRole('button', { name: 'Stop' })
-    await userEvent.click(stopBtn)
 
-    expect(mockChat.stopGeneration).toHaveBeenCalled()
+    const input = screen.getByPlaceholderText('Type a message...')
+    await userEvent.type(input, 'Another question{Enter}')
+
+    expect(mockChat.sendMessage).toHaveBeenCalledWith('Another question')
   })
 })
 

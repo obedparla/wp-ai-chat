@@ -19,12 +19,27 @@ export interface ActiveTool {
   state: 'input-streaming' | 'input-available' | 'executing'
 }
 
+interface PendingUserMessage {
+  id: string
+  content: string
+}
+
+const MESSAGE_DEBOUNCE_MS = 6000
+
 function generateSessionId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0
     const v = c === 'x' ? r : (r & 0x3) | 0x8
     return v.toString(16)
   })
+}
+
+function generateClientMessageId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return generateSessionId()
 }
 
 function getOrCreateSessionId(): string {
@@ -45,7 +60,7 @@ interface StoredMessage {
   parts: unknown[]
 }
 
-function isGreetingOnlyConversation(messages: Array<{ id?: string; role: string }>): boolean {
+function isGreetingOnlyConversation(messages: { id?: string; role: string }[]): boolean {
   return messages.length === 1 && messages[0].id === 'greeting' && messages[0].role === 'assistant'
 }
 
@@ -97,6 +112,14 @@ function extractTextContent(uiMessage: UIMessage): string {
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('')
+}
+
+function createUserUIMessage(message: PendingUserMessage): UIMessage {
+  return {
+    id: message.id,
+    role: 'user',
+    parts: [{ type: 'text', text: message.content }],
+  }
 }
 
 interface DynamicToolPart {
@@ -194,8 +217,14 @@ function extractActiveTools(uiMessages: UIMessage[]): ActiveTool[] {
 export function useChat() {
   const config = window.wpaicConfig
   const [sessionId, setSessionId] = useState(initialSessionId)
-  const lastUserMessageRef = useRef<string | null>(null)
+  const [pendingMessages, setPendingMessages] = useState<PendingUserMessage[]>([])
   const restoredSessionIdRef = useRef<string | null>(null)
+  const pendingMessagesRef = useRef<PendingUserMessage[]>([])
+  const pendingFlushRequestedRef = useRef(false)
+  const uiMessagesRef = useRef<UIMessage[]>([])
+  const statusRef = useRef<'submitted' | 'streaming' | 'ready' | 'error'>('ready')
+  const errorRef = useRef<Error | undefined>(undefined)
+  const debounceTimerRef = useRef<number | null>(null)
 
   const getDefaultGreetingMessage = useCallback(
     (): string => config?.greeting || 'Hello! How can I help you today?',
@@ -237,7 +266,21 @@ export function useChat() {
   } = useVercelChat({
     transport,
     id: sessionId,
+    onFinish: ({ isError }) => {
+      if (!pendingFlushRequestedRef.current) return
+
+      window.setTimeout(() => {
+        flushPendingMessages(isError)
+      }, 0)
+    },
   })
+
+  const clearPendingSubmissionTimer = useCallback(() => {
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+  }, [])
 
   const seedGreetingMessage = useCallback(
     (greeting: string) => {
@@ -276,6 +319,28 @@ export function useChat() {
   useEffect(() => {
     saveMessagesToStorage(uiMessages)
   }, [uiMessages])
+
+  useEffect(() => {
+    pendingMessagesRef.current = pendingMessages
+  }, [pendingMessages])
+
+  useEffect(() => {
+    uiMessagesRef.current = uiMessages
+  }, [uiMessages])
+
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
+
+  useEffect(() => {
+    errorRef.current = error
+  }, [error])
+
+  useEffect(() => {
+    return () => {
+      clearPendingSubmissionTimer()
+    }
+  }, [clearPendingSubmissionTimer])
 
   const messages: Message[] = useMemo(() => {
     return uiMessages.map((msg) => {
@@ -321,36 +386,89 @@ export function useChat() {
 
   const activeTools = useMemo(() => extractActiveTools(uiMessages), [uiMessages])
 
+  const optimisticMessages = useMemo<Message[]>(
+    () =>
+      pendingMessages.map((message) => ({
+        id: message.id,
+        role: 'user',
+        content: message.content,
+        isError: false,
+      })),
+    [pendingMessages]
+  )
+
+  const flushPendingMessages = useCallback((dropLastAssistant = false) => {
+    if (statusRef.current === 'streaming' || statusRef.current === 'submitted') {
+      return
+    }
+
+    const queuedMessages = pendingMessagesRef.current
+    if (queuedMessages.length === 0) {
+      pendingFlushRequestedRef.current = false
+      return
+    }
+
+    const lastUiMessage = uiMessagesRef.current[uiMessagesRef.current.length - 1]
+    const baseMessages =
+      (dropLastAssistant || errorRef.current) && lastUiMessage?.role === 'assistant'
+        ? uiMessagesRef.current.slice(0, -1)
+        : uiMessagesRef.current
+
+    setMessages([
+      ...baseMessages,
+      ...queuedMessages.map((message) => createUserUIMessage(message)),
+    ])
+    setPendingMessages([])
+    pendingFlushRequestedRef.current = false
+    void vercelSendMessage()
+  }, [setMessages, vercelSendMessage])
+
+  const schedulePendingSubmission = useCallback(() => {
+    clearPendingSubmissionTimer()
+    pendingFlushRequestedRef.current = false
+    debounceTimerRef.current = window.setTimeout(() => {
+      pendingFlushRequestedRef.current = true
+      flushPendingMessages()
+    }, MESSAGE_DEBOUNCE_MS)
+  }, [clearPendingSubmissionTimer, flushPendingMessages])
+
   const sendMessage = useCallback(
     (content: string) => {
-      lastUserMessageRef.current = content
-      vercelSendMessage({ text: content })
+      const trimmedContent = content.trim()
+      if (!trimmedContent) return
+
+      setPendingMessages((currentMessages) => {
+        const nextMessages = [
+          ...currentMessages,
+          {
+            id: generateClientMessageId(),
+            content: trimmedContent,
+          },
+        ]
+        pendingMessagesRef.current = nextMessages
+        return nextMessages
+      })
+      schedulePendingSubmission()
     },
-    [vercelSendMessage]
+    [schedulePendingSubmission]
   )
 
   const retry = useCallback(() => {
-    if (!lastUserMessageRef.current) return
-    // Remove the failed assistant message
-    const filtered = uiMessages.filter((msg, i) => {
-      if (i === uiMessages.length - 1 && msg.role === 'assistant') {
-        return false
-      }
-      return true
-    })
+    const filtered = uiMessages.filter((msg, i) => !(i === uiMessages.length - 1 && msg.role === 'assistant'))
+    if (!filtered.some((message) => message.role === 'user')) return
+
     setMessages(filtered)
-    // Resend the last user message
-    vercelSendMessage({ text: lastUserMessageRef.current })
+    void vercelSendMessage()
   }, [uiMessages, setMessages, vercelSendMessage])
 
-  const isLoading = status === 'streaming' || status === 'submitted'
-
-  const stopGeneration = useCallback(() => {
-    stop()
-  }, [stop])
+  const isRequestInFlight = status === 'streaming' || status === 'submitted'
+  const isLoading = isRequestInFlight || pendingMessages.length > 0
 
   const showProactiveGreeting = useCallback(() => {
-    if (uiMessages.length > 0 && !isGreetingOnlyConversation(uiMessages)) {
+    if (
+      pendingMessagesRef.current.length > 0 ||
+      (uiMessages.length > 0 && !isGreetingOnlyConversation(uiMessages))
+    ) {
       return
     }
 
@@ -358,21 +476,22 @@ export function useChat() {
   }, [uiMessages, seedGreetingMessage, getProactiveGreetingMessage])
 
   const startNewConversation = useCallback(() => {
+    clearPendingSubmissionTimer()
     stop()
     clearStoredMessages()
-    lastUserMessageRef.current = null
+    setPendingMessages([])
+    pendingFlushRequestedRef.current = false
     setMessages([])
     restoredSessionIdRef.current = null
     const newSessionId = generateSessionId()
     sessionStorage.setItem('wpaic_session_id', newSessionId)
     setSessionId(newSessionId)
-  }, [setMessages, stop])
+  }, [clearPendingSubmissionTimer, setMessages, stop])
 
   return {
-    messages: messagesWithError,
+    messages: [...messagesWithError, ...optimisticMessages],
     sendMessage,
     isLoading,
-    stopGeneration,
     showProactiveGreeting,
     startNewConversation,
     activeTools,

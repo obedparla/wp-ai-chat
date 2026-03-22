@@ -59,6 +59,7 @@ describe('useChat', () => {
 
   afterEach(() => {
     vi.clearAllMocks()
+    vi.useRealTimers()
     sessionStorage.clear()
   })
 
@@ -109,14 +110,38 @@ describe('useChat', () => {
     expect(result.current.isLoading).toBe(true)
   })
 
-  it('calls vercel sendMessage with text object when sendMessage called', () => {
+  it('queues a message locally and submits it after the debounce window', async () => {
+    vi.useFakeTimers()
     const { result } = renderHook(() => useChat())
+    mockSetMessages.mockClear()
 
     act(() => {
       result.current.sendMessage('Hello')
     })
 
-    expect(mockSendMessage).toHaveBeenCalledWith({ text: 'Hello' })
+    expect(result.current.messages).toEqual([
+      expect.objectContaining({
+        role: 'user',
+        content: 'Hello',
+        isError: false,
+      }),
+    ])
+    expect(result.current.isLoading).toBe(true)
+    expect(mockSendMessage).not.toHaveBeenCalled()
+
+    await act(async () => {
+      vi.advanceTimersByTime(6000)
+    })
+
+    expect(mockSetMessages).toHaveBeenLastCalledWith([
+      {
+        id: expect.any(String),
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      },
+    ])
+    expect(mockSendMessage).toHaveBeenCalledTimes(1)
+    expect(mockSendMessage.mock.calls[0]).toEqual([])
   })
 
   it('includes page_context in the transport body', () => {
@@ -262,16 +287,6 @@ describe('useChat', () => {
     expect(result.current.messages).toHaveLength(2)
     expect(result.current.messages[1].content).toBe('Partial response...')
     expect(result.current.messages[1].isError).toBe(true)
-  })
-
-  it('stopGeneration calls stop', () => {
-    const { result } = renderHook(() => useChat())
-
-    act(() => {
-      result.current.stopGeneration()
-    })
-
-    expect(mockStop).toHaveBeenCalled()
   })
 
   it('showProactiveGreeting swaps in the proactive message for an idle chat', () => {
@@ -552,7 +567,7 @@ describe('useChat', () => {
     expect(result.current.activeTools).toEqual([])
   })
 
-  it('retry removes failed assistant message and resends last user message', () => {
+  it('retry removes the failed assistant message and resubmits the conversation', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [
         {
@@ -575,20 +590,19 @@ describe('useChat', () => {
 
     const { result } = renderHook(() => useChat())
 
-    // First send a message to store it as lastUserMessage
-    act(() => {
-      result.current.sendMessage('Hello')
-    })
-
-    // Now retry
     act(() => {
       result.current.retry()
     })
 
-    // Should have called setMessages to remove failed message
-    expect(mockSetMessages).toHaveBeenCalled()
-    // Should have called sendMessage again with the last user message
-    expect(mockSendMessage).toHaveBeenCalledWith({ text: 'Hello' })
+    expect(mockSetMessages).toHaveBeenCalledWith([
+      {
+        id: '1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      },
+    ])
+    expect(mockSendMessage).toHaveBeenCalledTimes(1)
+    expect(mockSendMessage.mock.calls[0]).toEqual([])
   })
 
   it('retry does nothing when no previous user message exists', () => {
@@ -611,7 +625,8 @@ describe('useChat', () => {
     expect(mockSendMessage).not.toHaveBeenCalled()
   })
 
-  it('stores last user message when sendMessage is called', () => {
+  it('batches multiple queued user messages into one submission', async () => {
+    vi.useFakeTimers()
     mockUseVercelChat.mockReturnValue({
       messages: [],
       sendMessage: mockSendMessage,
@@ -622,6 +637,7 @@ describe('useChat', () => {
     })
 
     const { result } = renderHook(() => useChat())
+    mockSetMessages.mockClear()
 
     act(() => {
       result.current.sendMessage('First message')
@@ -631,33 +647,36 @@ describe('useChat', () => {
       result.current.sendMessage('Second message')
     })
 
-    // Mock an error state
-    mockUseVercelChat.mockReturnValue({
-      messages: [
-        {
-          id: '1',
-          role: 'user',
-          parts: [{ type: 'text', text: 'Second message' }],
-        },
-        {
-          id: '2',
-          role: 'assistant',
-          parts: [],
-        },
-      ],
-      sendMessage: mockSendMessage,
-      status: 'error',
-      stop: mockStop,
-      setMessages: mockSetMessages,
-      error: new Error('API Error'),
+    expect(result.current.messages).toEqual([
+      expect.objectContaining({
+        role: 'user',
+        content: 'First message',
+      }),
+      expect.objectContaining({
+        role: 'user',
+        content: 'Second message',
+      }),
+    ])
+    expect(mockSendMessage).not.toHaveBeenCalled()
+
+    await act(async () => {
+      vi.advanceTimersByTime(6000)
     })
 
-    // Retry should resend 'Second message' (the last one)
-    act(() => {
-      result.current.retry()
-    })
-
-    expect(mockSendMessage).toHaveBeenLastCalledWith({ text: 'Second message' })
+    expect(mockSetMessages).toHaveBeenLastCalledWith([
+      {
+        id: expect.any(String),
+        role: 'user',
+        parts: [{ type: 'text', text: 'First message' }],
+      },
+      {
+        id: expect.any(String),
+        role: 'user',
+        parts: [{ type: 'text', text: 'Second message' }],
+      },
+    ])
+    expect(mockSendMessage).toHaveBeenCalledTimes(1)
+    expect(mockSendMessage.mock.calls[0]).toEqual([])
   })
 
   it('extracts products from search_products tool output', () => {
@@ -881,7 +900,10 @@ describe('useChat', () => {
       await waitFor(() => {
         const stored = sessionStorage.getItem('wpaic_chat_history')
         expect(stored).not.toBeNull()
-        const parsed = JSON.parse(stored!)
+        if (!stored) {
+          throw new Error('Expected chat history to be stored')
+        }
+        const parsed = JSON.parse(stored)
         expect(parsed).toHaveLength(2)
         expect(parsed[1].id).toBe('1')
       })

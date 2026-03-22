@@ -47,6 +47,7 @@ function hexToHoverColor(hex: string): string {
 export default function App() {
   const [isOpen, setIsOpen] = useState(false)
   const [hasInteracted, setHasInteracted] = useState(false)
+  const [autoFocusInput, setAutoFocusInput] = useState(false)
   const chat = useChat()
   const { showProactiveGreeting } = chat
   const themeColor = window.wpaicConfig?.themeColor || '#0073aa'
@@ -68,6 +69,7 @@ export default function App() {
     const timer = setTimeout(() => {
       if (!hasInteracted) {
         showProactiveGreeting()
+        setAutoFocusInput(false)
         setIsOpen(true)
         sessionStorage.setItem(PROACTIVE_SHOWN_KEY, 'true')
       }
@@ -78,12 +80,15 @@ export default function App() {
 
   const handleClose = () => {
     setHasInteracted(true)
+    setAutoFocusInput(false)
     setIsOpen(false)
   }
 
   const handleToggle = () => {
     setHasInteracted(true)
-    setIsOpen(!isOpen)
+    const nextIsOpen = !isOpen
+    setAutoFocusInput(nextIsOpen)
+    setIsOpen(nextIsOpen)
   }
 
   return (
@@ -95,6 +100,7 @@ export default function App() {
           chatbotName={config?.chatbotName}
           chatbotLogo={config?.chatbotLogo}
           conversationStarters={config?.conversationStarters ?? []}
+          autoFocusInput={autoFocusInput}
         />
       )}
       <ChatButton onClick={handleToggle} isOpen={isOpen} />
