@@ -6,17 +6,18 @@ import * as useChatModule from './hooks/useChat'
 
 vi.mock('./hooks/useChat')
 
-describe('App', () => {
-  const createMockChat = () => ({
-    messages: [{ role: 'assistant' as const, content: 'Hello! How can I help?' }],
-    sendMessage: vi.fn(),
-    isLoading: false,
-    stopGeneration: vi.fn(),
-    startNewConversation: vi.fn(),
-    activeTools: [],
-    retry: vi.fn(),
-  })
+const createMockChat = () => ({
+  messages: [{ role: 'assistant' as const, content: 'Hello! How can I help?' }],
+  sendMessage: vi.fn(),
+  isLoading: false,
+  stopGeneration: vi.fn(),
+  showProactiveGreeting: vi.fn(),
+  startNewConversation: vi.fn(),
+  activeTools: [],
+  retry: vi.fn(),
+})
 
+describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(useChatModule.useChat).mockReturnValue(createMockChat())
@@ -163,6 +164,7 @@ describe('ChatButton', () => {
       sendMessage: vi.fn(),
       isLoading: false,
       stopGeneration: vi.fn(),
+      showProactiveGreeting: vi.fn(),
       startNewConversation: vi.fn(),
       activeTools: [],
       retry: vi.fn(),
@@ -209,6 +211,7 @@ describe('Proactive engagement', () => {
       sendMessage: vi.fn(),
       isLoading: false,
       stopGeneration: vi.fn(),
+      showProactiveGreeting: vi.fn(),
       startNewConversation: vi.fn(),
       activeTools: [],
       retry: vi.fn(),
@@ -238,6 +241,28 @@ describe('Proactive engagement', () => {
     })
 
     expect(screen.getByText('AI Assistant')).toBeInTheDocument()
+  })
+
+  it('applies the proactive greeting when auto-opening the chat', async () => {
+    const mockChat = createMockChat()
+    vi.mocked(useChatModule.useChat).mockReturnValue(mockChat)
+
+    window.wpaicConfig = {
+      apiUrl: 'http://test.local/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello!',
+      proactiveEnabled: true,
+      proactiveDelay: 5,
+      proactiveMessage: 'Need help?',
+    }
+
+    render(<App />)
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+    })
+
+    expect(mockChat.showProactiveGreeting).toHaveBeenCalled()
   })
 
   it('does not auto-open when proactive is disabled', async () => {

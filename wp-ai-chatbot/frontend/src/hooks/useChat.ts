@@ -45,6 +45,10 @@ interface StoredMessage {
   parts: unknown[]
 }
 
+function isGreetingOnlyConversation(messages: Array<{ id?: string; role: string }>): boolean {
+  return messages.length === 1 && messages[0].id === 'greeting' && messages[0].role === 'assistant'
+}
+
 function saveMessagesToStorage(messages: UIMessage[]): void {
   if (messages.length === 0) return
   // Skip saving if only greeting message
@@ -65,7 +69,17 @@ function loadMessagesFromStorage(): StoredMessage[] | null {
   try {
     const stored = sessionStorage.getItem(CHAT_HISTORY_KEY)
     if (!stored) return null
-    return JSON.parse(stored) as StoredMessage[]
+    const parsed = JSON.parse(stored) as StoredMessage[]
+    if (!Array.isArray(parsed) || parsed.length === 0) return null
+
+    // Legacy clients could persist a greeting-only conversation, which
+    // prevents updated greeting settings from appearing on the next load.
+    if (isGreetingOnlyConversation(parsed)) {
+      sessionStorage.removeItem(CHAT_HISTORY_KEY)
+      return null
+    }
+
+    return parsed
   } catch {
     return null
   }
@@ -183,12 +197,18 @@ export function useChat() {
   const lastUserMessageRef = useRef<string | null>(null)
   const restoredSessionIdRef = useRef<string | null>(null)
 
-  const getGreetingMessage = (): string => {
+  const getDefaultGreetingMessage = useCallback(
+    (): string => config?.greeting || 'Hello! How can I help you today?',
+    [config]
+  )
+
+  const getProactiveGreetingMessage = useCallback((): string => {
     if (config?.proactiveEnabled && config?.proactiveMessage) {
       return config.proactiveMessage
     }
-    return config?.greeting || 'Hello! How can I help you today?'
-  }
+
+    return getDefaultGreetingMessage()
+  }, [config, getDefaultGreetingMessage])
 
   const transport = useMemo(() => {
     if (!config) return undefined
@@ -215,6 +235,24 @@ export function useChat() {
     id: sessionId,
   })
 
+  const seedGreetingMessage = useCallback(
+    (greeting: string) => {
+      if (greeting) {
+        setMessages([
+          {
+            id: 'greeting',
+            role: 'assistant',
+            parts: [{ type: 'text', text: greeting }],
+          },
+        ])
+        return
+      }
+
+      setMessages([])
+    },
+    [setMessages]
+  )
+
   // Restore the active session once per session ID so a new conversation
   // always gets its own greeting instead of reusing the previous chat state.
   useEffect(() => {
@@ -227,20 +265,8 @@ export function useChat() {
       return
     }
 
-    const greeting = getGreetingMessage()
-    if (greeting) {
-      setMessages([
-        {
-          id: 'greeting',
-          role: 'assistant',
-          parts: [{ type: 'text', text: greeting }],
-        },
-      ])
-      return
-    }
-
-    setMessages([])
-  }, [sessionId, setMessages])
+    seedGreetingMessage(getDefaultGreetingMessage())
+  }, [sessionId, setMessages, seedGreetingMessage, getDefaultGreetingMessage])
 
   // Save messages to storage when they change
   useEffect(() => {
@@ -319,6 +345,14 @@ export function useChat() {
     stop()
   }, [stop])
 
+  const showProactiveGreeting = useCallback(() => {
+    if (uiMessages.length > 0 && !isGreetingOnlyConversation(uiMessages)) {
+      return
+    }
+
+    seedGreetingMessage(getProactiveGreetingMessage())
+  }, [uiMessages, seedGreetingMessage, getProactiveGreetingMessage])
+
   const startNewConversation = useCallback(() => {
     stop()
     clearStoredMessages()
@@ -335,6 +369,7 @@ export function useChat() {
     sendMessage,
     isLoading,
     stopGeneration,
+    showProactiveGreeting,
     startNewConversation,
     activeTools,
     retry,

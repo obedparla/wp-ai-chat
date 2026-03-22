@@ -36,6 +36,7 @@ export default function App() {
   const [isOpen, setIsOpen] = useState(false)
   const [hasInteracted, setHasInteracted] = useState(false)
   const chat = useChat()
+  const { showProactiveGreeting } = chat
   const themeColor = window.wpaicConfig?.themeColor || '#0073aa'
   const config = window.wpaicConfig
 
@@ -54,13 +55,14 @@ export default function App() {
     const delay = (config.proactiveDelay ?? 10) * 1000
     const timer = setTimeout(() => {
       if (!hasInteracted) {
+        showProactiveGreeting()
         setIsOpen(true)
         sessionStorage.setItem(PROACTIVE_SHOWN_KEY, 'true')
       }
     }, delay)
 
     return () => clearTimeout(timer)
-  }, [config?.proactiveEnabled, config?.proactiveDelay, hasInteracted])
+  }, [config?.proactiveEnabled, config?.proactiveDelay, hasInteracted, showProactiveGreeting])
 
   const handleClose = () => {
     setHasInteracted(true)
