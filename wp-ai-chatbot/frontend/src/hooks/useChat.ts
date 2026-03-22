@@ -180,9 +180,8 @@ function extractActiveTools(uiMessages: UIMessage[]): ActiveTool[] {
 export function useChat() {
   const config = window.wpaicConfig
   const [sessionId, setSessionId] = useState(initialSessionId)
-  const greetingAddedRef = useRef(false)
   const lastUserMessageRef = useRef<string | null>(null)
-  const restoredFromStorageRef = useRef(false)
+  const restoredSessionIdRef = useRef<string | null>(null)
 
   const getGreetingMessage = (): string => {
     if (config?.proactiveEnabled && config?.proactiveMessage) {
@@ -216,22 +215,20 @@ export function useChat() {
     id: sessionId,
   })
 
-  // Restore messages from storage on mount
+  // Restore the active session once per session ID so a new conversation
+  // always gets its own greeting instead of reusing the previous chat state.
   useEffect(() => {
-    if (restoredFromStorageRef.current) return
-    restoredFromStorageRef.current = true
+    if (!sessionId || restoredSessionIdRef.current === sessionId) return
+    restoredSessionIdRef.current = sessionId
 
     const stored = loadMessagesFromStorage()
     if (stored && stored.length > 0) {
-      greetingAddedRef.current = true
       setMessages(stored as UIMessage[])
       return
     }
 
-    // No stored messages, show greeting
     const greeting = getGreetingMessage()
-    if (greeting && !greetingAddedRef.current) {
-      greetingAddedRef.current = true
+    if (greeting) {
       setMessages([
         {
           id: 'greeting',
@@ -239,12 +236,14 @@ export function useChat() {
           parts: [{ type: 'text', text: greeting }],
         },
       ])
+      return
     }
-  }, [setMessages])
+
+    setMessages([])
+  }, [sessionId, setMessages])
 
   // Save messages to storage when they change
   useEffect(() => {
-    if (!restoredFromStorageRef.current) return
     saveMessagesToStorage(uiMessages)
   }, [uiMessages])
 
@@ -320,22 +319,23 @@ export function useChat() {
     stop()
   }, [stop])
 
-  const clearChat = useCallback(() => {
+  const startNewConversation = useCallback(() => {
     stop()
     clearStoredMessages()
-    greetingAddedRef.current = false
-    restoredFromStorageRef.current = false
+    lastUserMessageRef.current = null
+    setMessages([])
+    restoredSessionIdRef.current = null
     const newSessionId = generateSessionId()
     sessionStorage.setItem('wpaic_session_id', newSessionId)
     setSessionId(newSessionId)
-  }, [stop])
+  }, [setMessages, stop])
 
   return {
     messages: messagesWithError,
     sendMessage,
     isLoading,
     stopGeneration,
-    clearChat,
+    startNewConversation,
     activeTools,
     retry,
   }

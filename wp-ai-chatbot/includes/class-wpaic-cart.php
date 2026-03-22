@@ -50,6 +50,7 @@ class WPAIC_Cart {
 					'cart_item_key' => $cart_item_key,
 					'cart_count'    => WC()->cart->get_cart_contents_count(),
 					'cart_total'    => WC()->cart->get_cart_total(),
+					'cart_hash'     => method_exists( WC()->cart, 'get_cart_hash' ) ? WC()->cart->get_cart_hash() : '',
 					'fragments'     => $this->get_cart_fragments(),
 				)
 			);

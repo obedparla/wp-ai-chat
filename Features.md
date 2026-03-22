@@ -1,3 +1,5 @@
+Feature ideas. Mark as "Done: true" when one is finished.
+
 # WP AI Chatbot — Feature Ideas
 
 Features organized by impact. `Done: false` means unimplemented.
@@ -8,7 +10,7 @@ Features organized by impact. `Done: false` means unimplemented.
 
 ## Tier 1: Transformative (High Impact, High Value)
 
-### 1. Site Content Indexing (Pages, Posts, Policies) — Done: false
+### 1. Site Content Indexing (Pages, Posts, Policies) — Done: true
 
 The biggest gap today. The bot understands WooCommerce products but knows **nothing** about the rest of the website — pages, blog posts, shipping policies, return policies, about us, contact info, FAQs pages, etc.
 
@@ -31,8 +33,7 @@ The bot has zero awareness of what the user is doing on the site right now.
 - Enables responses like "I see you're looking at the Blue Widget — would you like to know about sizing?"
 - Minimal frontend change (read `window.location` + `wpaicConfig.pageContext`), huge UX leap
 
-### 3. Cart Awareness — Done: false
-
+### 3. Cart Awareness — Done: true
 The bot can add to cart but has no idea what's already in it.
 
 - New tool: `get_cart_contents()` — returns items, quantities, totals
@@ -40,6 +41,8 @@ The bot can add to cart but has no idea what's already in it.
 - Bot can answer "what's in my cart?", "remove the blue shirt", "how much is my total?"
 - Enables cross-sell: "You have running shoes in your cart — want to add socks?"
 - Read cart via WC session/cookie on the server side
+
+**Brainstorm notes (2026-03-18):** Users rarely ask a chatbot "what's in my cart?" — the cart icon is faster. Write operations (remove/update) same story. The real value is cart as **passive context** (bot knows cart contents to give smarter answers about shipping, cross-sells, coupons) rather than as user-facing tools. But even passive context feels like bloat until higher-impact features are done. Revisit after Current Page Context (#2) is built — similar "inject context into every message" pattern, could share the plumbing.
 
 ### 4. Quick-Reply Chips / Suggested Actions — Done: false
 
@@ -57,10 +60,12 @@ After every bot response, show 2-3 clickable suggestion buttons.
 Empty chat state shows predefined prompt buttons instead of just a greeting.
 
 - Admin configures 3-5 starter prompts in settings
-- Display as cards/buttons in the empty chat: "Find a product", "Track my order", "Shipping info", "Talk to support"
+- Display as little chips at the bottom of the chat, above the text field in the empty chat: "Find a product", "Track my order", "Shipping info" if Woocommerce is enabled. Otherwise come up with 3 good ones for non-commerce sites.
 - Auto-generate starters based on enabled features (WooCommerce tools, handoff, etc.)
 - Reduces the "blank page" problem — users don't know what to ask
 - Mobile-friendly tap targets
+- Add the option in the admin to edit these starting chips. Add the options to the "Engagement" settings section.
+- On the chatbot frontend the chips could be scrollable vertically to save on space. Keep it simple but looking good.
 
 ### 6. Coupon & Promotion Support — Done: false
 
@@ -145,15 +150,28 @@ One of the most common pre-purchase questions.
 
 ### 14. GDPR Compliance Kit — Done: false
 
-Legal requirement for EU users — many WooCommerce stores sell to EU.
+Legal requirement for EU users. EU AI Act Article 50 makes AI disclosure mandatory from Aug 2, 2026.
 
-- Data retention policy: auto-delete conversations older than X days
-- "Delete my data" tool — user can request deletion from chat
-- Admin data export (per user/email)
-- Cookie consent integration (respect existing consent plugins)
-- Privacy policy link in chat footer
-- IP anonymization option
-- Provider-side: data retention policies for request logs, no long-term storage of conversation content
+**Chat widget:**
+- Passive consent notice at bottom of widget: "By chatting, you agree to our [Privacy Policy]" (industry standard)
+- Privacy policy URL configurable in admin
+- AI disclosure in first bot message or widget header — must be visible, not buried in ToS
+- "Delete my data" — user can request erasure of their chat history from within the chat
+
+**Chatbot admin:**
+- Data retention setting: auto-delete conversations older than X days (default 12 months)
+- Data export: download all conversations for a user/email as JSON/CSV (right to portability)
+- IP anonymization toggle
+
+**Provider-side:**
+- Sign OpenAI's Data Processing Addendum (DPA) — we hold the API key, we're the processor
+- No long-term storage of conversation content on provider
+- Data retention policies for request logs
+- Document sub-processor chain (us → OpenAI) for customers' privacy policies
+
+**Open legal questions:**
+- Are we processor (customers = controllers) or joint controller? Affects DPA chain
+- Anonymous sessions with no login — still personal data if IP is logged
 
 ---
 
@@ -229,15 +247,25 @@ Connect chat events to external tools.
 
 ## Tier 4: Nice to Have (Polish & Delight)
 
-### 21. Bot Persona Templates — Done: false
+### 21. Bot Tone Of Voice settings — Done: false
 
-Most admins don't know how to write good system prompts.
+Make it easy to change the tone of voice for the bot without modifying the system prompt.
 
-- Pre-built persona templates: "Friendly Sales Assistant", "Technical Support Agent", "Concierge", "Minimalist Helper"
-- Each template: optimized system prompt + suggested greeting + suggested starters
-- Admin picks template, customizes from there
-- Template preview shows example conversation
-- Lower barrier to getting a good-sounding bot
+- tone of voices options:
+1. Formal — Polished, structured, no contractions, courteous and reserved
+2. Friendly — Warm, conversational, approachable, uses casual language
+3. Professional — Neutral, task-focused, clear and efficient, straight to the   
+   point
+4. Enthusiastic — Energetic about products, naturally suggests options, upbeat  
+   tone
+5. Neutral — Balanced, no strong tone, factual and straightforward
+
+- Show these with a minimal description. Use a simple good looking dropdown in the admin settings.
+- Each option optimizes system prompt. Keep it super simple, using the  options above should be enough for the system prompt to understand what tone of voice to use.
+- Admin picks template from the options above
+- They can still customize their system prompt to change anything else
+- Lower barrier to getting a good-sounding bot that aligns with their image
+- Use Neutral as the default
 
 ### 22. Conversation Stickiness (Cross-Session Memory) — Done: false
 

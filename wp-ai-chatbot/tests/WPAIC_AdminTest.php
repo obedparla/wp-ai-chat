@@ -6,6 +6,8 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-logs.php';
+require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
+require_once __DIR__ . '/../includes/class-wpaic-search-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-admin.php';
 
 class WPAIC_AdminTest extends TestCase {
@@ -14,6 +16,7 @@ class WPAIC_AdminTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		WPAICTestHelper::reset();
+		$this->cleanup_search_index_files();
 		global $wpdb;
 		if ( $wpdb instanceof MockWpdb ) {
 			$wpdb->reset();
@@ -22,8 +25,29 @@ class WPAIC_AdminTest extends TestCase {
 	}
 
 	protected function tearDown(): void {
+		$this->cleanup_search_index_files();
 		WPAICTestHelper::reset();
 		parent::tearDown();
+	}
+
+	private function cleanup_search_index_files(): void {
+		$upload_dir = wp_upload_dir();
+		$search_dir = $upload_dir['basedir'] . '/wpaic/search';
+		if ( ! is_dir( $search_dir ) ) {
+			return;
+		}
+
+		$files = glob( $search_dir . '/*' );
+		if ( false !== $files ) {
+			foreach ( $files as $file ) {
+				if ( is_file( $file ) ) {
+					unlink( $file );
+				}
+			}
+		}
+
+		@rmdir( $search_dir );
+		@rmdir( dirname( $search_dir ) );
 	}
 
 	public function test_sanitize_settings_sanitizes_api_key(): void {
@@ -794,6 +818,118 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertFalse( $sanitized['enabled'] );
 	}
 
+	public function test_sanitize_settings_defaults_product_index_enabled_to_true(): void {
+		$sanitized = $this->admin->sanitize_settings( array() );
+
+		$this->assertTrue( $sanitized['product_index_enabled'] );
+		$this->assertEquals( array( 'page', 'post' ), $sanitized['content_index_post_types'] );
+	}
+
+	public function test_sanitize_settings_search_tab_allows_empty_content_selection_and_disabled_products(): void {
+		WPAICTestHelper::set_option( 'wpaic_settings', array(
+			'product_index_enabled'    => true,
+			'content_index_post_types' => array( 'page', 'post' ),
+		) );
+
+		$sanitized = $this->admin->sanitize_settings(
+			array(
+				'active_tab' => 'search',
+			)
+		);
+
+		$this->assertFalse( $sanitized['product_index_enabled'] );
+		$this->assertSame( array(), $sanitized['content_index_post_types'] );
+	}
+
+	public function test_search_tab_renders_unified_search_controls(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'product_index_enabled'    => true,
+				'content_index_post_types' => array( 'page', 'post' ),
+			)
+		);
+		$_GET['tab'] = 'search';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Indexed Sources', $output );
+		$this->assertStringContainsString( 'Products', $output );
+		$this->assertStringContainsString( 'Site Content', $output );
+		$this->assertStringContainsString( 'Update Search Indexes', $output );
+		$this->assertStringContainsString( 'wpaic-update-search-indexes', $output );
+		$this->assertStringNotContainsString( 'Rebuild Content Index', $output );
+
+		unset( $_GET['tab'] );
+	}
+
+	public function test_ajax_update_search_indexes_clears_disabled_indexes_and_persists_settings(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'product_index_enabled'    => true,
+				'content_index_post_types' => array( 'page', 'post' ),
+			)
+		);
+		WPAICTestHelper::set_option(
+			'wpaic_search_index_meta',
+			array(
+				'product_count' => 4,
+				'last_updated'  => '2026-03-20 10:00:00',
+			)
+		);
+		WPAICTestHelper::set_option(
+			'wpaic_content_index_meta',
+			array(
+				'post_count'   => 7,
+				'last_updated' => '2026-03-20 10:00:00',
+				'post_types'   => array( 'page', 'post' ),
+			)
+		);
+
+		$upload_dir = wp_upload_dir();
+		$search_dir = $upload_dir['basedir'] . '/wpaic/search';
+		wp_mkdir_p( $search_dir );
+		file_put_contents( $search_dir . '/products.index', 'products' );
+		file_put_contents( $search_dir . '/content.index', 'content' );
+
+		$_POST = array(
+			'_wpnonce' => 'test_nonce_wpaic_update_search_indexes',
+		);
+
+		try {
+			$this->admin->ajax_update_search_indexes();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertTrue( $e->success );
+			$this->assertSame( 'Search indexes updated successfully.', $e->data['message'] );
+			$this->assertFalse( $e->data['product']['enabled'] );
+			$this->assertFalse( $e->data['product']['exists'] );
+			$this->assertFalse( $e->data['content']['enabled'] );
+			$this->assertFalse( $e->data['content']['exists'] );
+			$this->assertSame( array(), $e->data['content']['post_types'] );
+		}
+
+		$settings = get_option( 'wpaic_settings', array() );
+		$this->assertFalse( $settings['product_index_enabled'] );
+		$this->assertSame( array(), $settings['content_index_post_types'] );
+		$this->assertFileDoesNotExist( $search_dir . '/products.index' );
+		$this->assertFileDoesNotExist( $search_dir . '/content.index' );
+
+		$search_meta = get_option( 'wpaic_search_index_meta', array() );
+		$this->assertSame( 0, $search_meta['product_count'] );
+		$this->assertNull( $search_meta['last_updated'] );
+
+		$content_meta = get_option( 'wpaic_content_index_meta', array() );
+		$this->assertSame( 0, $content_meta['post_count'] );
+		$this->assertNull( $content_meta['last_updated'] );
+		$this->assertSame( array(), $content_meta['post_types'] );
+	}
+
 	public function test_ajax_save_faqs_saves_qa_pairs(): void {
 		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
 
@@ -1115,5 +1251,75 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 
 		$this->assertEquals( array( 'phone_number', 'company' ), $sanitized['handoff_fields'] );
 		$this->assertTrue( $sanitized['handoff_enabled'] );
+	}
+
+	public function test_sanitize_settings_conversation_starters_trims_deduplicates_and_caps_at_five(): void {
+		$sanitized = $this->admin->sanitize_settings(
+			array(
+				'active_tab'             => 'engagement',
+				'conversation_starters'  => array(
+					'  Find a product  ',
+					'<b>Track my order</b>',
+					'Find a product',
+					'',
+					'Shipping info',
+					'Need support',
+					'Compare items',
+					'Extra starter',
+				),
+			)
+		);
+
+		$this->assertSame(
+			array(
+				'Find a product',
+				'Track my order',
+				'Shipping info',
+				'Need support',
+				'Compare items',
+			),
+			$sanitized['conversation_starters']
+		);
+	}
+
+	public function test_sanitize_settings_conversation_starters_preserved_across_other_tabs(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'conversation_starters' => array( 'Find a product', 'Track my order' ),
+			)
+		);
+
+		$sanitized = $this->admin->sanitize_settings(
+			array(
+				'active_tab'       => 'general',
+				'enabled'          => '1',
+				'greeting_message' => 'Hi',
+				'language'         => 'auto',
+			)
+		);
+
+		$this->assertSame( array( 'Find a product', 'Track my order' ), $sanitized['conversation_starters'] );
+	}
+
+	public function test_engagement_tab_renders_conversation_starter_inputs(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'conversation_starters' => array( 'Find a product', 'Track my order' ),
+			)
+		);
+		$_GET['tab'] = 'engagement';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Conversation Starters', $output );
+		$this->assertStringContainsString( 'wpaic_settings[conversation_starters][]', $output );
+		$this->assertStringContainsString( 'Find a product', $output );
+		$this->assertStringContainsString( 'Track my order', $output );
+		unset( $_GET['tab'] );
 	}
 }

@@ -17,6 +17,19 @@ class WPAIC_Search_Index {
 		$this->index_path = $upload_dir['basedir'] . '/wpaic/search/';
 	}
 
+	public function is_enabled(): bool {
+		$settings = get_option( 'wpaic_settings', array() );
+		if ( ! is_array( $settings ) ) {
+			return true;
+		}
+
+		if ( array_key_exists( 'product_index_enabled', $settings ) ) {
+			return ! empty( $settings['product_index_enabled'] );
+		}
+
+		return true;
+	}
+
 	/**
 	 * Get TNTSearch instance.
 	 *
@@ -117,6 +130,10 @@ class WPAIC_Search_Index {
 	 * @return bool True on success.
 	 */
 	public function build_index(): bool {
+		if ( ! $this->is_enabled() ) {
+			return $this->clear_index();
+		}
+
 		if ( ! $this->ensure_directory() ) {
 			return false;
 		}
@@ -152,6 +169,17 @@ class WPAIC_Search_Index {
 		}
 
 		$this->update_index_meta( count( $products ) );
+
+		return true;
+	}
+
+	public function clear_index(): bool {
+		$index_file = $this->index_path . $this->index_name;
+		if ( file_exists( $index_file ) ) {
+			wp_delete_file( $index_file );
+		}
+
+		$this->clear_index_meta();
 
 		return true;
 	}
@@ -375,6 +403,16 @@ class WPAIC_Search_Index {
 			array(
 				'product_count' => $count,
 				'last_updated'  => current_time( 'mysql' ),
+			)
+		);
+	}
+
+	private function clear_index_meta(): void {
+		update_option(
+			'wpaic_search_index_meta',
+			array(
+				'product_count' => 0,
+				'last_updated'  => null,
 			)
 		);
 	}

@@ -3,6 +3,7 @@ import type { Message, ActiveTool } from '../hooks/useChat'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import SendTranscriptDialog from './SendTranscriptDialog'
+import ConversationStarters from './ConversationStarters'
 
 interface ChatWidgetProps {
   onClose: () => void
@@ -11,12 +12,13 @@ interface ChatWidgetProps {
     sendMessage: (content: string) => void
     isLoading: boolean
     stopGeneration: () => void
-    clearChat: () => void
+    startNewConversation: () => void
     activeTools: ActiveTool[]
     retry: () => void
   }
   chatbotName?: string
   chatbotLogo?: string
+  conversationStarters?: string[]
 }
 
 function getToolProgressMessage(tool: ActiveTool): string {
@@ -32,8 +34,14 @@ function getToolProgressMessage(tool: ActiveTool): string {
   }
 }
 
-export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: ChatWidgetProps) {
-  const { messages, sendMessage, isLoading, stopGeneration, clearChat, activeTools, retry } = chat
+export default function ChatWidget({
+  onClose,
+  chat,
+  chatbotName,
+  chatbotLogo,
+  conversationStarters = [],
+}: ChatWidgetProps) {
+  const { messages, sendMessage, isLoading, stopGeneration, startNewConversation, activeTools, retry } = chat
   const [input, setInput] = useState('')
   const [showTranscriptDialog, setShowTranscriptDialog] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -42,6 +50,11 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
   const hasLogo = chatbotLogo && chatbotLogo.trim().length > 0
   const displayTitle = hasName ? chatbotName : 'AI Assistant'
   const showSubtitle = hasName
+  const isGreetingOnly =
+    messages.length === 0 ||
+    (messages.length === 1 && messages[0].role === 'assistant' && messages[0].id === 'greeting')
+  const showConversationStarters =
+    !isLoading && conversationStarters.length > 0 && isGreetingOnly
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -64,6 +77,15 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
     setInput('')
     requestAnimationFrame(() => inputRef.current?.focus())
   }
+
+  const handleStarterSelect = useCallback(
+    (starter: string) => {
+      if (isLoading) return
+      sendMessage(starter)
+      requestAnimationFrame(() => inputRef.current?.focus())
+    },
+    [isLoading, sendMessage]
+  )
 
   return (
     <div className="fixed bottom-[100px] right-6 w-[380px] max-w-[calc(100vw-48px)] h-[600px] max-h-[calc(100vh-140px)] bg-white rounded-2xl shadow-xl flex flex-col z-[9998] overflow-hidden animate-wpaic-slideUp border border-slate-200 max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[calc(100vh-60px)] max-[480px]:max-h-[calc(100vh-60px)] max-[480px]:rounded-t-2xl max-[480px]:rounded-b-none max-[480px]:border-b-0 max-[480px]:animate-wpaic-slideUpMobile">
@@ -91,12 +113,16 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
         </div>
         <div className="flex gap-1 items-center">
           <button
-            onClick={clearChat}
+            onClick={startNewConversation}
             className="bg-white/15 border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-90 transition-all duration-200 flex items-center justify-center text-base hover:opacity-100 hover:bg-white/25 hover:scale-105"
-            aria-label="Clear chat"
-            title="Clear chat"
+            aria-label="New conversation"
+            title="New conversation"
           >
-            ↺
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M12 6H7a2 2 0 0 0-2 2v9l3-2h4a2 2 0 0 0 2-2v-1" />
+              <path d="M15 3v6" />
+              <path d="M12 6h6" />
+            </svg>
           </button>
           <button
             onClick={() => setShowTranscriptDialog(true)}
@@ -118,7 +144,14 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
           </button>
         </div>
       </div>
-      <MessageList messages={messages} onRetry={retry} />
+      <MessageList messages={messages} onRetry={retry}>
+        {showConversationStarters && (
+          <ConversationStarters
+            starters={conversationStarters}
+            onSelect={handleStarterSelect}
+          />
+        )}
+      </MessageList>
       {isLoading && activeTools.length > 0 && (
         <div className="py-3 px-5 flex flex-col gap-2 bg-white border-t border-slate-200">
           {activeTools.map((tool, i) => (

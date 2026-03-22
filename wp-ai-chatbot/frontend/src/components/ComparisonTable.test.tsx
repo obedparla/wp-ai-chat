@@ -166,6 +166,37 @@ describe('ComparisonTable', () => {
     })
   })
 
+  it('updates cart fragments after successful AJAX add to cart', async () => {
+    document.body.insertAdjacentHTML('afterbegin', '<div class="cart-count">0</div>')
+
+    window.wpaicConfig = {
+      apiUrl: 'https://example.com/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello',
+      wcAjaxUrl: 'https://example.com/wp-admin/admin-ajax.php',
+    }
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          success: true,
+          cart_hash: 'hash-3',
+          fragments: {
+            'div.cart-count': '<div class="cart-count">3</div>',
+          },
+        }),
+    })
+
+    render(<ComparisonTable data={mockData} />)
+    const buttons = screen.getAllByRole('button', { name: /add to cart/i })
+    fireEvent.click(buttons[0])
+
+    await waitFor(() => {
+      expect(document.querySelector('.cart-count')?.textContent).toBe('3')
+    })
+  })
+
   it('links to product URL from header', () => {
     render(<ComparisonTable data={mockData} />)
     const links = screen.getAllByRole('link')

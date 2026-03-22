@@ -104,24 +104,36 @@ class WPAIC_Loader {
 		add_action(
 			'woocommerce_new_product',
 			function ( int $product_id ) use ( $search_index ): void {
+				if ( ! $search_index->is_enabled() ) {
+					return;
+				}
 				$search_index->index_product( $product_id );
 			}
 		);
 		add_action(
 			'woocommerce_update_product',
 			function ( int $product_id ) use ( $search_index ): void {
+				if ( ! $search_index->is_enabled() ) {
+					return;
+				}
 				$search_index->index_product( $product_id );
 			}
 		);
 		add_action(
 			'woocommerce_delete_product',
 			function ( int $product_id ) use ( $search_index ): void {
+				if ( ! $search_index->is_enabled() ) {
+					return;
+				}
 				$search_index->remove_product( $product_id );
 			}
 		);
 		add_action(
 			'wp_trash_post',
 			function ( int $post_id ) use ( $search_index ): void {
+				if ( ! $search_index->is_enabled() ) {
+					return;
+				}
 				if ( 'product' === get_post_type( $post_id ) ) {
 					$search_index->remove_product( $post_id );
 				}
@@ -130,6 +142,9 @@ class WPAIC_Loader {
 		add_action(
 			'woocommerce_save_product_variation',
 			function ( int $variation_id ) use ( $search_index ): void {
+				if ( ! $search_index->is_enabled() ) {
+					return;
+				}
 				$parent_id = wp_get_post_parent_id( $variation_id );
 				if ( $parent_id ) {
 					$search_index->index_product( $parent_id );

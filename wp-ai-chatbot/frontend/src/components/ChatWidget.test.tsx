@@ -18,7 +18,7 @@ interface MockChat {
   sendMessage: ReturnType<typeof vi.fn>
   isLoading: boolean
   stopGeneration: ReturnType<typeof vi.fn>
-  clearChat: ReturnType<typeof vi.fn>
+  startNewConversation: ReturnType<typeof vi.fn>
   activeTools: ActiveTool[]
   retry: ReturnType<typeof vi.fn>
 }
@@ -32,7 +32,7 @@ function createMockChat(overrides: Partial<MockChat> = {}): MockChat {
     sendMessage: vi.fn(),
     isLoading: false,
     stopGeneration: vi.fn(),
-    clearChat: vi.fn(),
+    startNewConversation: vi.fn(),
     activeTools: [],
     retry: vi.fn(),
     ...overrides,
@@ -172,6 +172,52 @@ describe('ChatWidget', () => {
     const sendBtn = screen.getByRole('button', { name: 'Send' })
     expect(sendBtn).toBeDisabled()
   })
+
+  it('shows conversation starters for a greeting-only conversation', () => {
+    render(
+      <ChatWidget
+        onClose={mockOnClose}
+        chat={createMockChat({
+          messages: [{ role: 'assistant', content: 'Hello! How can I help?', id: 'greeting' }],
+        })}
+        conversationStarters={['Find a product', 'Track my order']}
+      />
+    )
+
+    expect(screen.getByText('Try asking')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Find a product' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Track my order' })).toBeInTheDocument()
+  })
+
+  it('hides conversation starters once the conversation has real history', () => {
+    render(
+      <ChatWidget
+        onClose={mockOnClose}
+        chat={createMockChat()}
+        conversationStarters={['Find a product']}
+      />
+    )
+
+    expect(screen.queryByText('Try asking')).not.toBeInTheDocument()
+  })
+
+  it('sends a starter immediately when clicked', async () => {
+    const mockChat = createMockChat({
+      messages: [{ role: 'assistant', content: 'Hello! How can I help?', id: 'greeting' }],
+    })
+
+    render(
+      <ChatWidget
+        onClose={mockOnClose}
+        chat={mockChat}
+        conversationStarters={['Find a product']}
+      />
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Find a product' }))
+
+    expect(mockChat.sendMessage).toHaveBeenCalledWith('Find a product')
+  })
 })
 
 describe('ChatWidget error messages', () => {
@@ -245,20 +291,20 @@ describe('ChatWidget retry button', () => {
   })
 })
 
-describe('ChatWidget clear chat', () => {
-  it('renders clear button in header', () => {
+describe('ChatWidget new conversation', () => {
+  it('renders new conversation button in header', () => {
     render(<ChatWidget onClose={vi.fn()} chat={createMockChat()} />)
-    expect(screen.getByRole('button', { name: 'Clear chat' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New conversation' })).toBeInTheDocument()
   })
 
-  it('calls clearChat when clear button clicked', async () => {
+  it('calls startNewConversation when new conversation button clicked', async () => {
     const mockChat = createMockChat()
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
 
-    const clearBtn = screen.getByRole('button', { name: 'Clear chat' })
-    await userEvent.click(clearBtn)
+    const newConversationBtn = screen.getByRole('button', { name: 'New conversation' })
+    await userEvent.click(newConversationBtn)
 
-    expect(mockChat.clearChat).toHaveBeenCalled()
+    expect(mockChat.startNewConversation).toHaveBeenCalled()
   })
 })
 

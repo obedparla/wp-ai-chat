@@ -113,6 +113,7 @@ class WPAIC_CartTest extends TestCase {
 			$this->assertEquals( 'Product added to cart', $e->data['message'] );
 			$this->assertNotEmpty( $e->data['cart_item_key'] );
 			$this->assertEquals( 1, $e->data['cart_count'] );
+			$this->assertNotEmpty( $e->data['cart_hash'] );
 		}
 	}
 

@@ -142,6 +142,36 @@ describe('ProductCard', () => {
     })
   })
 
+  it('updates cart fragments after successful AJAX add to cart', async () => {
+    document.body.insertAdjacentHTML('afterbegin', '<div class="cart-count">0</div>')
+
+    window.wpaicConfig = {
+      apiUrl: 'https://example.com/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello',
+      wcAjaxUrl: 'https://example.com/wp-admin/admin-ajax.php',
+    }
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          success: true,
+          cart_hash: 'hash-1',
+          fragments: {
+            'div.cart-count': '<div class="cart-count">1</div>',
+          },
+        }),
+    })
+
+    render(<ProductCard product={mockProduct} />)
+    fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
+
+    await waitFor(() => {
+      expect(document.querySelector('.cart-count')?.textContent).toBe('1')
+    })
+  })
+
   it('falls back to redirect on fetch error', async () => {
     const originalLocation = window.location
     Object.defineProperty(window, 'location', {

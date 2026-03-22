@@ -8,6 +8,7 @@ declare global {
       greeting: string
       chatbotName?: string
       chatbotLogo?: string
+      conversationStarters?: string[]
     }
   }
 }
@@ -58,5 +59,6 @@ beforeEach(() => {
     apiUrl: '/wp-json/wpaic/v1',
     nonce: 'test-nonce',
     greeting: 'Hello! How can I help you today?',
+    conversationStarters: [],
   }
 })

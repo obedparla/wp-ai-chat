@@ -7,14 +7,19 @@ import * as useChatModule from './hooks/useChat'
 vi.mock('./hooks/useChat')
 
 describe('App', () => {
+  const createMockChat = () => ({
+    messages: [{ role: 'assistant' as const, content: 'Hello! How can I help?' }],
+    sendMessage: vi.fn(),
+    isLoading: false,
+    stopGeneration: vi.fn(),
+    startNewConversation: vi.fn(),
+    activeTools: [],
+    retry: vi.fn(),
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(useChatModule.useChat).mockReturnValue({
-      messages: [{ role: 'assistant', content: 'Hello! How can I help?' }],
-      sendMessage: vi.fn(),
-      isLoading: false,
-      stopGeneration: vi.fn(),
-    })
+    vi.mocked(useChatModule.useChat).mockReturnValue(createMockChat())
   })
 
   it('renders toggle button at bottom-right position', () => {
@@ -78,14 +83,12 @@ describe('App', () => {
 
   it('preserves chat history when widget is closed and reopened', async () => {
     vi.mocked(useChatModule.useChat).mockReturnValue({
+      ...createMockChat(),
       messages: [
         { role: 'assistant', content: 'Hello! How can I help?' },
         { role: 'user', content: 'Test message' },
         { role: 'assistant', content: 'Response to test' },
       ],
-      sendMessage: vi.fn(),
-      isLoading: false,
-      stopGeneration: vi.fn(),
     })
 
     render(<App />)
@@ -115,10 +118,9 @@ describe('App', () => {
   it('sends message when Enter key pressed in input', async () => {
     const mockSendMessage = vi.fn()
     vi.mocked(useChatModule.useChat).mockReturnValue({
+      ...createMockChat(),
       messages: [{ role: 'assistant', content: 'Hello!' }],
       sendMessage: mockSendMessage,
-      isLoading: false,
-      stopGeneration: vi.fn(),
     })
 
     render(<App />)
@@ -130,6 +132,27 @@ describe('App', () => {
 
     expect(mockSendMessage).toHaveBeenCalledWith('Test message')
   })
+
+  it('passes configured conversation starters into the widget', async () => {
+    window.wpaicConfig = {
+      apiUrl: 'http://test.local/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello!',
+      conversationStarters: ['Find a product', 'Track my order'],
+    }
+
+    vi.mocked(useChatModule.useChat).mockReturnValue({
+      ...createMockChat(),
+      messages: [{ role: 'assistant', content: 'Hello!', id: 'greeting' }],
+    })
+
+    render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
+
+    expect(screen.getByRole('button', { name: 'Find a product' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Track my order' })).toBeInTheDocument()
+  })
 })
 
 describe('ChatButton', () => {
@@ -140,6 +163,9 @@ describe('ChatButton', () => {
       sendMessage: vi.fn(),
       isLoading: false,
       stopGeneration: vi.fn(),
+      startNewConversation: vi.fn(),
+      activeTools: [],
+      retry: vi.fn(),
     })
   })
 
@@ -183,6 +209,9 @@ describe('Proactive engagement', () => {
       sendMessage: vi.fn(),
       isLoading: false,
       stopGeneration: vi.fn(),
+      startNewConversation: vi.fn(),
+      activeTools: [],
+      retry: vi.fn(),
     })
   })
 

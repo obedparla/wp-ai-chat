@@ -81,12 +81,13 @@ function wpaic_activate(): void {
 	add_option(
 		'wpaic_settings',
 		array(
-			'openai_api_key'   => '',
-			'model'            => 'gpt-4o-mini',
-			'greeting_message' => 'Hello! How can I help you today?',
-			'enabled'          => true,
-			'system_prompt'    => '',
-			'theme_color'      => '#0073aa',
+			'openai_api_key'        => '',
+			'model'                 => 'gpt-4o-mini',
+			'greeting_message'      => 'Hello! How can I help you today?',
+			'enabled'               => true,
+			'system_prompt'         => '',
+			'theme_color'           => '#0073aa',
+			'conversation_starters' => array(),
 		)
 	);
 

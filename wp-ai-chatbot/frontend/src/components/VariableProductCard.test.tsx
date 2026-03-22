@@ -162,4 +162,37 @@ describe('VariableProductCard', () => {
       expect(screen.getByText('✓ Added')).toBeInTheDocument()
     })
   })
+
+  it('updates cart fragments after adding a variation to cart', async () => {
+    document.body.insertAdjacentHTML('afterbegin', '<div class="cart-count">0</div>')
+
+    window.wpaicConfig = {
+      apiUrl: 'https://example.com/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello',
+      wcAjaxUrl: 'https://example.com/wp-admin/admin-ajax.php',
+    }
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          success: true,
+          cart_hash: 'hash-2',
+          fragments: {
+            'div.cart-count': '<div class="cart-count">2</div>',
+          },
+        }),
+    })
+
+    render(<VariableProductCard product={mockVariableProduct} />)
+
+    fireEvent.change(screen.getByLabelText('Color'), { target: { value: 'Red' } })
+    fireEvent.change(screen.getByLabelText('Size'), { target: { value: 'S' } })
+    fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
+
+    await waitFor(() => {
+      expect(document.querySelector('.cart-count')?.textContent).toBe('2')
+    })
+  })
 })

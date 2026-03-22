@@ -251,19 +251,25 @@ describe('useChat', () => {
     expect(mockStop).toHaveBeenCalled()
   })
 
-  it('clearChat calls stop and setMessages with greeting', () => {
+  it('startNewConversation clears state, stops streaming, and reseeds the greeting', () => {
     const { result } = renderHook(() => useChat())
 
     act(() => {
-      result.current.clearChat()
+      result.current.startNewConversation()
     })
 
     expect(mockStop).toHaveBeenCalled()
-    // First call clears, second call sets greeting
-    expect(mockSetMessages).toHaveBeenCalled()
+    expect(mockSetMessages).toHaveBeenCalledWith([])
+    expect(mockSetMessages).toHaveBeenCalledWith([
+      {
+        id: 'greeting',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Hello! How can I help?' }],
+      },
+    ])
   })
 
-  it('clearChat with no greeting results in empty messages call', () => {
+  it('startNewConversation with no greeting keeps the session empty', () => {
     window.wpaicConfig = {
       apiUrl: '/wp-json/wpaic/v1',
       nonce: 'test-nonce',
@@ -273,7 +279,7 @@ describe('useChat', () => {
     const { result } = renderHook(() => useChat())
 
     act(() => {
-      result.current.clearChat()
+      result.current.startNewConversation()
     })
 
     expect(mockStop).toHaveBeenCalled()
@@ -793,7 +799,7 @@ describe('useChat', () => {
       expect(stored).toBeNull()
     })
 
-    it('clearChat removes stored messages', async () => {
+    it('startNewConversation removes stored messages', async () => {
       sessionStorage.setItem('wpaic_chat_history', JSON.stringify([
         { id: '1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
       ]))
@@ -801,7 +807,7 @@ describe('useChat', () => {
       const { result } = renderHook(() => useChat())
 
       act(() => {
-        result.current.clearChat()
+        result.current.startNewConversation()
       })
 
       expect(sessionStorage.getItem('wpaic_chat_history')).toBeNull()

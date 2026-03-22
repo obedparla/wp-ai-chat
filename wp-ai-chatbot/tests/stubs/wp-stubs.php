@@ -883,11 +883,13 @@ function wpaic_activate(): void {
 	add_option(
 		'wpaic_settings',
 		array(
-			'openai_api_key'   => '',
-			'model'            => 'gpt-4o-mini',
-			'greeting_message' => 'Hello! How can I help you today?',
-			'enabled'          => true,
-			'system_prompt'    => '',
+			'openai_api_key'        => '',
+			'model'                 => 'gpt-4o-mini',
+			'greeting_message'      => 'Hello! How can I help you today?',
+			'enabled'               => true,
+			'system_prompt'         => '',
+			'theme_color'           => '#0073aa',
+			'conversation_starters' => array(),
 		)
 	);
 
@@ -1123,6 +1125,12 @@ if ( ! function_exists( 'admin_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'rest_url' ) ) {
+	function rest_url( string $path = '', ?string $scheme = null ): string {
+		return 'https://example.com/wp-json/' . ltrim( $path, '/' );
+	}
+}
+
 if ( ! function_exists( '__' ) ) {
 	function __( string $text, string $domain = 'default' ): string {
 		return $text;
@@ -1138,6 +1146,18 @@ if ( ! function_exists( 'get_admin_page_title' ) ) {
 if ( ! function_exists( 'settings_fields' ) ) {
 	function settings_fields( string $option_group ): void {
 		// No-op for unit tests.
+	}
+}
+
+if ( ! function_exists( 'wp_nonce_field' ) ) {
+	function wp_nonce_field( string $action = '-1', string $name = '_wpnonce', bool $referer = true, bool $display = true ): string {
+		$field = '<input type="hidden" name="' . esc_attr( $name ) . '" value="' . esc_attr( wp_create_nonce( $action ) ) . '" />';
+
+		if ( $display ) {
+			echo $field;
+		}
+
+		return $field;
 	}
 }
 
@@ -1172,6 +1192,12 @@ if ( ! function_exists( 'check_ajax_referer' ) ) {
 	}
 }
 
+if ( ! function_exists( 'check_admin_referer' ) ) {
+	function check_admin_referer( string $action = '-1', string $query_arg = '_wpnonce' ): int|false {
+		return 1;
+	}
+}
+
 class WPAICJsonResponseException extends Exception {
 	public mixed $data;
 	public bool $success;
@@ -1180,6 +1206,15 @@ class WPAICJsonResponseException extends Exception {
 		$this->data    = $data;
 		$this->success = $success;
 		parent::__construct( $success ? 'JSON Success' : 'JSON Error' );
+	}
+}
+
+class WPAICRedirectException extends Exception {
+	public string $location;
+
+	public function __construct( string $location ) {
+		$this->location = $location;
+		parent::__construct( 'Redirect: ' . $location );
 	}
 }
 
@@ -1204,6 +1239,12 @@ if ( ! function_exists( 'wp_send_json_error' ) ) {
 	 */
 	function wp_send_json_error( $data = null, ?int $status_code = null, int $flags = 0 ): never {
 		throw new WPAICJsonResponseException( $data, false );
+	}
+}
+
+if ( ! function_exists( 'wp_safe_redirect' ) ) {
+	function wp_safe_redirect( string $location, int $status = 302, string $x_redirect_by = 'WordPress' ): never {
+		throw new WPAICRedirectException( $location );
 	}
 }
 
@@ -1552,6 +1593,10 @@ if ( ! class_exists( 'MockWCCart' ) ) {
 			}
 
 			return $this->format_price( $this->get_numeric_total() );
+		}
+
+		public function get_cart_hash(): string {
+			return md5( serialize( $this->cart ) );
 		}
 
 		public function get_cart_subtotal(): string {
