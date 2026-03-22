@@ -192,14 +192,18 @@ export function useChat() {
 
   const transport = useMemo(() => {
     if (!config) return undefined
+    const body: Record<string, unknown> = {
+      session_id: sessionId,
+    }
+    if (config.pageContext) {
+      body.page_context = config.pageContext
+    }
     return new DefaultChatTransport({
       api: `${config.apiUrl}/chat/stream`,
       headers: {
         'X-WP-Nonce': config.nonce,
       },
-      body: {
-        session_id: sessionId,
-      },
+      body,
     })
   }, [config, sessionId])
 
