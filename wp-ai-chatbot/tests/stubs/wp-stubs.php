@@ -33,6 +33,7 @@ if ( ! class_exists( 'WP_Term' ) ) {
 		public int $term_id = 0;
 		public string $name = '';
 		public string $slug = '';
+		public string $taxonomy = '';
 		public int $count = 0;
 
 		/**
@@ -190,6 +191,14 @@ class WPAICTestHelper {
 	/** @var array<string, MockWCOrder> */
 	public static array $mock_orders = array();
 
+	/** @var array<string, bool> */
+	private static array $conditionals = array();
+
+	private static WP_Post|WP_Term|null $queried_object = null;
+
+	/** @var array<string, int> */
+	private static array $wc_page_ids = array();
+
 	public static function reset(): void {
 		self::$mock_posts      = array();
 		self::$mock_post_meta  = array();
@@ -197,6 +206,10 @@ class WPAICTestHelper {
 		self::$mock_options    = array();
 		self::$mock_post_terms = array();
 		self::$mock_orders     = array();
+		self::$conditionals    = array();
+		self::$queried_object  = null;
+		self::$wc_page_ids     = array();
+		unset( $_SERVER['REQUEST_URI'] );
 
 		if ( isset( $GLOBALS['wpdb'] ) && $GLOBALS['wpdb'] instanceof MockWpdb ) {
 			$GLOBALS['wpdb']->reset();
@@ -409,6 +422,30 @@ class WPAICTestHelper {
 	public static function delete_option( string $name ): void {
 		unset( self::$mock_options[ $name ] );
 	}
+
+	public static function set_conditional( string $name, bool $value ): void {
+		self::$conditionals[ $name ] = $value;
+	}
+
+	public static function get_conditional( string $name ): bool {
+		return self::$conditionals[ $name ] ?? false;
+	}
+
+	public static function set_queried_object( WP_Post|WP_Term|null $object ): void {
+		self::$queried_object = $object;
+	}
+
+	public static function get_queried_object(): WP_Post|WP_Term|null {
+		return self::$queried_object;
+	}
+
+	public static function set_wc_page_id( string $page, int $post_id ): void {
+		self::$wc_page_ids[ $page ] = $post_id;
+	}
+
+	public static function get_wc_page_id( string $page ): int {
+		return self::$wc_page_ids[ $page ] ?? 0;
+	}
 }
 
 if ( ! function_exists( 'wp_upload_dir' ) ) {
@@ -583,6 +620,123 @@ if ( ! function_exists( 'get_bloginfo' ) ) {
 if ( ! function_exists( 'home_url' ) ) {
 	function home_url( string $path = '' ): string {
 		return 'http://example.com' . $path;
+	}
+}
+
+if ( ! function_exists( 'is_product' ) ) {
+	function is_product(): bool {
+		return WPAICTestHelper::get_conditional( 'is_product' );
+	}
+}
+
+if ( ! function_exists( 'is_cart' ) ) {
+	function is_cart(): bool {
+		return WPAICTestHelper::get_conditional( 'is_cart' );
+	}
+}
+
+if ( ! function_exists( 'is_checkout' ) ) {
+	function is_checkout(): bool {
+		return WPAICTestHelper::get_conditional( 'is_checkout' );
+	}
+}
+
+if ( ! function_exists( 'is_shop' ) ) {
+	function is_shop(): bool {
+		return WPAICTestHelper::get_conditional( 'is_shop' );
+	}
+}
+
+if ( ! function_exists( 'is_product_category' ) ) {
+	function is_product_category(): bool {
+		return WPAICTestHelper::get_conditional( 'is_product_category' );
+	}
+}
+
+if ( ! function_exists( 'is_product_tag' ) ) {
+	function is_product_tag(): bool {
+		return WPAICTestHelper::get_conditional( 'is_product_tag' );
+	}
+}
+
+if ( ! function_exists( 'is_singular' ) ) {
+	function is_singular(): bool {
+		return WPAICTestHelper::get_conditional( 'is_singular' );
+	}
+}
+
+if ( ! function_exists( 'get_queried_object' ) ) {
+	function get_queried_object(): WP_Post|WP_Term|null {
+		return WPAICTestHelper::get_queried_object();
+	}
+}
+
+if ( ! function_exists( 'get_queried_object_id' ) ) {
+	function get_queried_object_id(): int {
+		$queried = WPAICTestHelper::get_queried_object();
+		if ( $queried instanceof WP_Post ) {
+			return $queried->ID;
+		}
+		if ( $queried instanceof WP_Term ) {
+			return $queried->term_id;
+		}
+		return 0;
+	}
+}
+
+if ( ! function_exists( 'get_term_link' ) ) {
+	function get_term_link( WP_Term $term ): string {
+		if ( 'product_cat' === $term->taxonomy ) {
+			return 'http://example.com/product-category/' . $term->slug . '/';
+		}
+		if ( 'product_tag' === $term->taxonomy ) {
+			return 'http://example.com/product-tag/' . $term->slug . '/';
+		}
+		return 'http://example.com/term/' . $term->slug . '/';
+	}
+}
+
+if ( ! function_exists( 'get_post_type_archive_link' ) ) {
+	function get_post_type_archive_link( string $post_type ): string|false {
+		if ( 'product' === $post_type ) {
+			$shop_page_id = WPAICTestHelper::get_wc_page_id( 'shop' );
+			if ( $shop_page_id > 0 ) {
+				return get_permalink( $shop_page_id );
+			}
+		}
+		return false;
+	}
+}
+
+if ( ! function_exists( 'wc_get_checkout_url' ) ) {
+	function wc_get_checkout_url(): string {
+		return 'http://example.com/checkout/';
+	}
+}
+
+if ( ! function_exists( 'wc_get_page_id' ) ) {
+	function wc_get_page_id( string $page ): int {
+		return WPAICTestHelper::get_wc_page_id( $page );
+	}
+}
+
+if ( ! function_exists( 'get_the_title' ) ) {
+	function get_the_title( int $post_id = 0 ): string {
+		$post = get_post( $post_id );
+		return $post instanceof WP_Post ? $post->post_title : '';
+	}
+}
+
+if ( ! function_exists( 'wp_get_document_title' ) ) {
+	function wp_get_document_title(): string {
+		$queried = WPAICTestHelper::get_queried_object();
+		if ( $queried instanceof WP_Post ) {
+			return $queried->post_title;
+		}
+		if ( $queried instanceof WP_Term ) {
+			return $queried->name;
+		}
+		return 'Current page';
 	}
 }
 

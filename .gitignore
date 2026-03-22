@@ -6,3 +6,4 @@ vendor/
 composer.phar
 **/.claude/
 **/superpowers/
+**/dist

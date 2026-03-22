@@ -6,6 +6,7 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
+require_once __DIR__ . '/../includes/class-wpaic-page-context.php';
 require_once __DIR__ . '/../includes/class-wpaic-frontend.php';
 
 class WPAIC_FrontendTest extends TestCase {
@@ -68,6 +69,29 @@ class WPAIC_FrontendTest extends TestCase {
 		$this->assertContains( 'What are your shipping and return policies?', $config['conversationStarters'] );
 		$this->assertContains( 'Show me product categories', $config['conversationStarters'] );
 		$this->assertNotContains( 'I need help from support', $config['conversationStarters'] );
+	}
+
+	public function test_build_frontend_config_includes_page_context(): void {
+		$page = WPAICTestHelper::add_mock_post(
+			array(
+				'ID'         => 30,
+				'post_title' => 'Refund Policy',
+				'post_type'  => 'page',
+			)
+		);
+		WPAICTestHelper::set_queried_object( $page );
+		WPAICTestHelper::set_conditional( 'is_singular', true );
+
+		$frontend = new WPAIC_Frontend();
+		$config   = $frontend->build_frontend_config(
+			array(
+				'greeting_message' => 'Hello!',
+			)
+		);
+
+		$this->assertArrayHasKey( 'pageContext', $config );
+		$this->assertSame( 'singular', $config['pageContext']['page_type'] );
+		$this->assertSame( 30, $config['pageContext']['post_id'] );
 	}
 
 	private function create_content_index_file(): void {

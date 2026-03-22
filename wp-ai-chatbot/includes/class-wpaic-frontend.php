@@ -75,6 +75,7 @@ class WPAIC_Frontend {
 			'themeColor'           => $settings['theme_color'] ?? '#0073aa',
 			'wcAjaxUrl'            => admin_url( 'admin-ajax.php' ),
 			'cartUrl'              => function_exists( 'wc_get_cart_url' ) ? wc_get_cart_url() : '',
+			'pageContext'          => ( new WPAIC_Page_Context() )->build(),
 			'proactiveEnabled'     => $proactive_config['enabled'],
 			'proactiveDelay'       => $proactive_config['delay'],
 			'proactiveMessage'     => $proactive_config['message'],

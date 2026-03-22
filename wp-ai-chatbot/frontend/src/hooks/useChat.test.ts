@@ -119,6 +119,29 @@ describe('useChat', () => {
     expect(mockSendMessage).toHaveBeenCalledWith({ text: 'Hello' })
   })
 
+  it('includes page_context in the transport body', () => {
+    window.wpaicConfig = {
+      apiUrl: '/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello! How can I help?',
+      pageContext: {
+        page_type: 'product',
+        title: 'Blue Widget',
+        url: 'http://example.com/product/blue-widget/',
+        post_id: 42,
+        post_type: 'product',
+        product_id: 42,
+      },
+    }
+
+    renderHook(() => useChat())
+
+    const options = mockUseVercelChat.mock.calls[0]?.[0] as {
+      transport?: { body?: Record<string, unknown> }
+    }
+    expect(options.transport?.body?.page_context).toEqual(window.wpaicConfig.pageContext)
+  })
+
   it('converts UIMessages to Message format with text content', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [
