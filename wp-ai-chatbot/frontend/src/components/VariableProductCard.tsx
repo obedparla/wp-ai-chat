@@ -7,19 +7,29 @@ interface VariableProductCardProps {
   product: Product
 }
 
-type CartState = 'idle' | 'loading' | 'success' | 'error'
+interface CartStateMap {
+  idle: 'idle'
+  loading: 'loading'
+  success: 'success'
+  error: 'error'
+}
+
+type CartState = CartStateMap[keyof CartStateMap]
 
 export default function VariableProductCard({ product }: VariableProductCardProps) {
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({})
   const [cartState, setCartState] = useState<CartState>('idle')
 
   const selectedVariation = useMemo((): ProductVariation | null => {
-    if (!product.variations || !product.attributes) return null
-    if (Object.keys(selectedAttributes).length !== product.attributes.length) return null
+    const variations = product.variations
+    const attributes = product.attributes
+
+    if (!variations || !attributes) return null
+    if (Object.keys(selectedAttributes).length !== attributes.length) return null
 
     return (
-      product.variations.find((variation) => {
-        return product.attributes!.every((attr) => {
+      variations.find((variation) => {
+        return attributes.every((attr) => {
           const attrKey = `attribute_${attr.name}`
           const selectedValue = selectedAttributes[attr.name]
           const variationValue = variation.attributes[attrKey]
@@ -59,7 +69,6 @@ export default function VariableProductCard({ product }: VariableProductCardProp
 
     const wcAjaxUrl = window.wpaicConfig?.wcAjaxUrl
     if (!wcAjaxUrl) {
-      // eslint-disable-next-line react-hooks/immutability
       window.location.href = product.url
       return
     }
@@ -82,7 +91,6 @@ export default function VariableProductCard({ product }: VariableProductCardProp
       })
 
       if (!response.ok) {
-        // eslint-disable-next-line react-hooks/immutability
         window.location.href = product.url
         return
       }
@@ -90,7 +98,6 @@ export default function VariableProductCard({ product }: VariableProductCardProp
       const data = await response.json()
 
       if (hasCartUpdateError(data)) {
-        // eslint-disable-next-line react-hooks/immutability
         window.location.href = product.url
         return
       }
@@ -100,7 +107,6 @@ export default function VariableProductCard({ product }: VariableProductCardProp
 
       setTimeout(() => setCartState('idle'), 2000)
     } catch {
-      // eslint-disable-next-line react-hooks/immutability
       window.location.href = product.url
     }
   }
