@@ -69,17 +69,17 @@ class WPAIC_APITest extends TestCase {
 			)
 		);
 
-		$this->assertSame(
-			array(
-				'page_type'  => 'product',
-				'title'      => 'Blue Widget',
-				'url'        => 'http://example.com/product/blue-widget/',
-				'post_id'    => 42,
-				'post_type'  => 'product',
-				'product_id' => 42,
-			),
-			$result
-		);
+			$this->assertSame(
+				array(
+					'page_type'  => 'product',
+					'title'      => 'Blue Widget',
+					'url'        => 'http://example.com/product/blue-widget/',
+					'post_id'    => 42,
+					'product_id' => 42,
+					'post_type'  => 'product',
+				),
+				$result
+			);
 	}
 
 	public function test_sanitize_page_context_returns_empty_array_for_invalid_payload(): void {

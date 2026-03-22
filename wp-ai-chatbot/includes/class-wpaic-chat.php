@@ -545,21 +545,50 @@ class WPAIC_Chat {
 	}
 
 	private function get_system_prompt(): string {
-		$custom_prompt = $this->settings['system_prompt'] ?? '';
-		$faq_section   = $this->get_faq_instruction();
-		$page_context  = $this->get_page_context_instruction() . $this->get_current_page_context_summary();
+		$custom_prompt                  = $this->settings['system_prompt'] ?? '';
+		$faq_section                    = $this->get_faq_instruction();
+		$page_context                   = $this->get_page_context_instruction() . $this->get_current_page_context_summary();
+		$include_tool_response_guidance = false;
 
 		if ( is_string( $custom_prompt ) && '' !== trim( $custom_prompt ) ) {
-			return $custom_prompt . $faq_section . $this->get_tool_response_instruction() . $page_context . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
+			$base_prompt                    = $custom_prompt;
+			$include_tool_response_guidance = true;
+		} else {
+			$site_name = get_bloginfo( 'name' );
+
+			if ( wpaic_is_woocommerce_active() ) {
+				$base_prompt                    = "You are a helpful assistant for {$site_name}. Help customers find products and answer questions. Be friendly and concise. Use tools to search products when asked.";
+				$include_tool_response_guidance = true;
+				} else {
+					$base_prompt = "You are a helpful assistant for {$site_name}. Answer questions and help visitors. Be friendly and concise.";
+				}
+			}
+
+		$prompt = $base_prompt . $this->get_tone_of_voice_instruction() . $faq_section;
+
+		if ( $include_tool_response_guidance ) {
+			$prompt .= $this->get_tool_response_instruction();
 		}
 
-		$site_name = get_bloginfo( 'name' );
+		return $prompt . $page_context . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
+	}
 
-		if ( wpaic_is_woocommerce_active() ) {
-			return "You are a helpful assistant for {$site_name}. Help customers find products and answer questions. Be friendly and concise. Use tools to search products when asked." . $faq_section . $this->get_tool_response_instruction() . $page_context . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
+	private function get_tone_of_voice_instruction(): string {
+		$tone_of_voice = $this->settings['tone_of_voice'] ?? 'neutral';
+		if ( ! is_string( $tone_of_voice ) ) {
+			return '';
 		}
 
-		return "You are a helpful assistant for {$site_name}. Answer questions and help visitors. Be friendly and concise." . $faq_section . $this->get_handoff_instruction() . $page_context . $this->get_language_instruction() . $this->get_content_index_instruction();
+		switch ( $tone_of_voice ) {
+			case 'friendly':
+				return ' Adjust only tone and wording. Use a friendly, warm, conversational, approachable tone.';
+			case 'professional':
+				return ' Adjust only tone and wording. Use a professional tone that is polished, structured, courteous, clear, and efficient.';
+			case 'enthusiastic':
+				return ' Adjust only tone and wording. Use an enthusiastic, upbeat, positive tone, but do not become pushy or more proactive than the user\'s request requires.';
+			default:
+				return '';
+		}
 	}
 
 	/**

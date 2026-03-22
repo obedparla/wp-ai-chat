@@ -2,6 +2,8 @@
 
 Two WordPress plugins sharing a parent directory. Not a monorepo tool — just co-located projects.
 
+This is a brand new product. DO NOT worry about migrations, old code, or existing users. Everything is brand new and we are free to make refactors and breaking changes.
+
 ## Development process
 
 - After comitting, mark your task as Done: true, if it came from a file (todo, feature, prd, etc).

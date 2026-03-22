@@ -6,6 +6,7 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-tools.php';
+require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-page-context.php';
 require_once __DIR__ . '/../includes/class-wpaic-chat.php';
 
@@ -642,6 +643,96 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContains( 'helpful assistant', $prompt );
 	}
 
+	public function test_get_system_prompt_neutral_tone_is_no_op(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key'  => '',
+				'model'           => 'gpt-4o-mini',
+				'tone_of_voice'   => 'neutral',
+				'system_prompt'   => '',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringNotContains( 'Adjust only tone and wording.', $prompt );
+	}
+
+	public function test_get_system_prompt_includes_friendly_tone_instruction(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+				'tone_of_voice'  => 'friendly',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContains( 'friendly, warm, conversational, approachable tone', $prompt );
+	}
+
+	public function test_get_system_prompt_places_tone_after_custom_prompt_and_before_operational_instructions(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+				'system_prompt'  => 'You are a custom bot for my store.',
+				'tone_of_voice'  => 'professional',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$custom_prompt_pos = strpos( $prompt, 'You are a custom bot for my store.' );
+		$tone_pos          = strpos( $prompt, 'Adjust only tone and wording.' );
+		$tools_pos         = strpos( $prompt, 'When presenting product search or comparison results' );
+
+		$this->assertNotFalse( $custom_prompt_pos );
+		$this->assertNotFalse( $tone_pos );
+		$this->assertNotFalse( $tools_pos );
+		$this->assertGreaterThan( $custom_prompt_pos, $tone_pos );
+		$this->assertGreaterThan( $tone_pos, $tools_pos );
+	}
+
+	public function test_get_system_prompt_enthusiastic_tone_stays_non_pushy(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+				'tone_of_voice'  => 'enthusiastic',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContains( 'do not become pushy or more proactive', $prompt );
+	}
+
 	public function test_format_messages_handles_tool_messages(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
@@ -777,7 +868,8 @@ class WPAIC_ChatTest extends TestCase {
 
 		$prompt = $method->invoke( $chat );
 
-		$this->assertStringNotContains( 'products', $prompt );
+		$this->assertStringNotContains( 'Help customers find products and answer questions.', $prompt );
+		$this->assertStringNotContains( 'Use tools to search products when asked.', $prompt );
 		$this->assertStringContains( 'helpful assistant', $prompt );
 	}
 
