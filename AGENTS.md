@@ -4,6 +4,13 @@ Two WordPress plugins sharing a parent directory. Not a monorepo tool — just c
 
 This is a brand new product. DO NOT worry about migrations, old code, or existing users. Everything is brand new and we are free to make refactors and breaking changes.
 
+## Development process
+
+- After comitting, mark your task as Done: true, if it came from a file (todo, feature, prd, etc).
+- Run tests at the end, and add tests for new features or update tests
+- When a new feature is completed, add a very short description of it in `./FEATURES.md`
+- 
+
 ## Sub-projects
 
 ### wp-ai-chatbot (user-facing plugin)
@@ -30,7 +37,7 @@ The chatbot backend drives all conversation logic: it sends messages + tool defi
 
 ## Dev Setup
 
-Each sub-project has its own dependencies. See their respective AGENTS.md / README for commands.
+Each sub-project has its own dependencies
 
 ## Local Dev Sites (Local by Flywheel)
 

@@ -2,6 +2,7 @@
 
 use PHPUnit\Framework\TestCase;
 
+require_once __DIR__ . '/../includes/class-wpaic-page-context.php';
 require_once __DIR__ . '/../includes/class-wpaic-api.php';
 require_once __DIR__ . '/../includes/class-wpaic-logs.php';
 
@@ -48,6 +49,56 @@ class WPAIC_APITest extends TestCase {
 		$result = $this->api->verify_nonce( $request );
 
 		$this->assertTrue( $result );
+	}
+
+	public function test_sanitize_page_context_keeps_allowed_fields_and_strips_query_args(): void {
+		$reflection = new ReflectionClass( $this->api );
+		$method     = $reflection->getMethod( 'sanitize_page_context' );
+		$method->setAccessible( true );
+
+		$result = $method->invoke(
+			$this->api,
+			array(
+				'page_type'  => 'product',
+				'title'      => 'Blue Widget',
+				'url'        => 'http://example.com/product/blue-widget/?utm_source=test',
+				'post_id'    => '42',
+				'post_type'  => 'product',
+				'product_id' => '42',
+				'ignored'    => 'value',
+			)
+		);
+
+			$this->assertSame(
+				array(
+					'page_type'  => 'product',
+					'title'      => 'Blue Widget',
+					'url'        => 'http://example.com/product/blue-widget/',
+					'post_id'    => 42,
+					'product_id' => 42,
+					'post_type'  => 'product',
+				),
+				$result
+			);
+	}
+
+	public function test_sanitize_page_context_returns_empty_array_for_invalid_payload(): void {
+		$reflection = new ReflectionClass( $this->api );
+		$method     = $reflection->getMethod( 'sanitize_page_context' );
+		$method->setAccessible( true );
+
+		$this->assertSame( array(), $method->invoke( $this->api, 'not-an-array' ) );
+		$this->assertSame(
+			array(),
+			$method->invoke(
+				$this->api,
+				array(
+					'page_type' => 'invalid',
+					'title'     => 'Bad page',
+					'url'       => 'http://example.com/bad-page/',
+				)
+			)
+		);
 	}
 
 	public function test_send_transcript_rejects_missing_email(): void {

@@ -231,3 +231,107 @@ if (!class_exists('WC_Order_Item')) {
         }
     }
 }
+
+if (!class_exists('WP_Post')) {
+    class WP_Post {
+        public int $ID = 0;
+        public string $post_title = '';
+        public string $post_type = 'post';
+    }
+}
+
+if (!class_exists('WP_Term')) {
+    class WP_Term {
+        public int $term_id = 0;
+        public string $name = '';
+        public string $slug = '';
+        public string $taxonomy = '';
+    }
+}
+
+if (!function_exists('wc_get_checkout_url')) {
+    function wc_get_checkout_url(): string {
+        return '';
+    }
+}
+
+if (!function_exists('wc_get_page_id')) {
+    function wc_get_page_id(string $page): int {
+        return 0;
+    }
+}
+
+if (!function_exists('is_product')) {
+    function is_product(): bool {
+        return false;
+    }
+}
+
+if (!function_exists('is_cart')) {
+    function is_cart(): bool {
+        return false;
+    }
+}
+
+if (!function_exists('is_checkout')) {
+    function is_checkout(): bool {
+        return false;
+    }
+}
+
+if (!function_exists('is_shop')) {
+    function is_shop(): bool {
+        return false;
+    }
+}
+
+if (!function_exists('is_product_category')) {
+    function is_product_category(): bool {
+        return false;
+    }
+}
+
+if (!function_exists('is_product_tag')) {
+    function is_product_tag(): bool {
+        return false;
+    }
+}
+
+if (!function_exists('is_singular')) {
+    function is_singular(): bool {
+        return false;
+    }
+}
+
+if (!function_exists('get_queried_object')) {
+    function get_queried_object(): WP_Post|WP_Term|null {
+        return null;
+    }
+}
+
+if (!function_exists('get_queried_object_id')) {
+    function get_queried_object_id(): int {
+        return 0;
+    }
+}
+
+if (!function_exists('get_term_link')) {
+    /**
+     * @param WP_Term $term
+     */
+    function get_term_link($term): string {
+        return '';
+    }
+}
+
+if (!function_exists('get_post_type_archive_link')) {
+    function get_post_type_archive_link(string $post_type): string|false {
+        return false;
+    }
+}
+
+if (!function_exists('get_the_title')) {
+    function get_the_title(int $post_id = 0): string {
+        return '';
+    }
+}

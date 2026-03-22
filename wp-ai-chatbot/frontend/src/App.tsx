@@ -17,6 +17,19 @@ declare global {
       proactiveMessage?: string
       chatbotName?: string
       chatbotLogo?: string
+      pageContext?: {
+        page_type: 'product' | 'cart' | 'checkout' | 'shop' | 'product_category' | 'product_tag' | 'singular' | 'other'
+        title: string
+        url: string
+        post_id?: number
+        post_type?: string
+        product_id?: number
+        term_id?: number
+        taxonomy?: string
+        term_slug?: string
+        term_name?: string
+      }
+      conversationStarters?: string[]
     }
   }
 }
@@ -79,6 +92,7 @@ export default function App() {
           chat={chat}
           chatbotName={config?.chatbotName}
           chatbotLogo={config?.chatbotLogo}
+          conversationStarters={config?.conversationStarters ?? []}
         />
       )}
       <ChatButton onClick={handleToggle} isOpen={isOpen} />

@@ -3,6 +3,7 @@ import type { Message, ActiveTool } from '../hooks/useChat'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import SendTranscriptDialog from './SendTranscriptDialog'
+import ConversationStarters from './ConversationStarters'
 
 interface ChatWidgetProps {
   onClose: () => void
@@ -17,6 +18,7 @@ interface ChatWidgetProps {
   }
   chatbotName?: string
   chatbotLogo?: string
+  conversationStarters?: string[]
 }
 
 function getToolProgressMessage(tool: ActiveTool): string {
@@ -32,7 +34,13 @@ function getToolProgressMessage(tool: ActiveTool): string {
   }
 }
 
-export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: ChatWidgetProps) {
+export default function ChatWidget({
+  onClose,
+  chat,
+  chatbotName,
+  chatbotLogo,
+  conversationStarters = [],
+}: ChatWidgetProps) {
   const { messages, sendMessage, isLoading, stopGeneration, startNewConversation, activeTools, retry } = chat
   const [input, setInput] = useState('')
   const [showTranscriptDialog, setShowTranscriptDialog] = useState(false)
@@ -42,6 +50,11 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
   const hasLogo = chatbotLogo && chatbotLogo.trim().length > 0
   const displayTitle = hasName ? chatbotName : 'AI Assistant'
   const showSubtitle = hasName
+  const isGreetingOnly =
+    messages.length === 0 ||
+    (messages.length === 1 && messages[0].role === 'assistant' && messages[0].id === 'greeting')
+  const showConversationStarters =
+    !isLoading && conversationStarters.length > 0 && isGreetingOnly
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -64,6 +77,15 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
     setInput('')
     requestAnimationFrame(() => inputRef.current?.focus())
   }
+
+  const handleStarterSelect = useCallback(
+    (starter: string) => {
+      if (isLoading) return
+      sendMessage(starter)
+      requestAnimationFrame(() => inputRef.current?.focus())
+    },
+    [isLoading, sendMessage]
+  )
 
   return (
     <div className="fixed bottom-[100px] right-6 w-[380px] max-w-[calc(100vw-48px)] h-[600px] max-h-[calc(100vh-140px)] bg-white rounded-2xl shadow-xl flex flex-col z-[9998] overflow-hidden animate-wpaic-slideUp border border-slate-200 max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[calc(100vh-60px)] max-[480px]:max-h-[calc(100vh-60px)] max-[480px]:rounded-t-2xl max-[480px]:rounded-b-none max-[480px]:border-b-0 max-[480px]:animate-wpaic-slideUpMobile">
@@ -122,7 +144,14 @@ export default function ChatWidget({ onClose, chat, chatbotName, chatbotLogo }: 
           </button>
         </div>
       </div>
-      <MessageList messages={messages} onRetry={retry} />
+      <MessageList messages={messages} onRetry={retry}>
+        {showConversationStarters && (
+          <ConversationStarters
+            starters={conversationStarters}
+            onSelect={handleStarterSelect}
+          />
+        )}
+      </MessageList>
       {isLoading && activeTools.length > 0 && (
         <div className="py-3 px-5 flex flex-col gap-2 bg-white border-t border-slate-200">
           {activeTools.map((tool, i) => (

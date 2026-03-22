@@ -254,8 +254,10 @@ Make it easy to change the tone of voice for the bot without modifying the syste
 - tone of voices options:
 1. Formal — Polished, structured, no contractions, courteous and reserved
 2. Friendly — Warm, conversational, approachable, uses casual language
-3. Professional — Neutral, task-focused, clear and efficient, straight to the point
-4. Enthusiastic — Energetic, upbeat tone
+3. Professional — Neutral, task-focused, clear and efficient, straight to the   
+   point
+4. Enthusiastic — Energetic about products, naturally suggests options, upbeat  
+   tone
 5. Neutral — Balanced, no strong tone, factual and straightforward
 
 - Show these with a minimal description. Use a simple good looking dropdown in the admin settings.

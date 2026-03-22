@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-tools.php';
 require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
+require_once __DIR__ . '/../includes/class-wpaic-page-context.php';
 require_once __DIR__ . '/../includes/class-wpaic-chat.php';
 
 class WPAIC_ChatTest extends TestCase {
@@ -505,6 +506,123 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'current cart questions', $prompt );
 	}
 
+	public function test_get_system_prompt_includes_product_page_context(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat(
+			array(
+				'page_type'  => 'product',
+				'title'      => 'Blue Widget',
+				'url'        => 'http://example.com/product/blue-widget/',
+				'post_id'    => 42,
+				'post_type'  => 'product',
+				'product_id' => 42,
+			)
+		);
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'Current page context', $prompt );
+		$this->assertStringContainsString( 'get_product_details', $prompt );
+		$this->assertStringContainsString( '"product_id":42', $prompt );
+	}
+
+	public function test_get_system_prompt_includes_singular_page_context_guidance(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat(
+			array(
+				'page_type' => 'singular',
+				'title'     => 'Refund Policy',
+				'url'       => 'http://example.com/refund-policy/',
+				'post_id'   => 15,
+				'post_type' => 'page',
+			)
+		);
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'get_page_content', $prompt );
+		$this->assertStringContainsString( '"post_id":15', $prompt );
+	}
+
+	public function test_get_system_prompt_includes_category_page_context_guidance(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat(
+			array(
+				'page_type' => 'product_category',
+				'title'     => 'Shirts',
+				'url'       => 'http://example.com/product-category/shirts/',
+				'term_id'   => 7,
+				'taxonomy'  => 'product_cat',
+				'term_slug' => 'shirts',
+				'term_name' => 'Shirts',
+			)
+		);
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'category filter', $prompt );
+		$this->assertStringContainsString( '"term_slug":"shirts"', $prompt );
+	}
+
+	public function test_get_system_prompt_includes_cart_page_context_guidance(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat(
+			array(
+				'page_type' => 'cart',
+				'title'     => 'Cart',
+				'url'       => 'http://example.com/cart/',
+				'post_id'   => 21,
+				'post_type' => 'page',
+			)
+		);
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'Current page context', $prompt );
+		$this->assertStringContainsString( 'get_cart_contents', $prompt );
+		$this->assertStringContainsString( '"page_type":"cart"', $prompt );
+	}
+
 	public function test_get_system_prompt_uses_default_when_whitespace_only(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
@@ -750,7 +868,8 @@ class WPAIC_ChatTest extends TestCase {
 
 		$prompt = $method->invoke( $chat );
 
-		$this->assertStringNotContains( 'products', $prompt );
+		$this->assertStringNotContains( 'Help customers find products and answer questions.', $prompt );
+		$this->assertStringNotContains( 'Use tools to search products when asked.', $prompt );
 		$this->assertStringContains( 'helpful assistant', $prompt );
 	}
 
@@ -1302,6 +1421,58 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertEquals( array( 'content' => 'Hello' ), $chunks[0] );
 		$this->assertEquals( array( 'content' => ' world' ), $chunks[1] );
 		$this->assertEmpty( $result );
+	}
+
+	public function test_stream_from_provider_keeps_zero_only_text_chunks(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+				'provider_site_key' => 'test-key',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'stream_from_provider' );
+		$method->setAccessible( true );
+
+		$sse_content  = "data: " . json_encode( array( 'choices' => array( array( 'delta' => array( 'content' => 'Founded in 201' ), 'finish_reason' => null ) ) ) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array( 'choices' => array( array( 'delta' => array( 'content' => '0' ), 'finish_reason' => 'stop' ) ) ) ) . "\n\n";
+		$sse_content .= "data: [DONE]\n\n";
+
+		$temp_file = tempnam( sys_get_temp_dir(), 'sse_test_' );
+		file_put_contents( $temp_file, $sse_content );
+
+		$chunks = array();
+		$result = $method->invoke(
+			$chat,
+			'file://' . $temp_file,
+			'test-key',
+			array( 'messages' => array() ),
+			function ( $data ) use ( &$chunks ) {
+				$chunks[] = $data;
+			}
+		);
+
+		unlink( $temp_file );
+
+		$this->assertCount( 2, $chunks );
+		$this->assertEquals( array( 'content' => 'Founded in 201' ), $chunks[0] );
+		$this->assertEquals( array( 'content' => '0' ), $chunks[1] );
+		$this->assertEmpty( $result );
+	}
+
+	public function test_should_emit_stream_content_keeps_zero_string(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'should_emit_stream_content' );
+		$method->setAccessible( true );
+
+		$this->assertTrue( $method->invoke( $chat, '0' ) );
+		$this->assertTrue( $method->invoke( $chat, 'Hello' ) );
+		$this->assertFalse( $method->invoke( $chat, '' ) );
+		$this->assertFalse( $method->invoke( $chat, null ) );
 	}
 
 	public function test_stream_from_provider_parses_tool_calls(): void {

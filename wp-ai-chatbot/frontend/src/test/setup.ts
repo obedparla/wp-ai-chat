@@ -8,6 +8,19 @@ declare global {
       greeting: string
       chatbotName?: string
       chatbotLogo?: string
+      pageContext?: {
+        page_type: 'product' | 'cart' | 'checkout' | 'shop' | 'product_category' | 'product_tag' | 'singular' | 'other'
+        title: string
+        url: string
+        post_id?: number
+        post_type?: string
+        product_id?: number
+        term_id?: number
+        taxonomy?: string
+        term_slug?: string
+        term_name?: string
+      }
+      conversationStarters?: string[]
     }
   }
 }
@@ -58,5 +71,11 @@ beforeEach(() => {
     apiUrl: '/wp-json/wpaic/v1',
     nonce: 'test-nonce',
     greeting: 'Hello! How can I help you today?',
+    pageContext: {
+      page_type: 'other',
+      title: 'Current page',
+      url: 'http://example.com/current-page',
+    },
+    conversationStarters: [],
   }
 })

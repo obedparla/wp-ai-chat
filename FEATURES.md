@@ -59,3 +59,17 @@
 - View all conversations
 - Expandable message history
 - Delete individual conversations
+
+## Get page content tool
+- Get any page when the user asks about relevant info
+- E.g "refund policy" it gets the refunds page
+
+## Current page context
+- The bot knows which page we're on
+
+## Cart awareness tool
+- Knows about products in the cart and total
+
+## Conversation starters
+- Customizable options that show up at the start of a conversation
+- Shows sensible defaults

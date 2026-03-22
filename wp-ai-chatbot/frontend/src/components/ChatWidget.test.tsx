@@ -172,6 +172,52 @@ describe('ChatWidget', () => {
     const sendBtn = screen.getByRole('button', { name: 'Send' })
     expect(sendBtn).toBeDisabled()
   })
+
+  it('shows conversation starters for a greeting-only conversation', () => {
+    render(
+      <ChatWidget
+        onClose={mockOnClose}
+        chat={createMockChat({
+          messages: [{ role: 'assistant', content: 'Hello! How can I help?', id: 'greeting' }],
+        })}
+        conversationStarters={['Find a product', 'Track my order']}
+      />
+    )
+
+    expect(screen.getByText('Try asking')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Find a product' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Track my order' })).toBeInTheDocument()
+  })
+
+  it('hides conversation starters once the conversation has real history', () => {
+    render(
+      <ChatWidget
+        onClose={mockOnClose}
+        chat={createMockChat()}
+        conversationStarters={['Find a product']}
+      />
+    )
+
+    expect(screen.queryByText('Try asking')).not.toBeInTheDocument()
+  })
+
+  it('sends a starter immediately when clicked', async () => {
+    const mockChat = createMockChat({
+      messages: [{ role: 'assistant', content: 'Hello! How can I help?', id: 'greeting' }],
+    })
+
+    render(
+      <ChatWidget
+        onClose={mockOnClose}
+        chat={mockChat}
+        conversationStarters={['Find a product']}
+      />
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Find a product' }))
+
+    expect(mockChat.sendMessage).toHaveBeenCalledWith('Find a product')
+  })
 })
 
 describe('ChatWidget error messages', () => {

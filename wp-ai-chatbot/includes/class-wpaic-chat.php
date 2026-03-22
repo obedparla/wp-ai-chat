@@ -9,12 +9,18 @@ use OpenAI\Client;
 class WPAIC_Chat {
 	/** @var array<string, mixed> */
 	private array $settings;
+	/** @var array<string, mixed> */
+	private array $page_context = array();
 	private ?WPAIC_Tools $tools = null;
 	private ?Client $client     = null;
 
-	public function __construct() {
+	/**
+	 * @param array<string, mixed> $page_context
+	 */
+	public function __construct( array $page_context = array() ) {
 		$settings       = get_option( 'wpaic_settings', array() );
 		$this->settings = is_array( $settings ) ? $settings : array();
+		$this->page_context = ( new WPAIC_Page_Context() )->sanitize( $page_context );
 
 		if ( wpaic_is_woocommerce_active() ) {
 			$this->tools = new WPAIC_Tools();
@@ -151,7 +157,7 @@ class WPAIC_Chat {
 			foreach ( $stream as $response ) {
 				$delta = $response->choices[0]->delta;
 
-				if ( $delta->content ) {
+				if ( $this->should_emit_stream_content( $delta->content ?? null ) ) {
 					$on_chunk( array( 'content' => $delta->content ) );
 				}
 
@@ -434,7 +440,7 @@ class WPAIC_Chat {
 				$choice = $choices[0];
 				$delta  = $choice['delta'] ?? array();
 
-				if ( ! empty( $delta['content'] ) ) {
+				if ( $this->should_emit_stream_content( $delta['content'] ?? null ) ) {
 					$on_chunk( array( 'content' => $delta['content'] ) );
 				}
 
@@ -534,9 +540,14 @@ class WPAIC_Chat {
 		return $formatted;
 	}
 
+	private function should_emit_stream_content( mixed $content ): bool {
+		return is_string( $content ) && '' !== $content;
+	}
+
 	private function get_system_prompt(): string {
 		$custom_prompt                  = $this->settings['system_prompt'] ?? '';
 		$faq_section                    = $this->get_faq_instruction();
+		$page_context                   = $this->get_page_context_instruction() . $this->get_current_page_context_summary();
 		$include_tool_response_guidance = false;
 
 		if ( is_string( $custom_prompt ) && '' !== trim( $custom_prompt ) ) {
@@ -548,10 +559,10 @@ class WPAIC_Chat {
 			if ( wpaic_is_woocommerce_active() ) {
 				$base_prompt                    = "You are a helpful assistant for {$site_name}. Help customers find products and answer questions. Be friendly and concise. Use tools to search products when asked.";
 				$include_tool_response_guidance = true;
-			} else {
-				$base_prompt = "You are a helpful assistant for {$site_name}. Answer questions and help visitors. Be friendly and concise.";
+				} else {
+					$base_prompt = "You are a helpful assistant for {$site_name}. Answer questions and help visitors. Be friendly and concise.";
+				}
 			}
-		}
 
 		$prompt = $base_prompt . $this->get_tone_of_voice_instruction() . $faq_section;
 
@@ -559,7 +570,7 @@ class WPAIC_Chat {
 			$prompt .= $this->get_tool_response_instruction();
 		}
 
-		return $prompt . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
+		return $prompt . $page_context . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
 	}
 
 	private function get_tone_of_voice_instruction(): string {
@@ -607,6 +618,15 @@ class WPAIC_Chat {
 
 	private function get_tool_response_instruction(): string {
 		return ' When presenting product search or comparison results, provide ONLY a single short sentence intro (max 10 words) that relates to the query. Example: "Here are some red shoes:" - NEVER list product names, prices, or details in your text response. The product cards will show all details. Your text should be a brief intro only, not a summary of results. For current cart questions, use get_cart_contents and answer directly from its totals and items in plain text. If no results found, explain briefly.';
+	}
+
+	private function get_page_context_instruction(): string {
+		return ' If current page context is available, use it only when it materially helps the answer. If the current page is a product and product_id is present, use get_product_details when the user asks about "this product" or the current product. If the current page is a non-product singular page and post_id is present, use get_page_content when the user is asking about the current page. If the current page is a product category and term_slug is present, use search_products with the category filter when you need products from the current category. If the current page is a product tag, use the tag metadata as context and use search_products with the tag name as the search query when you need matching products. If the current page is cart or checkout and the user asks about cart items or totals, use get_cart_contents. If the user is asking about another page or the current page context is not enough, use search_site_content and then get_page_content.';
+	}
+
+	private function get_current_page_context_summary(): string {
+		$service = new WPAIC_Page_Context();
+		return $service->to_prompt_summary( $this->page_context );
 	}
 
 	private function get_handoff_instruction(): string {
@@ -1082,7 +1102,7 @@ class WPAIC_Chat {
 			);
 
 			foreach ( $stream as $response ) {
-				if ( $response->choices[0]->delta->content ) {
+				if ( $this->should_emit_stream_content( $response->choices[0]->delta->content ?? null ) ) {
 					$on_chunk( array( 'content' => $response->choices[0]->delta->content ) );
 				}
 			}

@@ -18,6 +18,7 @@ class WPAIC_Loader {
 	private function load_dependencies(): void {
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-admin.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-frontend.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-page-context.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-api.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-chat.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-tools.php';
