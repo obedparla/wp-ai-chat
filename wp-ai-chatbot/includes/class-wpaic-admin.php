@@ -262,7 +262,7 @@ class WPAIC_Admin {
 		}
 
 		$tab_fields = array(
-			'general'    => array( 'enabled', 'greeting_message', 'language', 'system_prompt' ),
+			'general'    => array( 'enabled', 'greeting_message', 'language', 'tone_of_voice', 'system_prompt' ),
 			'api'        => array( 'openai_api_key', 'model', 'provider_url', 'provider_site_key' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color' ),
 			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages' ),
@@ -288,6 +288,9 @@ class WPAIC_Admin {
 		$theme_color                   = sanitize_hex_color( $merged['theme_color'] ?? '#0073aa' );
 		$sanitized['theme_color']      = $theme_color ? $theme_color : '#0073aa';
 		$sanitized['language']         = sanitize_text_field( $merged['language'] ?? 'auto' );
+		$tone_of_voice                 = sanitize_key( $merged['tone_of_voice'] ?? 'neutral' );
+		$valid_tones                   = array_keys( $this->get_tone_of_voice_options() );
+		$sanitized['tone_of_voice']    = in_array( $tone_of_voice, $valid_tones, true ) ? $tone_of_voice : 'neutral';
 
 		$sanitized['proactive_enabled'] = ! empty( $merged['proactive_enabled'] );
 		$sanitized['proactive_delay']   = max( 1, (int) ( $merged['proactive_delay'] ?? 10 ) );
@@ -349,7 +352,7 @@ class WPAIC_Admin {
 		$settings = get_option( 'wpaic_settings', array() );
 		$value    = is_array( $settings ) ? ( $settings['system_prompt'] ?? '' ) : '';
 		echo '<textarea name="wpaic_settings[system_prompt]" rows="5" class="large-text" placeholder="' . esc_attr__( 'Leave empty for default prompt', 'wp-ai-chatbot' ) . '">' . esc_textarea( $value ) . '</textarea>';
-		echo '<p class="description">' . esc_html__( 'Customize the system prompt to define the chatbot\'s personality and behavior. Leave empty to use the default.', 'wp-ai-chatbot' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'Customize the system prompt to define the chatbot\'s personality and behavior. This can further fine-tune or override the selected tone of voice. Leave empty to use the default.', 'wp-ai-chatbot' ) . '</p>';
 	}
 
 	public function render_theme_color_field(): void {
@@ -383,6 +386,18 @@ class WPAIC_Admin {
 		}
 		echo '</select>';
 		echo '<p class="description">' . esc_html__( 'Language for chatbot responses. Auto-detect will respond in the language the user writes in.', 'wp-ai-chatbot' ) . '</p>';
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private function get_tone_of_voice_options(): array {
+		return array(
+			'neutral'      => __( 'Neutral (Balanced, factual, straightforward, no strong tone)', 'wp-ai-chatbot' ),
+			'friendly'     => __( 'Friendly (Warm, conversational, approachable, uses casual language)', 'wp-ai-chatbot' ),
+			'professional' => __( 'Professional (Neutral, task-focused, clear and efficient, straight to the point)', 'wp-ai-chatbot' ),
+			'enthusiastic' => __( 'Enthusiastic (Upbeat, energetic, positive, more expressive without being pushy)', 'wp-ai-chatbot' ),
+		);
 	}
 
 	public function render_proactive_enabled_field(): void {
@@ -576,11 +591,12 @@ class WPAIC_Admin {
 	 * @param array<string, mixed> $settings Current settings.
 	 */
 	private function render_general_tab( array $settings ): void {
-		$enabled        = ! empty( $settings['enabled'] );
-		$greeting       = $settings['greeting_message'] ?? 'Hello! How can I help you today?';
-		$language       = $settings['language'] ?? 'auto';
-		$system_prompt  = $settings['system_prompt'] ?? '';
-		$languages = array(
+		$enabled       = ! empty( $settings['enabled'] );
+		$greeting      = $settings['greeting_message'] ?? 'Hello! How can I help you today?';
+		$language      = $settings['language'] ?? 'auto';
+		$tone_of_voice = $settings['tone_of_voice'] ?? 'neutral';
+		$system_prompt = $settings['system_prompt'] ?? '';
+		$languages     = array(
 			'auto' => __( 'Auto-detect (match user)', 'wp-ai-chatbot' ),
 			'en'   => __( 'English', 'wp-ai-chatbot' ),
 			'es'   => __( 'Spanish', 'wp-ai-chatbot' ),
@@ -595,6 +611,10 @@ class WPAIC_Admin {
 			'ko'   => __( 'Korean', 'wp-ai-chatbot' ),
 			'ar'   => __( 'Arabic', 'wp-ai-chatbot' ),
 		);
+		$tone_options = $this->get_tone_of_voice_options();
+		if ( ! isset( $tone_options[ $tone_of_voice ] ) ) {
+			$tone_of_voice = 'neutral';
+		}
 		?>
 		<div class="space-y-4">
 			<div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
@@ -631,13 +651,26 @@ class WPAIC_Admin {
 			</div>
 
 			<div>
+				<label for="wpaic_tone_of_voice" class="block text-sm font-medium text-gray-700 mb-2">
+					<?php esc_html_e( 'Tone of Voice', 'wp-ai-chatbot' ); ?>
+				</label>
+				<select id="wpaic_tone_of_voice" name="wpaic_settings[tone_of_voice]"
+						class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+					<?php foreach ( $tone_options as $tone_value => $tone_label ) : ?>
+						<option value="<?php echo esc_attr( $tone_value ); ?>" <?php selected( $tone_of_voice, $tone_value ); ?>><?php echo esc_html( $tone_label ); ?></option>
+					<?php endforeach; ?>
+				</select>
+				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Choose the bot\'s default writing style. For deeper customization, use the Custom System Prompt below.', 'wp-ai-chatbot' ); ?></p>
+			</div>
+
+			<div>
 				<label for="wpaic_system_prompt" class="block text-sm font-medium text-gray-700 mb-2">
 					<?php esc_html_e( 'Custom System Prompt', 'wp-ai-chatbot' ); ?>
 				</label>
 				<textarea id="wpaic_system_prompt" name="wpaic_settings[system_prompt]" rows="6"
 							class="max-w-lg w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
 							placeholder="<?php esc_attr_e( 'Leave empty for default prompt', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $system_prompt ); ?></textarea>
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Define the chatbot\'s personality and behavior. Leave empty for the default helpful assistant prompt.', 'wp-ai-chatbot' ); ?></p>
+				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Define the chatbot\'s personality and behavior. This can further fine-tune or override the selected tone of voice. Leave empty for the default helpful assistant prompt.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 		</div>
 		<?php

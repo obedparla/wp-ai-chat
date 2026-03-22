@@ -6,6 +6,8 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-logs.php';
+require_once __DIR__ . '/../includes/class-wpaic-search-index.php';
+require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-admin.php';
 
 class WPAIC_AdminTest extends TestCase {
@@ -626,6 +628,47 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertEquals( 'auto', $sanitized['language'] );
 	}
 
+	public function test_sanitize_settings_sanitizes_tone_of_voice(): void {
+		$input = array(
+			'openai_api_key'   => 'test-key',
+			'model'            => 'gpt-4o-mini',
+			'greeting_message' => 'Hello',
+			'enabled'          => '1',
+			'tone_of_voice'    => '  professional  ',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertEquals( 'professional', $sanitized['tone_of_voice'] );
+	}
+
+	public function test_sanitize_settings_defaults_tone_of_voice_to_neutral(): void {
+		$input = array(
+			'openai_api_key'   => 'test-key',
+			'model'            => 'gpt-4o-mini',
+			'greeting_message' => 'Hello',
+			'enabled'          => '1',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertEquals( 'neutral', $sanitized['tone_of_voice'] );
+	}
+
+	public function test_sanitize_settings_rejects_invalid_tone_of_voice(): void {
+		$input = array(
+			'openai_api_key'   => 'test-key',
+			'model'            => 'gpt-4o-mini',
+			'greeting_message' => 'Hello',
+			'enabled'          => '1',
+			'tone_of_voice'    => 'luxury',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertEquals( 'neutral', $sanitized['tone_of_voice'] );
+	}
+
 	public function test_render_language_field_outputs_select(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
@@ -671,6 +714,32 @@ class WPAIC_AdminTest extends TestCase {
 
 		$this->assertStringContainsString( '<p class="description">', $output );
 		$this->assertStringContainsString( 'Language for chatbot responses', $output );
+	}
+
+	public function test_render_settings_page_general_tab_includes_tone_of_voice_field(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'tone_of_voice' => 'professional',
+			)
+		);
+		$_GET['tab'] = 'general';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Tone of Voice', $output );
+		$this->assertStringContainsString( 'name="wpaic_settings[tone_of_voice]"', $output );
+		$this->assertStringContainsString( 'Neutral (Balanced, factual, straightforward, no strong tone)', $output );
+		$this->assertStringContainsString( 'Friendly (Warm, conversational, approachable, uses casual language)', $output );
+		$this->assertStringContainsString( 'Professional (Neutral, task-focused, clear and efficient, straight to the point)', $output );
+		$this->assertStringContainsString( 'Enthusiastic (Upbeat, energetic, positive, more expressive without being pushy)', $output );
+		$this->assertMatchesRegularExpression( '/value="professional"[^>]*selected/', $output );
+		$this->assertStringContainsString( 'fine-tune or override the selected tone of voice', $output );
+
+		unset( $_GET['tab'] );
 	}
 
 	public function test_get_available_models_returns_jan_2026_models(): void {
@@ -759,6 +828,7 @@ class WPAIC_AdminTest extends TestCase {
 			'enabled'          => '1',
 			'greeting_message' => 'Welcome!',
 			'language'         => 'fr',
+			'tone_of_voice'    => 'friendly',
 		);
 
 		$sanitized = $this->admin->sanitize_settings( $input );
@@ -766,6 +836,7 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertTrue( $sanitized['enabled'] );
 		$this->assertEquals( 'Welcome!', $sanitized['greeting_message'] );
 		$this->assertEquals( 'fr', $sanitized['language'] );
+		$this->assertEquals( 'friendly', $sanitized['tone_of_voice'] );
 		$this->assertEquals( 'sk-existing-key', $sanitized['openai_api_key'] );
 		$this->assertEquals( 'gpt-4o', $sanitized['model'] );
 	}
@@ -895,9 +966,11 @@ class WPAIC_AdminTest extends TestCase {
 		file_put_contents( $search_dir . '/products.index', 'products' );
 		file_put_contents( $search_dir . '/content.index', 'content' );
 
-		$_POST = array(
-			'_wpnonce' => 'test_nonce_wpaic_update_search_indexes',
-		);
+			$_POST = array(
+				'_wpnonce'              => 'test_nonce_wpaic_update_search_indexes',
+				'product_index_enabled' => '',
+				'content_index_post_types' => array(),
+			);
 
 		try {
 			$this->admin->ajax_update_search_indexes();
@@ -1093,10 +1166,12 @@ class WPAIC_AdminTest extends TestCase {
 			'enabled'          => true,
 			'greeting_message' => 'Hi!',
 			'language'         => 'en',
+			'tone_of_voice'    => 'enthusiastic',
 		) );
 
 		$this->assertEquals( 'https://provider.example.com/wp-json/wpaip/v1/chat', $result['provider_url'] );
 		$this->assertEquals( 'my-site-key-123', $result['provider_site_key'] );
+		$this->assertEquals( 'enthusiastic', $result['tone_of_voice'] );
 	}
 
 	public function test_sanitize_settings_provider_url_uses_esc_url_raw(): void {

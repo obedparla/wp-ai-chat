@@ -247,15 +247,23 @@ Connect chat events to external tools.
 
 ## Tier 4: Nice to Have (Polish & Delight)
 
-### 21. Bot Persona Templates — Done: false
+### 21. Bot Tone Of Voice settings — Done: false
 
-Most admins don't know how to write good system prompts.
+Make it easy to change the tone of voice for the bot without modifying the system prompt.
 
-- Pre-built persona templates: "Friendly Sales Assistant", "Technical Support Agent", "Concierge", "Minimalist Helper"
-- Each template: optimized system prompt + suggested greeting + suggested starters
-- Admin picks template, customizes from there
-- Template preview shows example conversation
-- Lower barrier to getting a good-sounding bot
+- tone of voices options:
+1. Formal — Polished, structured, no contractions, courteous and reserved
+2. Friendly — Warm, conversational, approachable, uses casual language
+3. Professional — Neutral, task-focused, clear and efficient, straight to the point
+4. Enthusiastic — Energetic, upbeat tone
+5. Neutral — Balanced, no strong tone, factual and straightforward
+
+- Show these with a minimal description. Use a simple good looking dropdown in the admin settings.
+- Each option optimizes system prompt. Keep it super simple, using the  options above should be enough for the system prompt to understand what tone of voice to use.
+- Admin picks template from the options above
+- They can still customize their system prompt to change anything else
+- Lower barrier to getting a good-sounding bot that aligns with their image
+- Use Neutral as the default
 
 ### 22. Conversation Stickiness (Cross-Session Memory) — Done: false
 
