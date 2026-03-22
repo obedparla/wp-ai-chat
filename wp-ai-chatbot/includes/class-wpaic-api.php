@@ -104,14 +104,15 @@ class WPAIC_API {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function handle_chat( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		$messages = $request->get_param( 'messages' );
+		$messages     = $request->get_param( 'messages' );
+		$page_context = $this->sanitize_page_context( $request->get_param( 'page_context' ) );
 
 		if ( empty( $messages ) || ! is_array( $messages ) ) {
 			return new WP_Error( 'no_messages', 'Messages are required', array( 'status' => 400 ) );
 		}
 
 		$messages = $this->transform_messages( $messages );
-		$chat     = new WPAIC_Chat();
+		$chat     = new WPAIC_Chat( $page_context );
 		$response = $chat->send( $messages );
 
 		if ( is_wp_error( $response ) ) {
@@ -126,8 +127,9 @@ class WPAIC_API {
 	 * @return WP_Error|void
 	 */
 	public function handle_chat_stream( WP_REST_Request $request ) {
-		$messages   = $request->get_param( 'messages' );
-		$session_id = $request->get_param( 'session_id' );
+		$messages     = $request->get_param( 'messages' );
+		$session_id   = $request->get_param( 'session_id' );
+		$page_context = $this->sanitize_page_context( $request->get_param( 'page_context' ) );
 
 		if ( empty( $messages ) || ! is_array( $messages ) ) {
 			return new WP_Error( 'no_messages', 'Messages are required', array( 'status' => 400 ) );
@@ -159,7 +161,7 @@ class WPAIC_API {
 		$response_content = '';
 		$message_id       = wp_generate_uuid4();
 		$text_started     = false;
-		$chat             = new WPAIC_Chat();
+		$chat             = new WPAIC_Chat( $page_context );
 		$chat->send_stream(
 			$messages,
 			/** @param array<string, mixed> $data */
@@ -259,6 +261,15 @@ class WPAIC_API {
 		}
 
 		exit;
+	}
+
+	/**
+	 * @param mixed $page_context
+	 * @return array<string, mixed>
+	 */
+	private function sanitize_page_context( mixed $page_context ): array {
+		$service = new WPAIC_Page_Context();
+		return $service->sanitize( $page_context );
 	}
 
 	/**
