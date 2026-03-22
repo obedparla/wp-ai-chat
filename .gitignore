@@ -7,3 +7,4 @@ wp-ai-chatbot/.phpunit.cache/test-results
 composer.phar
 **/.claude/
 **/superpowers/
+**/dist

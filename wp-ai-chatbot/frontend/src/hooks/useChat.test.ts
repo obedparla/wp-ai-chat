@@ -274,6 +274,69 @@ describe('useChat', () => {
     expect(mockStop).toHaveBeenCalled()
   })
 
+  it('showProactiveGreeting swaps in the proactive message for an idle chat', () => {
+    window.wpaicConfig = {
+      apiUrl: '/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello! How can I help?',
+      proactiveEnabled: true,
+      proactiveMessage: 'Need help?',
+    }
+
+    const { result } = renderHook(() => useChat())
+
+    act(() => {
+      result.current.showProactiveGreeting()
+    })
+
+    expect(mockSetMessages).toHaveBeenCalledWith([
+      {
+        id: 'greeting',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Need help?' }],
+      },
+    ])
+  })
+
+  it('showProactiveGreeting does not replace an active conversation', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: 'greeting',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Hello!' }],
+        },
+        {
+          id: '1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'I need help finding a product' }],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    window.wpaicConfig = {
+      apiUrl: '/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello! How can I help?',
+      proactiveEnabled: true,
+      proactiveMessage: 'Need help?',
+    }
+
+    const { result } = renderHook(() => useChat())
+    mockSetMessages.mockClear()
+
+    act(() => {
+      result.current.showProactiveGreeting()
+    })
+
+    expect(mockSetMessages).not.toHaveBeenCalled()
+  })
+
   it('startNewConversation clears state, stops streaming, and reseeds the greeting', () => {
     const { result } = renderHook(() => useChat())
 
@@ -756,6 +819,32 @@ describe('useChat', () => {
       await waitFor(() => {
         expect(mockSetMessages).toHaveBeenCalledWith(storedMessages)
       })
+    })
+
+    it('ignores legacy greeting-only storage and reseeds the current greeting', async () => {
+      sessionStorage.setItem('wpaic_chat_history', JSON.stringify([
+        { id: 'greeting', role: 'assistant', parts: [{ type: 'text', text: 'Old greeting' }] },
+      ]))
+
+      window.wpaicConfig = {
+        apiUrl: '/wp-json/wpaic/v1',
+        nonce: 'test-nonce',
+        greeting: 'Updated greeting',
+      }
+
+      renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(mockSetMessages).toHaveBeenCalledWith([
+          {
+            id: 'greeting',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'Updated greeting' }],
+          },
+        ])
+      })
+
+      expect(sessionStorage.getItem('wpaic_chat_history')).toBeNull()
     })
 
     it('shows greeting when no stored messages exist', async () => {
