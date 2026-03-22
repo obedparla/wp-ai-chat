@@ -2,13 +2,22 @@
 
 Two WordPress plugins sharing a parent directory. Not a monorepo tool — just co-located projects.
 
+This is a brand new product. DO NOT worry about migrations, old code, or existing users. Everything is brand new and we are free to make refactors and breaking changes.
+
+## Development process
+
+- After comitting, mark your task as Done: true, if it came from a file (todo, feature, prd, etc).
+- Run tests at the end, and add tests for new features or update tests
+- When a new feature is completed, add a very short description of it in `./FEATURES.md`
+-
+
 ## Sub-projects
 
 ### wp-ai-chatbot (user-facing plugin)
-Installed on customer WordPress/WooCommerce sites. Renders a floating chat widget, handles conversation logic, executes WooCommerce tool calls (product search, cart, etc.), and streams responses to the frontend via SSE. See `wp-ai-chatbot/CLAUDE.md` for details.
+Installed on customer WordPress/WooCommerce sites. Renders a floating chat widget, handles conversation logic, executes WooCommerce tool calls (product search, cart, etc.), and streams responses to the frontend via SSE. See `wp-ai-chatbot/AGENTS.md` for details.
 
 ### wp-ai-provider (middleman server plugin)
-Installed on **our** server only. Acts as a transparent OpenAI proxy — receives chat requests from chatbot instances, forwards to OpenAI, streams the raw response back. Holds the OpenAI API key so end users don't need one. See `wp-ai-provider/CLAUDE.md` for details (when created).
+Installed on **our** server only. Acts as a transparent OpenAI proxy — receives chat requests from chatbot instances, forwards to OpenAI, streams the raw response back. Holds the OpenAI API key so end users don't need one. See `wp-ai-provider/AGENTS.md` for details (when created).
 
 ## Data Flow
 
@@ -28,7 +37,7 @@ The chatbot backend drives all conversation logic: it sends messages + tool defi
 
 ## Dev Setup
 
-Each sub-project has its own dependencies. See their respective CLAUDE.md / README for commands.
+Each sub-project has its own dependencies
 
 ## Local Dev Sites (Local by Flywheel)
 
