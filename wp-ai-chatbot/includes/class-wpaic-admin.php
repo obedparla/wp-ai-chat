@@ -265,7 +265,7 @@ class WPAIC_Admin {
 			'general'    => array( 'enabled', 'greeting_message', 'language', 'system_prompt' ),
 			'api'        => array( 'openai_api_key', 'model', 'provider_url', 'provider_site_key' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color' ),
-			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages' ),
+			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages', 'conversation_starters' ),
 			'search'     => array( 'product_index_enabled', 'content_index_post_types' ),
 		);
 
@@ -293,6 +293,7 @@ class WPAIC_Admin {
 		$sanitized['proactive_delay']   = max( 1, (int) ( $merged['proactive_delay'] ?? 10 ) );
 		$sanitized['proactive_message'] = sanitize_textarea_field( $merged['proactive_message'] ?? '' );
 		$sanitized['proactive_pages']   = sanitize_text_field( $merged['proactive_pages'] ?? 'all' );
+		$sanitized['conversation_starters'] = $this->sanitize_conversation_starters( $merged['conversation_starters'] ?? array() );
 
 		$sanitized['chatbot_name'] = sanitize_text_field( $merged['chatbot_name'] ?? '' );
 		$sanitized['chatbot_logo'] = esc_url_raw( $merged['chatbot_logo'] ?? '' );
@@ -489,6 +490,35 @@ class WPAIC_Admin {
 			'product_index_enabled'    => $product_index_enabled,
 			'content_index_post_types' => $content_index_post_types,
 		);
+	}
+
+	/**
+	 * @param mixed $raw_starters
+	 * @return array<int, string>
+	 */
+	private function sanitize_conversation_starters( mixed $raw_starters ): array {
+		if ( ! is_array( $raw_starters ) ) {
+			return array();
+		}
+
+		$starters = array();
+		foreach ( $raw_starters as $starter ) {
+			if ( ! is_scalar( $starter ) ) {
+				continue;
+			}
+
+			$cleaned = sanitize_text_field( (string) $starter );
+			if ( '' === $cleaned || in_array( $cleaned, $starters, true ) ) {
+				continue;
+			}
+
+			$starters[] = $cleaned;
+			if ( count( $starters ) >= 5 ) {
+				break;
+			}
+		}
+
+		return $starters;
 	}
 
 	private function format_index_updated_at( ?string $updated ): string {
@@ -786,8 +816,12 @@ class WPAIC_Admin {
 		$proactive_pages   = $settings['proactive_pages'] ?? 'all';
 		$handoff_enabled   = ! empty( $settings['handoff_enabled'] );
 		$handoff_fields    = $settings['handoff_fields'] ?? array();
+		$conversation_starters = $settings['conversation_starters'] ?? array();
 		if ( ! is_array( $handoff_fields ) ) {
 			$handoff_fields = array();
+		}
+		if ( ! is_array( $conversation_starters ) ) {
+			$conversation_starters = array();
 		}
 		$optional_fields   = array(
 			'phone_number'    => __( 'Phone Number', 'wp-ai-chatbot' ),
@@ -894,6 +928,29 @@ class WPAIC_Admin {
 							class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
 							placeholder="<?php esc_attr_e( 'Hi! Looking for something specific? I can help you find the perfect product.', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $proactive_message ); ?></textarea>
 				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Custom message when chat opens proactively. Leave empty to use the greeting message.', 'wp-ai-chatbot' ); ?></p>
+			</div>
+
+			<h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2 mt-6"><?php esc_html_e( 'Conversation Starters', 'wp-ai-chatbot' ); ?></h3>
+
+			<div class="p-4 bg-gray-50 rounded-lg">
+				<p class="text-sm text-gray-600 mb-4"><?php esc_html_e( 'Add 3 to 5 starter chips for the empty chat state. Leave them blank to use auto-generated starters based on your site features.', 'wp-ai-chatbot' ); ?></p>
+				<div class="space-y-3 max-w-lg">
+					<?php for ( $i = 0; $i < 5; $i++ ) : ?>
+						<label class="block">
+							<span class="block text-sm font-medium text-gray-700 mb-2">
+								<?php
+								/* translators: %d: starter number */
+								echo esc_html( sprintf( __( 'Starter %d', 'wp-ai-chatbot' ), $i + 1 ) );
+								?>
+							</span>
+							<input type="text"
+								name="wpaic_settings[conversation_starters][]"
+								value="<?php echo esc_attr( (string) ( $conversation_starters[ $i ] ?? '' ) ); ?>"
+								class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+								placeholder="<?php echo esc_attr( 0 === $i ? __( 'Find a product', 'wp-ai-chatbot' ) : __( 'Add a starter prompt', 'wp-ai-chatbot' ) ); ?>">
+						</label>
+					<?php endfor; ?>
+				</div>
 			</div>
 		</div>
 		<?php
@@ -1520,7 +1577,12 @@ class WPAIC_Admin {
 		$existing_settings = get_option( 'wpaic_settings', array() );
 		$existing_settings = is_array( $existing_settings ) ? $existing_settings : array();
 
-		$sanitized_search_settings = $this->sanitize_search_index_settings( $_POST, true );
+		$search_input = $_POST;
+		if ( ! array_key_exists( 'product_index_enabled', $search_input ) ) {
+			$search_input['product_index_enabled'] = '';
+		}
+
+		$sanitized_search_settings = $this->sanitize_search_index_settings( $search_input, true );
 		update_option( 'wpaic_settings', array_merge( $existing_settings, $sanitized_search_settings ) );
 
 		$search_index          = new WPAIC_Search_Index();

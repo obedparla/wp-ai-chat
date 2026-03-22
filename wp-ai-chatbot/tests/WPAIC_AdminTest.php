@@ -6,6 +6,8 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-logs.php';
+require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
+require_once __DIR__ . '/../includes/class-wpaic-search-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-admin.php';
 
 class WPAIC_AdminTest extends TestCase {
@@ -1249,5 +1251,75 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 
 		$this->assertEquals( array( 'phone_number', 'company' ), $sanitized['handoff_fields'] );
 		$this->assertTrue( $sanitized['handoff_enabled'] );
+	}
+
+	public function test_sanitize_settings_conversation_starters_trims_deduplicates_and_caps_at_five(): void {
+		$sanitized = $this->admin->sanitize_settings(
+			array(
+				'active_tab'             => 'engagement',
+				'conversation_starters'  => array(
+					'  Find a product  ',
+					'<b>Track my order</b>',
+					'Find a product',
+					'',
+					'Shipping info',
+					'Need support',
+					'Compare items',
+					'Extra starter',
+				),
+			)
+		);
+
+		$this->assertSame(
+			array(
+				'Find a product',
+				'Track my order',
+				'Shipping info',
+				'Need support',
+				'Compare items',
+			),
+			$sanitized['conversation_starters']
+		);
+	}
+
+	public function test_sanitize_settings_conversation_starters_preserved_across_other_tabs(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'conversation_starters' => array( 'Find a product', 'Track my order' ),
+			)
+		);
+
+		$sanitized = $this->admin->sanitize_settings(
+			array(
+				'active_tab'       => 'general',
+				'enabled'          => '1',
+				'greeting_message' => 'Hi',
+				'language'         => 'auto',
+			)
+		);
+
+		$this->assertSame( array( 'Find a product', 'Track my order' ), $sanitized['conversation_starters'] );
+	}
+
+	public function test_engagement_tab_renders_conversation_starter_inputs(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'conversation_starters' => array( 'Find a product', 'Track my order' ),
+			)
+		);
+		$_GET['tab'] = 'engagement';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Conversation Starters', $output );
+		$this->assertStringContainsString( 'wpaic_settings[conversation_starters][]', $output );
+		$this->assertStringContainsString( 'Find a product', $output );
+		$this->assertStringContainsString( 'Track my order', $output );
+		unset( $_GET['tab'] );
 	}
 }

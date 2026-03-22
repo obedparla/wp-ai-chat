@@ -68,6 +68,14 @@ class WPAIC_ActivationTest extends TestCase {
 		$this->assertEquals( '', $settings['system_prompt'] );
 	}
 
+	public function test_activation_initializes_empty_conversation_starters(): void {
+		wpaic_activate();
+		$settings = get_option( 'wpaic_settings' );
+
+		$this->assertArrayHasKey( 'conversation_starters', $settings );
+		$this->assertSame( array(), $settings['conversation_starters'] );
+	}
+
 	public function test_activation_does_not_overwrite_existing_settings(): void {
 		// Set custom settings before activation
 		$custom_settings = array(

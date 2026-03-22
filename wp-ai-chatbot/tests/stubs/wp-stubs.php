@@ -883,11 +883,13 @@ function wpaic_activate(): void {
 	add_option(
 		'wpaic_settings',
 		array(
-			'openai_api_key'   => '',
-			'model'            => 'gpt-4o-mini',
-			'greeting_message' => 'Hello! How can I help you today?',
-			'enabled'          => true,
-			'system_prompt'    => '',
+			'openai_api_key'        => '',
+			'model'                 => 'gpt-4o-mini',
+			'greeting_message'      => 'Hello! How can I help you today?',
+			'enabled'               => true,
+			'system_prompt'         => '',
+			'theme_color'           => '#0073aa',
+			'conversation_starters' => array(),
 		)
 	);
 
@@ -1120,6 +1122,12 @@ if ( ! function_exists( 'add_query_arg' ) ) {
 if ( ! function_exists( 'admin_url' ) ) {
 	function admin_url( string $path = '', string $scheme = 'admin' ): string {
 		return 'https://example.com/wp-admin/' . $path;
+	}
+}
+
+if ( ! function_exists( 'rest_url' ) ) {
+	function rest_url( string $path = '', ?string $scheme = null ): string {
+		return 'https://example.com/wp-json/' . ltrim( $path, '/' );
 	}
 }
 

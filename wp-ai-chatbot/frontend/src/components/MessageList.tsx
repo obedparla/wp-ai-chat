@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, Fragment } from 'react'
+import { useEffect, useRef, useCallback, Fragment, type ReactNode } from 'react'
 import { Message } from '../hooks/useChat'
 import ProductGrid from './ProductGrid'
 import ComparisonTable from './ComparisonTable'
@@ -8,9 +8,10 @@ import { cn } from '@/lib/utils'
 interface MessageListProps {
   messages: Message[]
   onRetry?: () => void
+  children?: ReactNode
 }
 
-export default function MessageList({ messages, onRetry }: MessageListProps) {
+export default function MessageList({ messages, onRetry, children }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
   const lastMessageContent = messages[messages.length - 1]?.content
@@ -114,6 +115,7 @@ export default function MessageList({ messages, onRetry }: MessageListProps) {
           </Fragment>
         )
       })}
+      {children}
     </div>
   )
 }

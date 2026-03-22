@@ -17,6 +17,7 @@ declare global {
       proactiveMessage?: string
       chatbotName?: string
       chatbotLogo?: string
+      conversationStarters?: string[]
     }
   }
 }
@@ -79,6 +80,7 @@ export default function App() {
           chat={chat}
           chatbotName={config?.chatbotName}
           chatbotLogo={config?.chatbotLogo}
+          conversationStarters={config?.conversationStarters ?? []}
         />
       )}
       <ChatButton onClick={handleToggle} isOpen={isOpen} />
