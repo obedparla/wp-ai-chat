@@ -43,8 +43,10 @@ export default function MessageList({ messages, onRetry, children }: MessageList
         const isLastMessage = i === messages.length - 1
         const showRetry = msg.isError && isLastMessage && onRetry
 
-        const hasProducts = msg.products && msg.products.length > 0
-        const hasComparison = msg.comparison
+        const products = msg.products ?? []
+        const comparison = msg.comparison
+        const hasProducts = products.length > 0
+        const hasComparison = comparison !== undefined
         const hasToolUI = hasProducts || hasComparison
         const hasTextContent = msg.content && msg.content.trim().length > 0
 
@@ -94,12 +96,12 @@ export default function MessageList({ messages, onRetry, children }: MessageList
             )}
             {hasProducts && (
               <div className="w-full animate-wpaic-fadeIn">
-                <ProductGrid products={msg.products!} />
+                <ProductGrid products={products} />
               </div>
             )}
-            {hasComparison && (
+            {comparison && (
               <div className="w-full animate-wpaic-fadeIn">
-                <ComparisonTable data={msg.comparison!} />
+                <ComparisonTable data={comparison} />
               </div>
             )}
             {showRetry && hasToolUI && (

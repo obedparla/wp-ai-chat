@@ -3,6 +3,7 @@
 ## Chat Widget
 - Floating chat widget on frontend
 - Real-time streaming responses (SSE)
+- Debounced multi-message sending with persistent input focus
 - Markdown support with prose styling
 - Product cards display search results
 - Carousel for 3+ products

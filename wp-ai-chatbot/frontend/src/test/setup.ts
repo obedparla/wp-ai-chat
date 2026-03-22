@@ -29,6 +29,8 @@ Element.prototype.scrollIntoView = function () {
   // Mock implementation for jsdom
 }
 
+const noop = () => undefined
+
 // Mock matchMedia for embla-carousel
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -36,19 +38,19 @@ Object.defineProperty(window, 'matchMedia', {
     matches: false,
     media: query,
     onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addListener: noop,
+    removeListener: noop,
+    addEventListener: noop,
+    removeEventListener: noop,
     dispatchEvent: () => false,
   }),
 })
 
 // Mock IntersectionObserver for embla-carousel
 class MockIntersectionObserver {
-  observe = () => {}
-  unobserve = () => {}
-  disconnect = () => {}
+  observe = noop
+  unobserve = noop
+  disconnect = noop
 }
 Object.defineProperty(window, 'IntersectionObserver', {
   writable: true,
@@ -57,9 +59,9 @@ Object.defineProperty(window, 'IntersectionObserver', {
 
 // Mock ResizeObserver for embla-carousel
 class MockResizeObserver {
-  observe = () => {}
-  unobserve = () => {}
-  disconnect = () => {}
+  observe = noop
+  unobserve = noop
+  disconnect = noop
 }
 Object.defineProperty(window, 'ResizeObserver', {
   writable: true,

@@ -5,7 +5,7 @@ export interface CartUpdateResponse {
   cart_hash?: string
 }
 
-type JQueryTriggerTarget = {
+interface JQueryTriggerTarget {
   trigger: (eventName: string, params?: unknown[]) => void
 }
 

@@ -58,7 +58,6 @@ export default function ProductCard({ product }: ProductCardProps) {
 
     const wcAjaxUrl = window.wpaicConfig?.wcAjaxUrl
     if (!wcAjaxUrl) {
-      // eslint-disable-next-line react-hooks/immutability
       window.location.href = product.add_to_cart_url || product.url
       return
     }
@@ -73,7 +72,6 @@ export default function ProductCard({ product }: ProductCardProps) {
       )
 
       if (!response.ok) {
-        // eslint-disable-next-line react-hooks/immutability
         window.location.href = product.add_to_cart_url || product.url
         return
       }
@@ -81,7 +79,6 @@ export default function ProductCard({ product }: ProductCardProps) {
       const data = await response.json()
 
       if (hasCartUpdateError(data)) {
-        // eslint-disable-next-line react-hooks/immutability
         window.location.href = product.add_to_cart_url || product.url
         return
       }
@@ -91,7 +88,6 @@ export default function ProductCard({ product }: ProductCardProps) {
 
       setTimeout(() => setCartState('idle'), 2000)
     } catch {
-      // eslint-disable-next-line react-hooks/immutability
       window.location.href = product.add_to_cart_url || product.url
     }
   }
