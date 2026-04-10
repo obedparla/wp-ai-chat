@@ -9,12 +9,16 @@
 - Carousel for 3+ products
 
 ## Admin Configuration
-- OpenAI API key and model selection
+- Provider connection and licensing status
 - Greeting message customization
 - System prompt customization
 - Theme color picker
 - Language selection (auto-detect or fixed)
 - Enable/disable toggle
+
+## Licensing & Billing
+- Freemius-powered trials, licensing, billing, and premium updates
+- Signed provider validation hides chat when the trial or license is inactive
 
 ## Chatbot Branding
 - Custom chatbot name

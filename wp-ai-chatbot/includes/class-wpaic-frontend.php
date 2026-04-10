@@ -5,6 +5,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class WPAIC_Frontend {
+	private WPAIC_License_Manager $license_manager;
+
+	public function __construct( ?WPAIC_License_Manager $license_manager = null ) {
+		$this->license_manager = $license_manager ?? new WPAIC_License_Manager();
+	}
+
 	public function init(): void {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'wp_footer', array( $this, 'render_chatbot_container' ) );
@@ -13,7 +19,7 @@ class WPAIC_Frontend {
 	public function enqueue_assets(): void {
 		$settings = get_option( 'wpaic_settings', array() );
 
-		if ( ! is_array( $settings ) || empty( $settings['enabled'] ) ) {
+		if ( ! is_array( $settings ) || empty( $settings['enabled'] ) || ! $this->license_manager->can_render_chat() ) {
 			return;
 		}
 
@@ -224,7 +230,7 @@ class WPAIC_Frontend {
 	public function render_chatbot_container(): void {
 		$settings = get_option( 'wpaic_settings', array() );
 
-		if ( ! is_array( $settings ) || empty( $settings['enabled'] ) ) {
+		if ( ! is_array( $settings ) || empty( $settings['enabled'] ) || ! $this->license_manager->can_render_chat() ) {
 			return;
 		}
 

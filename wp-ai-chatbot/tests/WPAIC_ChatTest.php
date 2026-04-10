@@ -1280,41 +1280,17 @@ class WPAIC_ChatTest extends TestCase {
 	}
 
 	public function test_is_provider_mode_true_when_both_fields_set(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
-				'provider_site_key' => 'test-site-key-123',
-			)
-		);
-
-		$chat = new WPAIC_Chat();
+		$chat = new WPAIC_Chat( array(), $this->create_provider_license_manager() );
 		$this->assertTrue( $chat->is_provider_mode() );
 	}
 
 	public function test_is_provider_mode_false_when_url_missing(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'provider_url'      => '',
-				'provider_site_key' => 'test-site-key-123',
-			)
-		);
-
-		$chat = new WPAIC_Chat();
+		$chat = new WPAIC_Chat( array(), $this->create_provider_license_manager( '', true ) );
 		$this->assertFalse( $chat->is_provider_mode() );
 	}
 
 	public function test_is_provider_mode_false_when_site_key_missing(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
-				'provider_site_key' => '',
-			)
-		);
-
-		$chat = new WPAIC_Chat();
+		$chat = new WPAIC_Chat( array(), $this->create_provider_license_manager( 'https://provider.example.com/wp-json/wpaip/v1/chat', false ) );
 		$this->assertFalse( $chat->is_provider_mode() );
 	}
 
@@ -1331,16 +1307,9 @@ class WPAIC_ChatTest extends TestCase {
 	}
 
 	public function test_send_no_error_in_provider_mode_without_api_key(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'openai_api_key'    => '',
-				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
-				'provider_site_key' => 'test-key',
-			)
-		);
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'openai_api_key' => '' ) );
 
-		$chat   = new WPAIC_Chat();
+		$chat   = new WPAIC_Chat( array(), $this->create_provider_license_manager() );
 		$result = $chat->send( array( array( 'role' => 'user', 'content' => 'Hello' ) ) );
 
 		// In provider mode, send() should attempt provider connection (and fail due to no actual server).
@@ -1353,16 +1322,9 @@ class WPAIC_ChatTest extends TestCase {
 	}
 
 	public function test_send_stream_no_error_in_provider_mode_without_api_key(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'openai_api_key'    => '',
-				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
-				'provider_site_key' => 'test-key',
-			)
-		);
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'openai_api_key' => '' ) );
 
-		$chat          = new WPAIC_Chat();
+		$chat          = new WPAIC_Chat( array(), $this->create_provider_license_manager() );
 		$callback_data = array();
 
 		$chat->send_stream(
@@ -1681,22 +1643,47 @@ class WPAIC_ChatTest extends TestCase {
 	}
 
 	public function test_provider_mode_client_not_initialized(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'openai_api_key'    => 'this-key-should-be-ignored',
-				'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
-				'provider_site_key' => 'test-key',
-			)
-		);
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'openai_api_key' => 'this-key-should-be-ignored' ) );
 
-		$chat       = new WPAIC_Chat();
+		$chat       = new WPAIC_Chat( array(), $this->create_provider_license_manager() );
 		$reflection = new ReflectionClass( $chat );
 		$property   = $reflection->getProperty( 'client' );
 		$property->setAccessible( true );
 
 		// In provider mode, the OpenAI client should NOT be initialized
 		$this->assertNull( $property->getValue( $chat ) );
+	}
+
+	private function create_provider_license_manager( string $provider_url = 'https://provider.example.com/wp-json/wpaip/v1/chat', bool $has_auth = true ): WPAIC_License_Manager {
+		return new class( $provider_url, $has_auth ) extends WPAIC_License_Manager {
+			public function __construct( private string $provider_url, private bool $has_auth ) {}
+
+			public function is_provider_url_configured(): bool {
+				return '' !== $this->provider_url;
+			}
+
+			public function has_provider_auth(): bool {
+				return $this->has_auth;
+			}
+
+			public function get_provider_url(): string {
+				return $this->provider_url;
+			}
+
+			public function get_provider_request_headers( array $body ): array {
+				if ( ! $this->has_auth ) {
+					return array();
+				}
+
+				return array(
+					'Content-Type'                  => 'application/json',
+					'X-WPAIC-FS-Install-Id'         => '123',
+					'X-WPAIC-FS-Install-Public-Key' => 'pk_test',
+					'X-WPAIC-Timestamp'             => (string) time(),
+					'X-WPAIC-Signature'             => 'sig_test',
+				);
+			}
+		};
 	}
 
 	public function test_handoff_tool_includes_optional_fields_when_configured(): void {

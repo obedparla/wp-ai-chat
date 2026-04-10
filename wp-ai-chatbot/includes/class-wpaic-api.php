@@ -6,9 +6,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WPAIC_API {
 	private WPAIC_Logs $logs;
+	private WPAIC_License_Manager $license_manager;
 
-	public function __construct() {
+	public function __construct( ?WPAIC_License_Manager $license_manager = null ) {
 		$this->logs = new WPAIC_Logs();
+		$this->license_manager = $license_manager ?? new WPAIC_License_Manager();
 	}
 
 	public function init(): void {
@@ -104,6 +106,11 @@ class WPAIC_API {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function handle_chat( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$availability_error = $this->ensure_chat_is_available();
+		if ( is_wp_error( $availability_error ) ) {
+			return $availability_error;
+		}
+
 		$messages     = $request->get_param( 'messages' );
 		$page_context = $this->sanitize_page_context( $request->get_param( 'page_context' ) );
 
@@ -127,6 +134,11 @@ class WPAIC_API {
 	 * @return WP_Error|void
 	 */
 	public function handle_chat_stream( WP_REST_Request $request ) {
+		$availability_error = $this->ensure_chat_is_available();
+		if ( is_wp_error( $availability_error ) ) {
+			return $availability_error;
+		}
+
 		$messages     = $request->get_param( 'messages' );
 		$session_id   = $request->get_param( 'session_id' );
 		$page_context = $this->sanitize_page_context( $request->get_param( 'page_context' ) );
@@ -261,6 +273,34 @@ class WPAIC_API {
 		}
 
 		exit;
+	}
+
+	private function ensure_chat_is_available(): ?WP_Error {
+		if ( ! $this->license_manager->has_valid_chat_license() ) {
+			return new WP_Error(
+				'chat_unavailable',
+				'Chat is unavailable until a valid trial or license is active.',
+				array( 'status' => 403 )
+			);
+		}
+
+		if ( ! $this->license_manager->is_provider_url_configured() ) {
+			return new WP_Error(
+				'chat_unavailable',
+				'Chat is unavailable because the provider URL is not configured.',
+				array( 'status' => 503 )
+			);
+		}
+
+		if ( ! $this->license_manager->has_provider_auth() ) {
+			return new WP_Error(
+				'chat_unavailable',
+				'Chat is unavailable because this site has not finished license activation yet.',
+				array( 'status' => 403 )
+			);
+		}
+
+		return null;
 	}
 
 	/**

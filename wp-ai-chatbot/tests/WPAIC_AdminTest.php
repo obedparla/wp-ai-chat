@@ -1127,7 +1127,7 @@ class WPAIC_AdminTest extends TestCase {
 		$_FILES = array();
 	}
 
-	public function test_sanitize_settings_api_tab_includes_provider_fields(): void {
+	public function test_sanitize_settings_api_tab_includes_provider_override_field(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
@@ -1138,15 +1138,13 @@ class WPAIC_AdminTest extends TestCase {
 
 		$admin = new WPAIC_Admin();
 		$result = $admin->sanitize_settings( array(
-			'active_tab'        => 'api',
-			'openai_api_key'    => '',
-			'model'             => 'gpt-4o-mini',
-			'provider_url'      => 'https://provider.example.com/wp-json/wpaip/v1/chat',
-			'provider_site_key' => 'my-site-key-123',
+			'active_tab'            => 'api',
+			'openai_api_key'        => '',
+			'model'                 => 'gpt-4o-mini',
+			'provider_url_override' => 'https://provider.example.com/wp-json/wpaip/v1/chat',
 		) );
 
-		$this->assertEquals( 'https://provider.example.com/wp-json/wpaip/v1/chat', $result['provider_url'] );
-		$this->assertEquals( 'my-site-key-123', $result['provider_site_key'] );
+		$this->assertEquals( 'https://provider.example.com/wp-json/wpaip/v1/chat', $result['provider_url_override'] );
 		$this->assertTrue( $result['enabled'] );
 	}
 
@@ -1174,17 +1172,16 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertEquals( 'enthusiastic', $result['tone_of_voice'] );
 	}
 
-	public function test_sanitize_settings_provider_url_uses_esc_url_raw(): void {
+	public function test_sanitize_settings_provider_override_uses_esc_url_raw(): void {
 		$admin = new WPAIC_Admin();
 		$result = $admin->sanitize_settings( array(
-			'active_tab'        => 'api',
-			'openai_api_key'    => '',
-			'model'             => 'gpt-4o-mini',
-			'provider_url'      => 'https://valid-url.com/wp-json/wpaip/v1/chat',
-			'provider_site_key' => 'key',
+			'active_tab'            => 'api',
+			'openai_api_key'        => '',
+			'model'                 => 'gpt-4o-mini',
+			'provider_url_override' => 'https://valid-url.com/wp-json/wpaip/v1/chat',
 		) );
 
-		$this->assertEquals( 'https://valid-url.com/wp-json/wpaip/v1/chat', $result['provider_url'] );
+		$this->assertEquals( 'https://valid-url.com/wp-json/wpaip/v1/chat', $result['provider_url_override'] );
 	}
 
 	public function test_appearance_tab_renders_media_uploader_for_logo(): void {

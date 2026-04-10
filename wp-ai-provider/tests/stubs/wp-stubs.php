@@ -5,6 +5,11 @@
 
 $GLOBALS['wp_options'] = array();
 $GLOBALS['wp_actions'] = array();
+$GLOBALS['wp_transients'] = array();
+
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+	define( 'DAY_IN_SECONDS', 86400 );
+}
 
 if ( ! function_exists( 'add_option' ) ) {
 	function add_option( string $option, mixed $value = '' ): bool {
@@ -43,6 +48,19 @@ if ( ! function_exists( 'add_action' ) ) {
 	}
 }
 
+if ( ! function_exists( 'set_transient' ) ) {
+	function set_transient( string $transient, mixed $value, int $expiration = 0 ): bool {
+		$GLOBALS['wp_transients'][ $transient ] = $value;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'get_transient' ) ) {
+	function get_transient( string $transient ): mixed {
+		return $GLOBALS['wp_transients'][ $transient ] ?? false;
+	}
+}
+
 if ( ! function_exists( 'flush_rewrite_rules' ) ) {
 	function flush_rewrite_rules( bool $hard = true ): void {
 		// No-op in tests.
@@ -65,6 +83,12 @@ if ( ! function_exists( 'plugin_basename' ) ) {
 	function plugin_basename( string $file ): string {
 		$dir = basename( dirname( $file ) );
 		return $dir . '/' . basename( $file );
+	}
+}
+
+if ( ! function_exists( 'wp_parse_url' ) ) {
+	function wp_parse_url( string $url, int $component = -1 ): string|array|int|false|null {
+		return parse_url( $url, $component );
 	}
 }
 
@@ -204,6 +228,34 @@ if ( ! function_exists( 'do_settings_sections' ) ) {
 if ( ! function_exists( 'submit_button' ) ) {
 	function submit_button(): void {
 		echo '<input type="submit" class="button button-primary" value="Save Changes" />';
+	}
+}
+
+if ( ! function_exists( 'wp_remote_get' ) ) {
+	function wp_remote_get( string $url, array $args = array() ): mixed {
+		if ( isset( $GLOBALS['wp_remote_get_handler'] ) && is_callable( $GLOBALS['wp_remote_get_handler'] ) ) {
+			return call_user_func( $GLOBALS['wp_remote_get_handler'], $url, $args );
+		}
+
+		return new WP_Error( 'http_not_mocked', 'No wp_remote_get mock registered.' );
+	}
+}
+
+if ( ! function_exists( 'wp_remote_retrieve_response_code' ) ) {
+	function wp_remote_retrieve_response_code( mixed $response ): int {
+		return is_array( $response ) ? (int) ( $response['response']['code'] ?? 0 ) : 0;
+	}
+}
+
+if ( ! function_exists( 'wp_remote_retrieve_body' ) ) {
+	function wp_remote_retrieve_body( mixed $response ): string {
+		return is_array( $response ) ? (string) ( $response['body'] ?? '' ) : '';
+	}
+}
+
+if ( ! function_exists( 'wp_json_encode' ) ) {
+	function wp_json_encode( mixed $value ): string|false {
+		return json_encode( $value );
 	}
 }
 
