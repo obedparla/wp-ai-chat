@@ -11,3 +11,9 @@ Bugs to fix. Mark as "Done: true" when fixed.
 Once we're able to send multiple messages, we should implement a "debounce" on sending the messages, so that the user can send multiple messages in quick succession and get a single answer to both. Make the debounce 6 seconds 
 
 There should still be a "Typing..." to show the AI is answering
+
+
+
+- Proactive Message: broken
+- Responses are very slow
+- Tools for product showing not working
