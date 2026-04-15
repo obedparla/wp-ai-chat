@@ -24,7 +24,7 @@ interface PendingUserMessage {
   content: string
 }
 
-const MESSAGE_DEBOUNCE_MS = 6000
+const MESSAGE_DEBOUNCE_MS = 3000
 
 function generateSessionId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
