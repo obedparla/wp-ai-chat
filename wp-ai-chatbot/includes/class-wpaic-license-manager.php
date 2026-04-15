@@ -182,14 +182,22 @@ class WPAIC_License_Manager {
 			);
 		}
 
-		$fs = wpaic_fs();
-
 		if ( ! $this->has_valid_chat_license() ) {
 			$message = __( 'Chat is hidden on the frontend until the trial or a valid license is active.', 'wp-ai-chatbot' );
+			$activation_url = $this->get_activation_url();
+			$account_url    = $this->get_account_url();
+			$pricing_url    = $this->get_pricing_url();
 
-			if ( method_exists( $fs, 'get_account_url' ) && method_exists( $fs, 'get_upgrade_url' ) ) {
-				$message .= ' <a href="' . esc_url( $fs->get_account_url() ) . '">' . esc_html__( 'Manage account', 'wp-ai-chatbot' ) . '</a>';
-				$message .= ' | <a href="' . esc_url( $fs->get_upgrade_url() ) . '">' . esc_html__( 'View pricing', 'wp-ai-chatbot' ) . '</a>';
+			if ( '' !== $activation_url ) {
+				$message .= ' <a href="' . esc_url( $activation_url ) . '">' . esc_html__( 'Activate License', 'wp-ai-chatbot' ) . '</a>';
+			}
+
+			if ( '' !== $account_url ) {
+				$message .= ' | <a href="' . esc_url( $account_url ) . '">' . esc_html__( 'Manage account', 'wp-ai-chatbot' ) . '</a>';
+			}
+
+			if ( '' !== $pricing_url ) {
+				$message .= ' | <a href="' . esc_url( $pricing_url ) . '">' . esc_html__( 'View pricing', 'wp-ai-chatbot' ) . '</a>';
 			}
 
 			return array(
@@ -261,6 +269,14 @@ class WPAIC_License_Manager {
 		}
 
 		return (string) wpaic_fs()->get_account_url();
+	}
+
+	public function get_activation_url(): string {
+		if ( ! $this->is_freemius_available() || ! method_exists( wpaic_fs(), 'get_activation_url' ) ) {
+			return '';
+		}
+
+		return (string) wpaic_fs()->get_activation_url();
 	}
 
 	public function get_pricing_url(): string {

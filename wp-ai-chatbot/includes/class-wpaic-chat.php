@@ -391,7 +391,12 @@ class WPAIC_Chat {
 			fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log( "[WPAIC] Provider HTTP {$http_status} | body: {$error_body}" );
-			return array( 'error' => "Provider returned HTTP {$http_status}" );
+			return array(
+				'error' => $this->get_provider_http_error_message(
+					$http_status,
+					is_string( $error_body ) ? $error_body : ''
+				),
+			);
 		}
 
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
@@ -516,6 +521,23 @@ class WPAIC_Chat {
 		}
 
 		return array();
+	}
+
+	private function get_provider_http_error_message( int $http_status, string $error_body ): string {
+		$decoded = json_decode( $error_body, true );
+		if ( is_array( $decoded ) ) {
+			$message = $decoded['message'] ?? null;
+			if ( is_string( $message ) && '' !== trim( $message ) ) {
+				return $message;
+			}
+
+			$error = $decoded['error'] ?? null;
+			if ( is_array( $error ) && isset( $error['message'] ) && is_string( $error['message'] ) && '' !== trim( $error['message'] ) ) {
+				return $error['message'];
+			}
+		}
+
+		return "Provider returned HTTP {$http_status}";
 	}
 
 	/**

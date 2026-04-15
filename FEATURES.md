@@ -19,6 +19,9 @@
 ## Licensing & Billing
 - Freemius-powered trials, licensing, billing, and premium updates
 - Signed provider validation hides chat when the trial or license is inactive
+- Licensing tab includes a direct activation link into the default Freemius flow
+- Local `.local` and `.test` installs work against the provider in local development
+- Provider rejections surface the exact reason in the chat stream
 
 ## Chatbot Branding
 - Custom chatbot name

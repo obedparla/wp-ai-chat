@@ -337,6 +337,7 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		private array $params = array();
 		/** @var array<string, string> */
 		private array $headers = array();
+		private string $body = '';
 
 		/**
 		 * @param array<string, mixed> $params
@@ -349,8 +350,16 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 			$this->params[ $key ] = $value;
 		}
 
+		public function set_body( string $body ): void {
+			$this->body = $body;
+		}
+
 		public function get_param( string $key ): mixed {
 			return $this->params[ $key ] ?? null;
+		}
+
+		public function get_body(): string {
+			return $this->body;
 		}
 
 		public function set_header( string $key, string $value ): void {

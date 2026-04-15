@@ -175,6 +175,51 @@ class WPAIC_LicenseManagerTest extends TestCase {
 		$this->assertStringContainsString( '3 day(s)', $notice['message'] );
 	}
 
+	public function test_get_activation_url_returns_sdk_activation_link(): void {
+		WPAICTestHelper::set_option(
+			'test_freemius_instance',
+			$this->create_freemius_mock(
+				array(
+					'activation_url' => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot',
+				)
+			)
+		);
+
+		$manager = new WPAIC_License_Manager();
+
+		$this->assertSame( 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot', $manager->get_activation_url() );
+	}
+
+	public function test_get_admin_notice_includes_activate_license_link_when_license_missing(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'provider_url_override' => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+			)
+		);
+		WPAICTestHelper::set_option(
+			'test_freemius_instance',
+			$this->create_freemius_mock(
+				array(
+					'license_active' => false,
+					'activation_url' => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot',
+					'account_url'    => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot-account',
+					'upgrade_url'    => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot-pricing',
+				)
+			)
+		);
+
+		$manager = new WPAIC_License_Manager();
+		$notice  = $manager->get_admin_notice();
+
+		$this->assertIsArray( $notice );
+		$this->assertSame( 'warning', $notice['type'] );
+		$this->assertStringContainsString( 'Activate License', $notice['message'] );
+		$this->assertStringContainsString( 'Manage account', $notice['message'] );
+		$this->assertStringContainsString( 'View pricing', $notice['message'] );
+		$this->assertStringContainsString( 'page=wp-ai-chatbot', $notice['message'] );
+	}
+
 	private function create_freemius_mock( array $overrides = array() ): object {
 		$defaults = array(
 			'trial'          => false,
@@ -187,6 +232,7 @@ class WPAIC_LicenseManagerTest extends TestCase {
 				'public_key' => 'pk_default',
 				'secret_key' => 'sk_default',
 			),
+			'activation_url' => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot',
 			'account_url'    => 'https://example.com/account',
 			'upgrade_url'    => 'https://example.com/pricing',
 		);
@@ -234,6 +280,10 @@ class WPAIC_LicenseManagerTest extends TestCase {
 
 			public function get_account_url(): string {
 				return (string) $this->config['account_url'];
+			}
+
+			public function get_activation_url(): string {
+				return (string) $this->config['activation_url'];
 			}
 
 			public function get_upgrade_url(): string {

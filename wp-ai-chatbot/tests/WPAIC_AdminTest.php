@@ -50,6 +50,58 @@ class WPAIC_AdminTest extends TestCase {
 		@rmdir( dirname( $search_dir ) );
 	}
 
+	private function create_license_manager_stub( array $overrides = array() ): WPAIC_License_Manager {
+		$defaults = array(
+			'provider_url'                  => 'https://provider.example.com/wp-json/wpaip/v1/chat',
+			'provider_url_configured'       => true,
+			'license_status_label'          => 'License required',
+			'activation_url'                => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot',
+			'account_url'                   => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot-account',
+			'pricing_url'                   => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot-pricing',
+			'provider_url_override_allowed' => false,
+		);
+
+		return new class( array_merge( $defaults, $overrides ) ) extends WPAIC_License_Manager {
+			/** @var array<string, mixed> */
+			private array $config;
+
+			/**
+			 * @param array<string, mixed> $config
+			 */
+			public function __construct( array $config ) {
+				$this->config = $config;
+			}
+
+			public function get_provider_url(): string {
+				return (string) $this->config['provider_url'];
+			}
+
+			public function is_provider_url_configured(): bool {
+				return (bool) $this->config['provider_url_configured'];
+			}
+
+			public function get_license_status_label(): string {
+				return (string) $this->config['license_status_label'];
+			}
+
+			public function get_activation_url(): string {
+				return (string) $this->config['activation_url'];
+			}
+
+			public function get_account_url(): string {
+				return (string) $this->config['account_url'];
+			}
+
+			public function get_pricing_url(): string {
+				return (string) $this->config['pricing_url'];
+			}
+
+			public function is_provider_url_override_allowed(): bool {
+				return (bool) $this->config['provider_url_override_allowed'];
+			}
+		};
+	}
+
 	public function test_sanitize_settings_sanitizes_api_key(): void {
 		$input = array(
 			'openai_api_key'   => '  sk-test-key-12345  ',
@@ -517,6 +569,24 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertStringContainsString( '<form', $output );
 		$this->assertStringContainsString( 'action="options.php"', $output );
 		$this->assertStringContainsString( 'method="post"', $output );
+	}
+
+	public function test_render_settings_page_license_tab_includes_activation_button(): void {
+		$_GET['tab'] = 'api';
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		$this->admin = new WPAIC_Admin(
+			$this->create_license_manager_stub()
+		);
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Activate License', $output );
+		$this->assertStringContainsString( 'page=wp-ai-chatbot', $output );
+		$this->assertStringContainsString( 'Manage Billing', $output );
+		$this->assertStringContainsString( 'See Plans', $output );
+		unset( $_GET['tab'] );
 	}
 
 	public function test_render_logs_page_requires_capability(): void {

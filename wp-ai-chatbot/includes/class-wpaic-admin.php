@@ -722,6 +722,7 @@ class WPAIC_Admin {
 			? __( 'Connected', 'wp-ai-chatbot' )
 			: __( 'Placeholder URL', 'wp-ai-chatbot' );
 		$license_status      = $this->license_manager->get_license_status_label();
+		$activation_url      = $this->license_manager->get_activation_url();
 		$account_url         = $this->license_manager->get_account_url();
 		$pricing_url         = $this->license_manager->get_pricing_url();
 		$provider_override   = $settings['provider_url_override'] ?? '';
@@ -749,13 +750,16 @@ class WPAIC_Admin {
 						<p class="mt-1 text-sm text-gray-600"><?php echo esc_html( $provider_url ); ?></p>
 						<p class="mt-1 text-xs text-gray-500"><?php echo esc_html( $provider_status ); ?></p>
 					</div>
-					<?php if ( '' !== $account_url || '' !== $pricing_url ) : ?>
-						<div class="flex gap-3">
+					<?php if ( '' !== $activation_url || '' !== $account_url || '' !== $pricing_url ) : ?>
+						<div class="flex flex-wrap gap-3">
+							<?php if ( '' !== $activation_url ) : ?>
+								<a href="<?php echo esc_url( $activation_url ); ?>" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"><?php esc_html_e( 'Activate License', 'wp-ai-chatbot' ); ?></a>
+							<?php endif; ?>
 							<?php if ( '' !== $account_url ) : ?>
 								<a href="<?php echo esc_url( $account_url ); ?>" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"><?php esc_html_e( 'Manage Billing', 'wp-ai-chatbot' ); ?></a>
 							<?php endif; ?>
 							<?php if ( '' !== $pricing_url ) : ?>
-								<a href="<?php echo esc_url( $pricing_url ); ?>" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"><?php esc_html_e( 'See Plans', 'wp-ai-chatbot' ); ?></a>
+								<a href="<?php echo esc_url( $pricing_url ); ?>" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"><?php esc_html_e( 'See Plans', 'wp-ai-chatbot' ); ?></a>
 							<?php endif; ?>
 						</div>
 					<?php endif; ?>

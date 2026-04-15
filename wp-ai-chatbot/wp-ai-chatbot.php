@@ -25,7 +25,7 @@ define( 'WPAIC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'WPAIC_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
 if ( ! defined( 'WPAIC_PRODUCTION_PROVIDER_URL' ) ) {
-	define( 'WPAIC_PRODUCTION_PROVIDER_URL', 'PLACEHOLDER_PROVIDER_URL' );
+	define( 'WPAIC_PRODUCTION_PROVIDER_URL', 'http://wp-ai-chatbot-provider.local/wp-json/wpaip/v1/chat' );
 }
 
 if ( ! defined( 'WPAIC_PROVIDER_URL_OVERRIDE' ) ) {
@@ -105,16 +105,9 @@ if ( ! function_exists( 'wpaic_fs' ) ) {
 			'has_premium_version' => false,
 			'has_paid_plans'      => true,
 			'menu'                => array(
-				'slug'    => 'wp-ai-chatbot-license',
-				'parent'  => array(
-					'slug' => 'wp-ai-chatbot',
-				),
-				'account' => false,
-				'pricing' => false,
+				'slug'    => 'wp-ai-chatbot',
 				'support' => false,
 				'contact' => false,
-				'affiliation' => false,
-				'addons'  => false,
 			),
 		);
 
@@ -123,22 +116,6 @@ if ( ! function_exists( 'wpaic_fs' ) ) {
 		}
 
 		$wpaic_fs = fs_dynamic_init( $config );
-
-		if ( method_exists( $wpaic_fs, 'add_filter' ) ) {
-			$wpaic_fs->add_filter( 'show_trial', '__return_false' );
-			$wpaic_fs->add_filter(
-				'is_submenu_visible',
-				static function ( bool $is_visible, string $menu_id ): bool {
-					if ( in_array( $menu_id, array( 'account', 'pricing', 'support', 'contact', 'affiliation', 'addons' ), true ) ) {
-						return false;
-					}
-
-					return $is_visible;
-				},
-				10,
-				2
-			);
-		}
 
 		return $wpaic_fs;
 	}

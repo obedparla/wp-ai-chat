@@ -1575,6 +1575,27 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringStartsWith( 'Failed to connect to provider', $result['error'] );
 	}
 
+	public function test_get_provider_http_error_message_uses_rest_error_message(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_provider_http_error_message' );
+		$method->setAccessible( true );
+
+		$result = $method->invoke(
+			$chat,
+			403,
+			wp_json_encode(
+				array(
+					'code'    => 'rest_forbidden',
+					'message' => 'License is expired, cancelled, or blocked.',
+					'data'    => array( 'status' => 403 ),
+				)
+			)
+		);
+
+		$this->assertSame( 'License is expired, cancelled, or blocked.', $result );
+	}
+
 	public function test_provider_completion_loop_stops_at_max_iterations(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',

@@ -79,6 +79,18 @@ class WPAIP_License_Validator {
 			);
 		}
 
+		if ( $this->should_allow_local_development_request( $install ) ) {
+			$this->store_valid_record( $install_id, $headers, $install, null, 'local' );
+
+			return array(
+				'install_id'   => $install_id,
+				'license_id'   => $install['license_id'] ?? null,
+				'status'       => 'local',
+				'is_grace'     => false,
+				'usage_bucket' => 'fs_install_' . $install_id,
+			);
+		}
+
 		$license = null;
 		if ( $this->is_trial_active( $install ) ) {
 			$this->store_valid_record( $install_id, $headers, $install, null, 'trial' );
@@ -219,7 +231,7 @@ class WPAIP_License_Validator {
 			return false;
 		}
 
-		$body_hash = hash( 'sha256', (string) wp_json_encode( $this->build_signed_body( $request ) ) );
+		$body_hash = hash( 'sha256', $this->get_signed_request_body( $request ) );
 		$payload   = implode(
 			"\n",
 			array(
@@ -235,6 +247,17 @@ class WPAIP_License_Validator {
 		$expected_signature = hash_hmac( 'sha256', $payload, $secret_key );
 
 		return hash_equals( $expected_signature, $headers['signature'] );
+	}
+
+	private function get_signed_request_body( WP_REST_Request $request ): string {
+		if ( method_exists( $request, 'get_body' ) ) {
+			$raw_body = (string) $request->get_body();
+			if ( '' !== $raw_body ) {
+				return $raw_body;
+			}
+		}
+
+		return (string) wp_json_encode( $this->build_signed_body( $request ) );
 	}
 
 	/**
@@ -294,7 +317,7 @@ class WPAIP_License_Validator {
 			return false;
 		}
 
-		if ( ! in_array( $record['status'], array( 'licensed', 'trial' ), true ) ) {
+		if ( ! in_array( $record['status'], array( 'licensed', 'trial', 'local' ), true ) ) {
 			return false;
 		}
 
@@ -384,5 +407,20 @@ class WPAIP_License_Validator {
 			|| str_ends_with( $host, '.staging' )
 			|| str_starts_with( $host, 'dev.' )
 			|| str_starts_with( $host, 'staging.' );
+	}
+
+	/**
+	 * Local installs should keep working against the local provider even when
+	 * the remote license state is missing or stale.
+	 *
+	 * @param array<string, mixed> $install
+	 */
+	protected function should_allow_local_development_request( array $install ): bool {
+		return $this->is_local_environment()
+			&& $this->is_local_url( (string) ( $install['url'] ?? '' ) );
+	}
+
+	protected function is_local_environment(): bool {
+		return defined( 'WP_ENVIRONMENT_TYPE' ) && 'local' === (string) WP_ENVIRONMENT_TYPE;
 	}
 }
