@@ -6,7 +6,8 @@
         "php": ">=8.2",
         "openai-php/client": "^0.10",
         "guzzlehttp/guzzle": "^7.0",
-        "teamtnt/tntsearch": "^3.0"
+        "teamtnt/tntsearch": "^3.0",
+        "freemius/wordpress-sdk": "^2.13"
     },
     "require-dev": {
         "phpstan/phpstan": "^2.0",

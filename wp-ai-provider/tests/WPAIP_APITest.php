@@ -5,18 +5,17 @@ use PHPUnit\Framework\TestCase;
 class WPAIP_APITest extends TestCase {
 
 	private WPAIP_API $api;
-	private string $site_key;
 
 	protected function setUp(): void {
 		$GLOBALS['wp_options']     = array();
 		$GLOBALS['wp_actions']     = array();
 		$GLOBALS['wp_rest_routes'] = array();
 
-		$this->site_key = 'test-site-key-abc123';
 		update_option( 'wpaip_settings', array(
-			'openai_api_key' => 'sk-test',
-			'model'          => 'gpt-4o-mini',
-			'site_key'       => $this->site_key,
+			'openai_api_key'      => 'sk-test',
+			'model'               => 'gpt-4o-mini',
+			'freemius_product_id' => 1234,
+			'freemius_api_token'  => 'fs-api-token',
 		) );
 
 		$this->api = new WPAIP_API();
@@ -36,7 +35,17 @@ class WPAIP_APITest extends TestCase {
 		$this->assertArrayHasKey( 'rest_api_init', $GLOBALS['wp_actions'] );
 	}
 
-	public function test_authenticate_request_rejects_missing_key(): void {
+	public function test_authenticate_request_returns_validator_error(): void {
+		$this->api->set_license_validator(
+			new class extends WPAIP_License_Validator {
+				public function __construct() {}
+
+				public function validate_request( WP_REST_Request $request ): array|WP_Error {
+					return new WP_Error( 'rest_forbidden', 'Nope', array( 'status' => 403 ) );
+				}
+			}
+		);
+
 		$request = new WP_REST_Request();
 
 		$result = $this->api->authenticate_request( $request );
@@ -45,36 +54,28 @@ class WPAIP_APITest extends TestCase {
 		$this->assertSame( 'rest_forbidden', $result->get_error_code() );
 	}
 
-	public function test_authenticate_request_rejects_invalid_key(): void {
+	public function test_authenticate_request_accepts_valid_validator_result(): void {
+		$this->api->set_license_validator(
+			new class extends WPAIP_License_Validator {
+				public function __construct() {}
+
+				public function validate_request( WP_REST_Request $request ): array|WP_Error {
+					return array(
+						'install_id'   => 99,
+						'license_id'   => 55,
+						'status'       => 'licensed',
+						'is_grace'     => false,
+						'usage_bucket' => 'fs_install_99',
+					);
+				}
+			}
+		);
+
 		$request = new WP_REST_Request();
-		$request->set_header( 'X-WPAIP-Site-Key', 'wrong-key' );
-
-		$result = $this->api->authenticate_request( $request );
-
-		$this->assertInstanceOf( WP_Error::class, $result );
-		$this->assertSame( 'rest_forbidden', $result->get_error_code() );
-	}
-
-	public function test_authenticate_request_accepts_valid_key(): void {
-		$request = new WP_REST_Request();
-		$request->set_header( 'X-WPAIP-Site-Key', $this->site_key );
 
 		$result = $this->api->authenticate_request( $request );
 
 		$this->assertTrue( $result );
-	}
-
-	public function test_authenticate_request_rejects_empty_stored_key(): void {
-		update_option( 'wpaip_settings', array(
-			'site_key' => '',
-		) );
-
-		$request = new WP_REST_Request();
-		$request->set_header( 'X-WPAIP-Site-Key', 'any-key' );
-
-		$result = $this->api->authenticate_request( $request );
-
-		$this->assertInstanceOf( WP_Error::class, $result );
 	}
 
 	// --- Validation tests (via validate_chat_request) ---
@@ -216,9 +217,10 @@ class WPAIP_APITest extends TestCase {
 
 	public function test_handle_chat_returns_error_when_no_api_key(): void {
 		update_option( 'wpaip_settings', array(
-			'openai_api_key' => '',
-			'model'          => 'gpt-4o-mini',
-			'site_key'       => $this->site_key,
+			'openai_api_key'      => '',
+			'model'               => 'gpt-4o-mini',
+			'freemius_product_id' => 1234,
+			'freemius_api_token'  => 'fs-api-token',
 		) );
 
 		$streamer = new WPAIP_Streamer();

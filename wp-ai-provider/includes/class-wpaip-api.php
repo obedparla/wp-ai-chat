@@ -7,9 +7,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 class WPAIP_API {
 
 	private ?WPAIP_Streamer $streamer = null;
+	/** @var array<string, mixed> */
+	private array $request_context = array();
+	private ?WPAIP_License_Validator $license_validator = null;
 
 	public function set_streamer( WPAIP_Streamer $streamer ): void {
 		$this->streamer = $streamer;
+	}
+
+	public function set_license_validator( WPAIP_License_Validator $license_validator ): void {
+		$this->license_validator = $license_validator;
 	}
 
 	private function get_streamer(): WPAIP_Streamer {
@@ -17,6 +24,14 @@ class WPAIP_API {
 			$this->streamer = new WPAIP_Streamer();
 		}
 		return $this->streamer;
+	}
+
+	private function get_license_validator(): WPAIP_License_Validator {
+		if ( null === $this->license_validator ) {
+			$this->license_validator = new WPAIP_License_Validator();
+		}
+
+		return $this->license_validator;
 	}
 
 	public function init(): void {
@@ -36,32 +51,18 @@ class WPAIP_API {
 	}
 
 	/**
-	 * Authenticate incoming requests via site key header.
+	 * Authenticate incoming requests via Freemius install identity.
 	 *
 	 * @param WP_REST_Request<array<string, mixed>> $request
 	 * @return bool|WP_Error
 	 */
 	public function authenticate_request( WP_REST_Request $request ): bool|WP_Error {
-		$site_key = $request->get_header( 'X-WPAIP-Site-Key' );
-
-		if ( empty( $site_key ) || ! is_string( $site_key ) ) {
-			return new WP_Error(
-				'rest_forbidden',
-				'Missing site key',
-				array( 'status' => 403 )
-			);
+		$validation_result = $this->get_license_validator()->validate_request( $request );
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
 		}
 
-		$settings       = get_option( 'wpaip_settings', array() );
-		$stored_site_key = is_array( $settings ) ? ( $settings['site_key'] ?? '' ) : '';
-
-		if ( '' === $stored_site_key || ! hash_equals( $stored_site_key, $site_key ) ) {
-			return new WP_Error(
-				'rest_forbidden',
-				'Invalid site key',
-				array( 'status' => 403 )
-			);
-		}
+		$this->request_context = $validation_result;
 
 		return true;
 	}

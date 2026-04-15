@@ -7,6 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class WPAIC_Loader {
 	public function init(): void {
 		$this->load_dependencies();
+		$this->init_licensing();
 		$this->init_admin();
 		$this->init_frontend();
 		$this->init_api();
@@ -20,12 +21,18 @@ class WPAIC_Loader {
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-frontend.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-page-context.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-api.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-license-manager.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-chat.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-tools.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-logs.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-cart.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-search-index.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-content-index.php';
+	}
+
+	private function init_licensing(): void {
+		$license_manager = new WPAIC_License_Manager();
+		$license_manager->init();
 	}
 
 	private function init_admin(): void {

@@ -24,6 +24,108 @@ define( 'WPAIC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPAIC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'WPAIC_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
+if ( ! defined( 'WPAIC_PRODUCTION_PROVIDER_URL' ) ) {
+	define( 'WPAIC_PRODUCTION_PROVIDER_URL', 'http://wp-ai-chatbot-provider.local/wp-json/wpaip/v1/chat' );
+}
+
+if ( ! defined( 'WPAIC_PROVIDER_URL_OVERRIDE' ) ) {
+	define( 'WPAIC_PROVIDER_URL_OVERRIDE', '' );
+}
+
+if ( ! defined( 'WPAIC_ALLOW_PROVIDER_URL_OVERRIDE' ) ) {
+	define( 'WPAIC_ALLOW_PROVIDER_URL_OVERRIDE', false );
+}
+
+if ( ! defined( 'WPAIC_FREEMIUS_PRODUCT_ID' ) ) {
+	define( 'WPAIC_FREEMIUS_PRODUCT_ID', 27158 );
+}
+
+if ( ! defined( 'WPAIC_FREEMIUS_PUBLIC_KEY' ) ) {
+	define( 'WPAIC_FREEMIUS_PUBLIC_KEY', 'pk_9c73948c8c91571ed27e43c0f5ad9' );
+}
+
+if ( ! defined( 'WPAIC_FREEMIUS_PREMIUM_SLUG' ) ) {
+	define( 'WPAIC_FREEMIUS_PREMIUM_SLUG', 'wp-ai-chatbot-premium' );
+}
+
+if ( ! defined( 'WPAIC_FREEMIUS_SANDBOX_SECRET_KEY' ) ) {
+	$wpaic_freemius_secret_key = defined( 'WP_FS__wp-ai-chatbot_SECRET_KEY' )
+		? constant( 'WP_FS__wp-ai-chatbot_SECRET_KEY' )
+		: '';
+
+	define(
+		'WPAIC_FREEMIUS_SANDBOX_SECRET_KEY',
+		is_string( $wpaic_freemius_secret_key ) ? $wpaic_freemius_secret_key : ''
+	);
+}
+
+if ( ! defined( 'WP_FS__DEBUG_SDK' ) ) {
+	define( 'WP_FS__DEBUG_SDK', false );
+}
+
+if ( ! defined( 'WP_FS__ECHO_DEBUG_SDK' ) ) {
+	define( 'WP_FS__ECHO_DEBUG_SDK', false );
+}
+
+/**
+ * Check whether the Freemius product credentials are configured.
+ */
+function wpaic_is_freemius_configured(): bool {
+	return WPAIC_FREEMIUS_PRODUCT_ID > 0
+		&& '' !== WPAIC_FREEMIUS_PUBLIC_KEY
+		&& 'PLACEHOLDER_FREEMIUS_PUBLIC_KEY' !== WPAIC_FREEMIUS_PUBLIC_KEY;
+}
+
+if ( ! function_exists( 'wpaic_fs' ) ) {
+	/**
+	 * Helper for accessing the Freemius SDK instance.
+	 */
+	function wpaic_fs() {
+		static $wpaic_fs = null;
+		$freemius_bootstrap = WPAIC_PLUGIN_DIR . 'vendor/freemius/wordpress-sdk/start.php';
+
+		if ( null !== $wpaic_fs ) {
+			return $wpaic_fs;
+		}
+
+		if ( ! wpaic_is_freemius_configured() || ! file_exists( $freemius_bootstrap ) ) {
+			return null;
+		}
+
+		require_once $freemius_bootstrap;
+
+		$config = array(
+			'id'                  => WPAIC_FREEMIUS_PRODUCT_ID,
+			'slug'                => 'wp-ai-chatbot',
+			'premium_slug'        => WPAIC_FREEMIUS_PREMIUM_SLUG,
+			'type'                => 'plugin',
+			'public_key'          => WPAIC_FREEMIUS_PUBLIC_KEY,
+			'is_premium'          => true,
+			'is_premium_only'     => true,
+			'has_premium_version' => false,
+			'has_paid_plans'      => true,
+			'menu'                => array(
+				'slug'    => 'wp-ai-chatbot',
+				'support' => false,
+				'contact' => false,
+			),
+		);
+
+		if ( '' !== WPAIC_FREEMIUS_SANDBOX_SECRET_KEY ) {
+			$config['secret_key'] = WPAIC_FREEMIUS_SANDBOX_SECRET_KEY;
+		}
+
+		$wpaic_fs = fs_dynamic_init( $config );
+
+		return $wpaic_fs;
+	}
+}
+
+if ( wpaic_is_freemius_configured() ) {
+	wpaic_fs();
+	do_action( 'wpaic_fs_loaded' );
+}
+
 // Load Composer autoloader
 if ( file_exists( WPAIC_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
 	require_once WPAIC_PLUGIN_DIR . 'vendor/autoload.php';
@@ -88,6 +190,7 @@ function wpaic_activate(): void {
 			'system_prompt'         => '',
 			'theme_color'           => '#0073aa',
 			'conversation_starters' => array(),
+			'provider_url_override' => '',
 		)
 	);
 

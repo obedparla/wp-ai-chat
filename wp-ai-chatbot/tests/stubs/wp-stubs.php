@@ -5,6 +5,10 @@
  * These provide minimal implementations that allow tests to run without WordPress.
  */
 
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+	define( 'DAY_IN_SECONDS', 86400 );
+}
+
 if ( ! class_exists( 'WP_Post' ) ) {
 	class WP_Post {
 		public int $ID = 0;
@@ -185,6 +189,9 @@ class WPAICTestHelper {
 	/** @var array<string, mixed> */
 	private static array $mock_options = array();
 
+	/** @var array<string, mixed> */
+	private static array $mock_transients = array();
+
 	/** @var array<int, array<string, array<int, string>>> */
 	private static array $mock_post_terms = array();
 
@@ -204,6 +211,7 @@ class WPAICTestHelper {
 		self::$mock_post_meta  = array();
 		self::$mock_terms      = array();
 		self::$mock_options    = array();
+		self::$mock_transients = array();
 		self::$mock_post_terms = array();
 		self::$mock_orders     = array();
 		self::$conditionals    = array();
@@ -423,6 +431,14 @@ class WPAICTestHelper {
 		unset( self::$mock_options[ $name ] );
 	}
 
+	public static function set_transient( string $name, mixed $value ): void {
+		self::$mock_transients[ $name ] = $value;
+	}
+
+	public static function get_transient( string $name, mixed $default = false ): mixed {
+		return self::$mock_transients[ $name ] ?? $default;
+	}
+
 	public static function set_conditional( string $name, bool $value ): void {
 		self::$conditionals[ $name ] = $value;
 	}
@@ -620,6 +636,43 @@ if ( ! function_exists( 'get_bloginfo' ) ) {
 if ( ! function_exists( 'home_url' ) ) {
 	function home_url( string $path = '' ): string {
 		return 'http://example.com' . $path;
+	}
+}
+
+if ( ! function_exists( 'wp_kses_post' ) ) {
+	function wp_kses_post( string $text ): string {
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'set_transient' ) ) {
+	function set_transient( string $transient, mixed $value, int $expiration = 0 ): bool {
+		WPAICTestHelper::set_transient( $transient, $value );
+		return true;
+	}
+}
+
+if ( ! function_exists( 'get_transient' ) ) {
+	function get_transient( string $transient ): mixed {
+		return WPAICTestHelper::get_transient( $transient, false );
+	}
+}
+
+if ( ! function_exists( 'wp_parse_url' ) ) {
+	function wp_parse_url( string $url, int $component = -1 ): string|array|int|false|null {
+		return parse_url( $url, $component );
+	}
+}
+
+if ( ! function_exists( 'wpaic_is_freemius_configured' ) ) {
+	function wpaic_is_freemius_configured(): bool {
+		return (bool) WPAICTestHelper::get_option( 'test_freemius_configured', false );
+	}
+}
+
+if ( ! function_exists( 'wpaic_fs' ) ) {
+	function wpaic_fs(): mixed {
+		return WPAICTestHelper::get_option( 'test_freemius_instance', null );
 	}
 }
 
@@ -1044,6 +1097,7 @@ function wpaic_activate(): void {
 			'system_prompt'         => '',
 			'theme_color'           => '#0073aa',
 			'conversation_starters' => array(),
+			'provider_url_override' => '',
 		)
 	);
 

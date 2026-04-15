@@ -6,9 +6,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WPAIC_Admin {
 	private WPAIC_Logs $logs;
+	private WPAIC_License_Manager $license_manager;
 
-	public function __construct() {
+	public function __construct( ?WPAIC_License_Manager $license_manager = null ) {
 		$this->logs = new WPAIC_Logs();
+		$this->license_manager = $license_manager ?? new WPAIC_License_Manager();
 	}
 
 	public function init(): void {
@@ -263,7 +265,7 @@ class WPAIC_Admin {
 
 		$tab_fields = array(
 			'general'    => array( 'enabled', 'greeting_message', 'language', 'tone_of_voice', 'system_prompt' ),
-			'api'        => array( 'openai_api_key', 'model', 'provider_url', 'provider_site_key' ),
+			'api'        => array( 'openai_api_key', 'model', 'provider_url_override' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color' ),
 			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages', 'conversation_starters' ),
 			'search'     => array( 'product_index_enabled', 'content_index_post_types' ),
@@ -309,8 +311,11 @@ class WPAIC_Admin {
 			? array_values( array_intersect( $raw_handoff_fields, $valid_handoff_fields ) )
 			: array();
 
-		$sanitized['provider_url']      = esc_url_raw( $merged['provider_url'] ?? '' );
-		$sanitized['provider_site_key'] = sanitize_text_field( $merged['provider_site_key'] ?? '' );
+		$sanitized['provider_url']          = esc_url_raw( $merged['provider_url'] ?? '' );
+		$sanitized['provider_site_key']     = sanitize_text_field( $merged['provider_site_key'] ?? '' );
+		$sanitized['provider_url_override'] = $this->license_manager->is_provider_url_override_allowed()
+			? esc_url_raw( $merged['provider_url_override'] ?? '' )
+			: '';
 
 		$search_settings                         = $this->sanitize_search_index_settings( $merged, 'search' === $active_tab );
 		$sanitized['product_index_enabled']      = $search_settings['product_index_enabled'];
@@ -555,7 +560,7 @@ class WPAIC_Admin {
 		$active_tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'general'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$tabs       = array(
 			'general'    => __( 'General', 'wp-ai-chatbot' ),
-			'api'        => __( 'API', 'wp-ai-chatbot' ),
+			'api'        => __( 'Licensing', 'wp-ai-chatbot' ),
 			'appearance' => __( 'Appearance', 'wp-ai-chatbot' ),
 			'engagement' => __( 'Engagement', 'wp-ai-chatbot' ),
 			'train'      => __( 'Train Bot', 'wp-ai-chatbot' ),
@@ -712,74 +717,71 @@ class WPAIC_Admin {
 	 * @param array<string, mixed> $settings Current settings.
 	 */
 	private function render_api_tab( array $settings ): void {
-		$api_key           = $settings['openai_api_key'] ?? '';
-		$model             = $settings['model'] ?? 'gpt-4o-mini';
-		$models            = $this->get_available_models();
-		$provider_url      = $settings['provider_url'] ?? '';
-		$provider_site_key = $settings['provider_site_key'] ?? '';
-		$is_provider_mode  = '' !== $provider_url && '' !== $provider_site_key;
+		$provider_url        = $this->license_manager->get_provider_url();
+		$provider_status     = $this->license_manager->is_provider_url_configured()
+			? __( 'Connected', 'wp-ai-chatbot' )
+			: __( 'Placeholder URL', 'wp-ai-chatbot' );
+		$license_status      = $this->license_manager->get_license_status_label();
+		$activation_url      = $this->license_manager->get_activation_url();
+		$account_url         = $this->license_manager->get_account_url();
+		$pricing_url         = $this->license_manager->get_pricing_url();
+		$provider_override   = $settings['provider_url_override'] ?? '';
+		$show_provider_field = $this->license_manager->is_provider_url_override_allowed();
 		?>
 		<div class="space-y-4">
 			<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
 				<div class="flex">
 					<span class="dashicons dashicons-info text-blue-500 mr-2"></span>
 					<p class="text-sm text-blue-700">
-						<?php esc_html_e( 'Configure a Provider URL + Site Key to route through a provider server (no API key needed), or enter your own OpenAI API key for direct mode.', 'wp-ai-chatbot' ); ?>
+						<?php esc_html_e( 'Licensing, billing, trials, account management, and plugin updates are handled automatically. The chat stays hidden until the trial or an active license is available.', 'wp-ai-chatbot' ); ?>
 					</p>
 				</div>
 			</div>
 
 			<fieldset class="p-4 border border-gray-200 rounded-lg">
-				<legend class="text-sm font-semibold text-gray-700 px-1"><?php esc_html_e( 'Provider Mode', 'wp-ai-chatbot' ); ?></legend>
+				<legend class="text-sm font-semibold text-gray-700 px-1"><?php esc_html_e( 'License Status', 'wp-ai-chatbot' ); ?></legend>
 				<div class="space-y-4 mt-2">
 					<div>
-						<label for="wpaic_provider_url" class="block text-sm font-medium text-gray-700 mb-2">
-							<?php esc_html_e( 'Provider URL', 'wp-ai-chatbot' ); ?>
-						</label>
-						<input type="url" id="wpaic_provider_url" name="wpaic_settings[provider_url]" value="<?php echo esc_attr( $provider_url ); ?>"
-								class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-								placeholder="https://your-provider.com/wp-json/wpaip/v1/chat">
-						<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Full URL to the provider chat endpoint.', 'wp-ai-chatbot' ); ?></p>
+						<p class="text-sm font-medium text-gray-700"><?php esc_html_e( 'Current Status', 'wp-ai-chatbot' ); ?></p>
+						<p class="mt-1 text-sm text-gray-600"><?php echo esc_html( $license_status ); ?></p>
 					</div>
 					<div>
-						<label for="wpaic_provider_site_key" class="block text-sm font-medium text-gray-700 mb-2">
-							<?php esc_html_e( 'Provider Site Key', 'wp-ai-chatbot' ); ?>
-						</label>
-						<input type="password" id="wpaic_provider_site_key" name="wpaic_settings[provider_site_key]" value="<?php echo esc_attr( $provider_site_key ); ?>"
-								class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
-								placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-						<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Site key provided by the provider server for authentication.', 'wp-ai-chatbot' ); ?></p>
+						<p class="text-sm font-medium text-gray-700"><?php esc_html_e( 'Provider Endpoint', 'wp-ai-chatbot' ); ?></p>
+						<p class="mt-1 text-sm text-gray-600"><?php echo esc_html( $provider_url ); ?></p>
+						<p class="mt-1 text-xs text-gray-500"><?php echo esc_html( $provider_status ); ?></p>
 					</div>
+					<?php if ( '' !== $activation_url || '' !== $account_url || '' !== $pricing_url ) : ?>
+						<div class="flex flex-wrap gap-3">
+							<?php if ( '' !== $activation_url ) : ?>
+								<a href="<?php echo esc_url( $activation_url ); ?>" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"><?php esc_html_e( 'Activate License', 'wp-ai-chatbot' ); ?></a>
+							<?php endif; ?>
+							<?php if ( '' !== $account_url ) : ?>
+								<a href="<?php echo esc_url( $account_url ); ?>" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"><?php esc_html_e( 'Manage Billing', 'wp-ai-chatbot' ); ?></a>
+							<?php endif; ?>
+							<?php if ( '' !== $pricing_url ) : ?>
+								<a href="<?php echo esc_url( $pricing_url ); ?>" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"><?php esc_html_e( 'See Plans', 'wp-ai-chatbot' ); ?></a>
+							<?php endif; ?>
+						</div>
+					<?php endif; ?>
 				</div>
 			</fieldset>
 
-			<fieldset class="p-4 border border-gray-200 rounded-lg <?php echo $is_provider_mode ? 'opacity-50' : ''; ?>">
-				<legend class="text-sm font-semibold text-gray-700 px-1"><?php esc_html_e( 'Direct Mode (OpenAI)', 'wp-ai-chatbot' ); ?></legend>
-				<div class="space-y-4 mt-2">
-					<div>
-						<label for="wpaic_api_key" class="block text-sm font-medium text-gray-700 mb-2">
-							<?php esc_html_e( 'OpenAI API Key', 'wp-ai-chatbot' ); ?>
-						</label>
-						<input type="password" id="wpaic_api_key" name="wpaic_settings[openai_api_key]" value="<?php echo esc_attr( $api_key ); ?>"
-								class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
-								placeholder="sk-...">
-						<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Only needed if not using provider mode.', 'wp-ai-chatbot' ); ?></p>
+			<?php if ( $show_provider_field ) : ?>
+				<fieldset class="p-4 border border-gray-200 rounded-lg">
+					<legend class="text-sm font-semibold text-gray-700 px-1"><?php esc_html_e( 'Staging Override', 'wp-ai-chatbot' ); ?></legend>
+					<div class="space-y-4 mt-2">
+						<div>
+							<label for="wpaic_provider_url_override" class="block text-sm font-medium text-gray-700 mb-2">
+								<?php esc_html_e( 'Provider URL Override', 'wp-ai-chatbot' ); ?>
+							</label>
+							<input type="url" id="wpaic_provider_url_override" name="wpaic_settings[provider_url_override]" value="<?php echo esc_attr( (string) $provider_override ); ?>"
+									class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+									placeholder="https://staging-provider.example.com/wp-json/wpaip/v1/chat">
+							<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Only available when staging overrides are explicitly enabled by constant.', 'wp-ai-chatbot' ); ?></p>
+						</div>
 					</div>
-				</div>
-			</fieldset>
-
-			<div>
-				<label for="wpaic_model" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'AI Model', 'wp-ai-chatbot' ); ?>
-				</label>
-				<select id="wpaic_model" name="wpaic_settings[model]"
-						class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-					<?php foreach ( $models as $model_id => $label ) : ?>
-						<option value="<?php echo esc_attr( $model_id ); ?>" <?php selected( $model, $model_id ); ?>><?php echo esc_html( $label ); ?></option>
-					<?php endforeach; ?>
-				</select>
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'GPT-4o Mini is recommended for most use cases - best balance of speed, cost, and quality.', 'wp-ai-chatbot' ); ?></p>
-			</div>
+				</fieldset>
+			<?php endif; ?>
 		</div>
 		<?php
 	}

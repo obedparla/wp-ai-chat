@@ -10,39 +10,6 @@ Features organized by impact. `Done: false` means unimplemented.
 
 ## Tier 1: Transformative (High Impact, High Value)
 
-### 1. Site Content Indexing (Pages, Posts, Policies) — Done: true
-
-The biggest gap today. The bot understands WooCommerce products but knows **nothing** about the rest of the website — pages, blog posts, shipping policies, return policies, about us, contact info, FAQs pages, etc.
-
-- Auto-index all WordPress pages and posts into TNTSearch (extends existing search index infrastructure)
-- Hook into `save_post` / `delete_post` to keep index current
-- Include custom post types
-- WooCommerce policy pages (shipping, returns, refund, privacy) get priority indexing
-- New tool: `search_site_content(query)` — bot can look up any page/post content
-- Admin toggle: choose which post types to index
-- This alone would make the bot 10x more useful — most user questions are about policies, hours, contact info, not products
-
-### 2. Current Page Context — Done: false
-
-The bot has zero awareness of what the user is doing on the site right now.
-
-- Pass current page URL, title, and post type to the chat backend with every message
-- If user is on a product page: auto-include that product's details in context
-- If user is on cart/checkout: include cart contents in context
-- If user is on a category page: know which category they're browsing
-- Enables responses like "I see you're looking at the Blue Widget — would you like to know about sizing?"
-- Minimal frontend change (read `window.location` + `wpaicConfig.pageContext`), huge UX leap
-
-### 3. Cart Awareness — Done: true
-The bot can add to cart but has no idea what's already in it.
-
-- New tool: `get_cart_contents()` — returns items, quantities, totals
-- New tool: `update_cart_item(item_key, quantity)` — change quantities or remove items
-- Bot can answer "what's in my cart?", "remove the blue shirt", "how much is my total?"
-- Enables cross-sell: "You have running shoes in your cart — want to add socks?"
-- Read cart via WC session/cookie on the server side
-
-**Brainstorm notes (2026-03-18):** Users rarely ask a chatbot "what's in my cart?" — the cart icon is faster. Write operations (remove/update) same story. The real value is cart as **passive context** (bot knows cart contents to give smarter answers about shipping, cross-sells, coupons) rather than as user-facing tools. But even passive context feels like bloat until higher-impact features are done. Revisit after Current Page Context (#2) is built — similar "inject context into every message" pattern, could share the plumbing.
 
 ### 4. Quick-Reply Chips / Suggested Actions — Done: false
 
@@ -54,18 +21,6 @@ After every bot response, show 2-3 clickable suggestion buttons.
 - Examples after order lookup: "Track my shipment", "Request return", "Talk to human"
 - Dramatically reduces typing friction, especially on mobile
 - Could also be admin-configurable for common flows
-
-### 5. Conversation Starters — Done: false
-
-Empty chat state shows predefined prompt buttons instead of just a greeting.
-
-- Admin configures 3-5 starter prompts in settings
-- Display as little chips at the bottom of the chat, above the text field in the empty chat: "Find a product", "Track my order", "Shipping info" if Woocommerce is enabled. Otherwise come up with 3 good ones for non-commerce sites.
-- Auto-generate starters based on enabled features (WooCommerce tools, handoff, etc.)
-- Reduces the "blank page" problem — users don't know what to ask
-- Mobile-friendly tap targets
-- Add the option in the admin to edit these starting chips. Add the options to the "Engagement" settings section.
-- On the chatbot frontend the chips could be scrollable vertically to save on space. Keep it simple but looking good.
 
 ### 6. Coupon & Promotion Support — Done: false
 
@@ -286,17 +241,6 @@ Current implementation tells OpenAI which language to use. Could be smarter.
 - Translate quick-reply chips and conversation starters
 - RTL support for Arabic/Hebrew
 - Translate product card labels ("Add to Cart" → "Agregar al carrito")
-
-### 24. Image Recognition for Support — Done: false
-
-User uploads a photo, bot understands it.
-
-- "I received a damaged product" + photo → bot sees the damage, initiates return
-- "Which product is this?" + photo → bot identifies from catalog
-- GPT-4o vision capability (already supported by the model)
-- File upload UI in chat input
-- Image displayed in conversation thread
-- Useful for support scenarios where text alone is insufficient
 
 ### 25. Google Analytics Integration — Done: false
 

@@ -13,14 +13,16 @@ class WPAIC_Chat {
 	private array $page_context = array();
 	private ?WPAIC_Tools $tools = null;
 	private ?Client $client     = null;
+	private WPAIC_License_Manager $license_manager;
 
 	/**
 	 * @param array<string, mixed> $page_context
 	 */
-	public function __construct( array $page_context = array() ) {
+	public function __construct( array $page_context = array(), ?WPAIC_License_Manager $license_manager = null ) {
 		$settings       = get_option( 'wpaic_settings', array() );
 		$this->settings = is_array( $settings ) ? $settings : array();
 		$this->page_context = ( new WPAIC_Page_Context() )->sanitize( $page_context );
+		$this->license_manager = $license_manager ?? new WPAIC_License_Manager();
 
 		if ( wpaic_is_woocommerce_active() ) {
 			$this->tools = new WPAIC_Tools();
@@ -35,13 +37,10 @@ class WPAIC_Chat {
 	}
 
 	/**
-	 * Check if provider mode is active (provider_url + provider_site_key both set).
+	 * Check if provider mode is active.
 	 */
 	public function is_provider_mode(): bool {
-		$provider_url      = $this->settings['provider_url'] ?? '';
-		$provider_site_key = $this->settings['provider_site_key'] ?? '';
-		return is_string( $provider_url ) && '' !== $provider_url
-			&& is_string( $provider_site_key ) && '' !== $provider_site_key;
+		return $this->license_manager->is_provider_url_configured() && $this->license_manager->has_provider_auth();
 	}
 
 	/**
@@ -253,8 +252,7 @@ class WPAIC_Chat {
 			$on_chunk( array( 'error' => 'The request required too many processing steps. Please try a simpler question.' ) );
 			return;
 		}
-		$provider_url      = $this->settings['provider_url'];
-		$provider_site_key = $this->settings['provider_site_key'];
+		$provider_url = $this->license_manager->get_provider_url();
 
 		$body = array(
 			'messages' => $formatted_messages,
@@ -264,7 +262,13 @@ class WPAIC_Chat {
 			$body['tools'] = $tools;
 		}
 
-		$result = $this->stream_from_provider( $provider_url, $provider_site_key, $body, $on_chunk );
+		$provider_headers = $this->license_manager->get_provider_request_headers( $body );
+		if ( empty( $provider_headers ) ) {
+			$on_chunk( array( 'error' => 'Provider authentication is not available for this site.' ) );
+			return;
+		}
+
+		$result = $this->stream_from_provider( $provider_url, $provider_headers, $body, $on_chunk );
 
 		if ( isset( $result['error'] ) ) {
 			$on_chunk( array( 'error' => $result['error'] ) );
@@ -332,17 +336,27 @@ class WPAIC_Chat {
 	 * Open HTTP stream to provider, parse SSE lines, emit text chunks and collect tool calls.
 	 *
 	 * @param string $url Provider endpoint URL.
-	 * @param string $site_key Authentication key.
+	 * @param array<string, string>|string $request_auth Provider auth headers.
 	 * @param array<string, mixed> $body Request body.
 	 * @param callable(array<string, mixed>): void $on_chunk Frontend callback.
 	 * @return array{error?: string, tool_calls?: array<int, array<string, mixed>>} Result.
 	 */
-	private function stream_from_provider( string $url, string $site_key, array $body, callable $on_chunk ): array {
+	private function stream_from_provider( string $url, array|string $request_auth, array $body, callable $on_chunk ): array {
+		$headers = "Content-Type: application/json\r\n";
+
+		if ( is_array( $request_auth ) ) {
+			foreach ( $request_auth as $name => $value ) {
+				$headers .= "{$name}: {$value}\r\n";
+			}
+		} else {
+			$headers .= "X-WPAIP-Site-Key: {$request_auth}\r\n";
+		}
+
 		$context = stream_context_create(
 			array(
 				'http' => array(
 					'method'        => 'POST',
-					'header'        => "Content-Type: application/json\r\nX-WPAIP-Site-Key: {$site_key}\r\n",
+					'header'        => $headers,
 					'content'       => wp_json_encode( $body ),
 					'timeout'       => 120,
 					'ignore_errors' => true,
@@ -377,7 +391,12 @@ class WPAIC_Chat {
 			fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log( "[WPAIC] Provider HTTP {$http_status} | body: {$error_body}" );
-			return array( 'error' => "Provider returned HTTP {$http_status}" );
+			return array(
+				'error' => $this->get_provider_http_error_message(
+					$http_status,
+					is_string( $error_body ) ? $error_body : ''
+				),
+			);
 		}
 
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
@@ -502,6 +521,23 @@ class WPAIC_Chat {
 		}
 
 		return array();
+	}
+
+	private function get_provider_http_error_message( int $http_status, string $error_body ): string {
+		$decoded = json_decode( $error_body, true );
+		if ( is_array( $decoded ) ) {
+			$message = $decoded['message'] ?? null;
+			if ( is_string( $message ) && '' !== trim( $message ) ) {
+				return $message;
+			}
+
+			$error = $decoded['error'] ?? null;
+			if ( is_array( $error ) && isset( $error['message'] ) && is_string( $error['message'] ) && '' !== trim( $error['message'] ) ) {
+				return $error['message'];
+			}
+		}
+
+		return "Provider returned HTTP {$http_status}";
 	}
 
 	/**

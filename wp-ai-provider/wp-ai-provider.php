@@ -25,6 +25,18 @@ if ( ! defined( 'WPAIP_VERSION' ) ) {
 	define( 'WPAIP_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 }
 
+if ( ! defined( 'WPAIP_DB_VERSION' ) ) {
+	define( 'WPAIP_DB_VERSION', '1.0.0' );
+}
+
+if ( ! defined( 'WPAIP_FREEMIUS_PRODUCT_ID' ) ) {
+	define( 'WPAIP_FREEMIUS_PRODUCT_ID', 27158 );
+}
+
+if ( ! defined( 'WPAIP_FREEMIUS_API_TOKEN' ) ) {
+	define( 'WPAIP_FREEMIUS_API_TOKEN', '' );
+}
+
 if ( file_exists( WPAIP_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
 	require_once WPAIP_PLUGIN_DIR . 'vendor/autoload.php';
 }
@@ -32,6 +44,7 @@ if ( file_exists( WPAIP_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
 require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-loader.php';
 
 function wpaip_init(): void {
+	wpaip_maybe_update_db();
 	$loader = new WPAIP_Loader();
 	$loader->init();
 }
@@ -41,15 +54,26 @@ add_action( 'plugins_loaded', 'wpaip_init' );
 register_activation_hook( __FILE__, 'wpaip_activate' );
 register_deactivation_hook( __FILE__, 'wpaip_deactivate' );
 
+function wpaip_maybe_update_db(): void {
+	$installed_version = get_option( 'wpaip_db_version', '' );
+	if ( WPAIP_DB_VERSION !== $installed_version ) {
+		add_option( 'wpaip_install_registry', array() );
+		update_option( 'wpaip_db_version', WPAIP_DB_VERSION );
+	}
+}
+
 function wpaip_activate(): void {
 	add_option(
 		'wpaip_settings',
 		array(
-			'openai_api_key' => '',
-			'model'          => 'gpt-4o-mini',
-			'site_key'       => wp_generate_uuid4(),
+			'openai_api_key'      => '',
+			'model'               => 'gpt-4o-mini',
+			'freemius_product_id' => WPAIP_FREEMIUS_PRODUCT_ID,
+			'freemius_api_token'  => '',
 		)
 	);
+	add_option( 'wpaip_install_registry', array() );
+	update_option( 'wpaip_db_version', WPAIP_DB_VERSION );
 	flush_rewrite_rules();
 }
 
