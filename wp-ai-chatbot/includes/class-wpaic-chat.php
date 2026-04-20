@@ -584,26 +584,28 @@ class WPAIC_Chat {
 		$custom_prompt                  = $this->settings['system_prompt'] ?? '';
 		$faq_section                    = $this->get_faq_instruction();
 		$page_context                   = $this->get_page_context_instruction() . $this->get_current_page_context_summary();
-		$include_tool_response_guidance = false;
+		$woocommerce_active             = wpaic_is_woocommerce_active();
+		$include_tool_response_guidance = $woocommerce_active;
 
 		if ( is_string( $custom_prompt ) && '' !== trim( $custom_prompt ) ) {
-			$base_prompt                    = $custom_prompt;
-			$include_tool_response_guidance = true;
+			$base_prompt = $custom_prompt;
 		} else {
 			$site_name = get_bloginfo( 'name' );
 
-			if ( wpaic_is_woocommerce_active() ) {
-				$base_prompt                    = "You are a helpful assistant for {$site_name}. Help customers find products and answer questions. Be friendly and concise. Use tools to search products when asked.";
-				$include_tool_response_guidance = true;
-				} else {
-					$base_prompt = "You are a helpful assistant for {$site_name}. Answer questions and help visitors. Be friendly and concise.";
-				}
+			if ( $woocommerce_active ) {
+				$base_prompt = "You are a helpful assistant for {$site_name}. Help customers find products and answer questions. Be friendly and concise. Use tools to search products when asked.";
+			} else {
+				$base_prompt = "You are a helpful assistant for {$site_name}. Answer questions and help visitors. Be friendly and concise.";
 			}
+		}
 
 		$prompt = $base_prompt . $this->get_tone_of_voice_instruction() . $faq_section;
 
 		if ( $include_tool_response_guidance ) {
 			$prompt .= $this->get_tool_response_instruction();
+			$prompt .= $this->get_guided_shopping_instruction();
+		} else {
+			$prompt .= $this->get_non_woocommerce_instruction();
 		}
 
 		return $prompt . $page_context . $this->get_handoff_instruction() . $this->get_language_instruction() . $this->get_content_index_instruction();
@@ -654,6 +656,14 @@ class WPAIC_Chat {
 
 	private function get_tool_response_instruction(): string {
 		return ' When presenting product search or comparison results, provide ONLY a single short sentence intro (max 10 words) that relates to the query. Example: "Here are some red shoes:" - NEVER list product names, prices, or details in your text response. The product cards will show all details. Your text should be a brief intro only, not a summary of results. For current cart questions, use get_cart_contents and answer directly from its totals and items in plain text. If no results found, explain briefly.';
+	}
+
+	private function get_guided_shopping_instruction(): string {
+		return ' For broad shopping-discovery asks (for example: "show me products" or "what do you sell?"), call get_categories first. List only the top 3-5 categories sorted by highest count, then ask one short clarifying question. Offer the full category list only if requested. Do not call search_products until the user gives direction (such as category, use case, budget, or audience), unless their request is already specific. For "what do you sell?", after category guidance you may use search_site_content and get_page_content for brief business context. If context is missing, say so and do not invent claims. Keep this guidance supportive and non-pushy.';
+	}
+
+	private function get_non_woocommerce_instruction(): string {
+		return ' WooCommerce product tools are unavailable. Do not pretend to browse products or categories. Stay generally helpful for non-product questions.';
 	}
 
 	private function get_page_context_instruction(): string {

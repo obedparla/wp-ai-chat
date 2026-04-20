@@ -37,6 +37,7 @@
 - Product search tool (keyword, category, price)
 - Product details tool
 - Categories listing tool
+- Guided shopping flow for broad queries (top categories first + one clarifying question)
 - Product cards with images, prices, descriptions
 
 ## Handoff to Human Support

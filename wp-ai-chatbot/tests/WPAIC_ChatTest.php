@@ -850,6 +850,52 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContains( 'products', $prompt );
 	}
 
+	public function test_system_prompt_includes_guided_shopping_flow_for_generic_queries(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'For broad shopping-discovery asks', $prompt );
+		$this->assertStringContainsString( 'call get_categories first', $prompt );
+		$this->assertStringContainsString( 'top 3-5 categories sorted by highest count', $prompt );
+		$this->assertStringContainsString( 'ask one short clarifying question', $prompt );
+		$this->assertStringContainsString( 'Do not call search_products until the user gives direction', $prompt );
+	}
+
+	public function test_system_prompt_includes_what_do_you_sell_context_rules(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'call get_categories first', $prompt );
+		$this->assertStringContainsString( 'For "what do you sell?", after category guidance you may use search_site_content and get_page_content', $prompt );
+		$this->assertStringContainsString( 'If context is missing, say so and do not invent claims', $prompt );
+	}
+
 	public function test_system_prompt_no_products_when_woocommerce_not_active(): void {
 		WPAICTestHelper::set_option( 'test_woocommerce_active', false );
 		WPAICTestHelper::set_option(
@@ -871,6 +917,31 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringNotContains( 'Help customers find products and answer questions.', $prompt );
 		$this->assertStringNotContains( 'Use tools to search products when asked.', $prompt );
 		$this->assertStringContains( 'helpful assistant', $prompt );
+		$this->assertStringContainsString( 'WooCommerce product tools are unavailable', $prompt );
+		$this->assertStringNotContainsString( 'For broad shopping requests like "show me products"', $prompt );
+	}
+
+	public function test_system_prompt_with_custom_prompt_still_uses_non_woocommerce_fallback(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', false );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+				'system_prompt'  => 'You are a custom assistant for this website.',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'You are a custom assistant for this website.', $prompt );
+		$this->assertStringContainsString( 'WooCommerce product tools are unavailable', $prompt );
+		$this->assertStringNotContainsString( 'For broad shopping requests like "show me products"', $prompt );
 	}
 
 	public function test_handle_tool_calls_stream_emits_tool_input_available(): void {
