@@ -47,7 +47,17 @@ describe('ProductCard', () => {
   it('shows sale price with strikethrough regular price', () => {
     render(<ProductCard product={mockProduct} />)
     expect(screen.getByText('$39.99')).toHaveClass('line-through')
-    expect(screen.getByText('$29.99')).toHaveClass('text-red-600')
+    expect(screen.getByText('$29.99')).toBeInTheDocument()
+  })
+
+  it('renders SALE badge when discounted', () => {
+    render(<ProductCard product={mockProduct} />)
+    expect(screen.getByText('SALE')).toBeInTheDocument()
+  })
+
+  it('renders category caption when categories present', () => {
+    render(<ProductCard product={{ ...mockProduct, categories: ['Sneakers'] }} />)
+    expect(screen.getByText('Sneakers')).toBeInTheDocument()
   })
 
   it('shows regular price when no discount', () => {
@@ -138,7 +148,7 @@ describe('ProductCard', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(screen.getByText('✓ Added')).toBeInTheDocument()
+      expect(screen.getByText('ADDED')).toBeInTheDocument()
     })
   })
 

@@ -45,27 +45,38 @@ export default function ProductGrid({ products }: ProductGridProps) {
 
   // 3+ products: horizontal carousel with partial peek
   return (
-    <div className="w-full relative px-2 max-[480px]:px-1.5">
-      <Carousel
-        opts={{
-          align: 'start',
-          loop: false,
-        }}
-        className="w-full"
-      >
-        <CarouselContent className="-ml-3 max-[480px]:-ml-2">
-          {products.map((product) => (
-            <CarouselItem
-              key={product.id}
-              className="pl-3 basis-[68%] max-[480px]:pl-2 max-[480px]:basis-[75%]"
-            >
-              {renderProductCard(product)}
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        <CarouselPrevious className="-left-2 max-[480px]:-left-1" />
-        <CarouselNext className="-right-2 max-[480px]:-right-1" />
-      </Carousel>
+    <div className="w-full group">
+      <div className="flex items-center gap-3 mb-3 px-1">
+        <span className="text-[10px] font-mono font-semibold tracking-[0.18em] text-slate-700">
+          {products.length} PICKS
+        </span>
+        <div className="flex-1 h-px bg-slate-300" />
+        <span className="text-[10px] font-mono font-semibold tracking-[0.18em] text-slate-500 [@media(hover:hover)]:hidden">
+          SWIPE →
+        </span>
+      </div>
+      <div className="relative">
+        <Carousel
+          opts={{
+            align: 'start',
+            loop: false,
+          }}
+          className="w-full"
+        >
+          <CarouselContent className="-ml-3 max-[480px]:-ml-2">
+            {products.map((product) => (
+              <CarouselItem
+                key={product.id}
+                className="pl-3 basis-[68%] max-[480px]:pl-2 max-[480px]:basis-[75%]"
+              >
+                {renderProductCard(product)}
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+          <CarouselPrevious className="-left-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 [@media(hover:none)]:hidden" />
+          <CarouselNext className="-right-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 [@media(hover:none)]:hidden" />
+        </Carousel>
+      </div>
     </div>
   )
 }

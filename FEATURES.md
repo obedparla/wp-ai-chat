@@ -25,8 +25,20 @@
 
 ## Chatbot Branding
 - Custom chatbot name
-- Custom logo URL
+- Custom logo URL (circular avatar with online indicator)
+- Custom role/subtitle text (e.g. "Personal stylist")
 - Configurable header display
+
+## Widget Redesign (2026-04)
+- Refreshed header: circular avatar, green online dot, role subtitle
+- White message area with flat gray assistant bubbles
+- Cluster-based time separators (TODAY · HH:MM) on >5min gaps
+- Pill input with internal circular up-arrow send button
+- Inline-wrap outlined conversation starter pills
+- Product cards: SALE badge, uppercase category caption, compact + ADD pill
+- Product carousel: "N PICKS" header, hover-revealed desktop arrows
+- Floating open button hides while widget is open, reclaiming vertical space
+- Indigo (#2545B8) as new default theme color
 
 ## Proactive Engagement
 - Timed popup message

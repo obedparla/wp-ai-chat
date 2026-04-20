@@ -41,18 +41,18 @@ describe('App', () => {
     await userEvent.click(button)
 
     expect(screen.getByText('AI Assistant')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Close chat' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open chat' })).not.toBeInTheDocument()
   })
 
-  it('hides chat widget when toggle button clicked again', async () => {
+  it('hides the floating toggle button while the widget is open', async () => {
     render(<App />)
     const button = screen.getByRole('button', { name: 'Open chat' })
 
     await userEvent.click(button)
-    expect(screen.getByText('AI Assistant')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open chat' })).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Close chat' }))
-    expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.getByRole('button', { name: 'Open chat' })).toBeInTheDocument()
   })
 
   it('hides chat widget when close button in header clicked', async () => {
@@ -78,7 +78,7 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
 
-    expect(screen.getByPlaceholderText('Type a message...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Ask anything...')).toBeInTheDocument()
   })
 
   it('focuses the message input when the widget is opened from the button', async () => {
@@ -86,7 +86,7 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
 
-    expect(screen.getByPlaceholderText('Type a message...')).toHaveFocus()
+    expect(screen.getByPlaceholderText('Ask anything...')).toHaveFocus()
   })
 
   it('preserves chat history when widget is closed and reopened', async () => {
@@ -134,7 +134,7 @@ describe('App', () => {
     render(<App />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
 
     await userEvent.type(input, 'Test message{Enter}')
 
@@ -185,25 +185,13 @@ describe('ChatButton', () => {
     expect(button.querySelector('path')).toBeInTheDocument()
   })
 
-  it('shows close icon when chat is open', async () => {
+  it('is not rendered while the widget is open', async () => {
     render(<App />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
 
-    const toggleBtn = screen.getByRole('button', { name: 'Close chat' })
-    expect(toggleBtn.querySelectorAll('line')).toHaveLength(2)
-  })
-
-  it('has hidden-on-mobile class when chat is open', async () => {
-    render(<App />)
-
-    const button = screen.getByRole('button', { name: 'Open chat' })
-    expect(button).not.toHaveClass('max-[480px]:hidden')
-
-    await userEvent.click(button)
-
-    const toggleBtn = screen.getByRole('button', { name: 'Close chat' })
-    expect(toggleBtn).toHaveClass('max-[480px]:hidden')
+    expect(screen.queryByRole('button', { name: 'Open chat' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Close chat' })).not.toBeInTheDocument()
   })
 })
 

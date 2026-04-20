@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:ai-sdk.dev)",
+      "Bash(composer phpstan:*)",
+      "Bash(composer lint:*)",
+      "Bash(composer test:*)",
+      "Bash(npm test -- --run)",
+      "Bash(php composer.phar phpstan:*)",
+      "Bash(php composer.phar lint:*)",
+      "Bash(cd:*)",
+      "Bash(./vendor/bin/phpstan analyze:*)",
+      "Bash(npm run format:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix prettier formatting\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(npm show:*)",
+      "Bash(npm ls:*)",
+      "mcp__zen__apilookup",
+      "Bash(npm run format:check:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  }
+}

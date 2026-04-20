@@ -5,7 +5,8 @@
       "Bash(git commit:*)",
       "Bash(vendor/bin/phpunit tests/WPAIC_ContentIndexTest.php tests/WPAIC_ToolsTest.php)",
       "Bash(vendor/bin/phpunit)",
-      "WebFetch(domain:developer.woocommerce.com)"
+      "WebFetch(domain:developer.woocommerce.com)",
+      "Bash(npm test *)"
     ]
   }
 }

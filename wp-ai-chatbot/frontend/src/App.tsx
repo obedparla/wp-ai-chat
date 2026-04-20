@@ -17,6 +17,7 @@ declare global {
       proactiveMessage?: string
       chatbotName?: string
       chatbotLogo?: string
+      chatbotRole?: string
       pageContext?: {
         page_type: 'product' | 'cart' | 'checkout' | 'shop' | 'product_category' | 'product_tag' | 'singular' | 'other'
         title: string
@@ -50,7 +51,7 @@ export default function App() {
   const [autoFocusInput, setAutoFocusInput] = useState(false)
   const chat = useChat()
   const { showProactiveGreeting } = chat
-  const themeColor = window.wpaicConfig?.themeColor || '#0073aa'
+  const themeColor = window.wpaicConfig?.themeColor || '#2545B8'
   const config = window.wpaicConfig
 
   useEffect(() => {
@@ -99,11 +100,12 @@ export default function App() {
           chat={chat}
           chatbotName={config?.chatbotName}
           chatbotLogo={config?.chatbotLogo}
+          chatbotRole={config?.chatbotRole}
           conversationStarters={config?.conversationStarters ?? []}
           autoFocusInput={autoFocusInput}
         />
       )}
-      <ChatButton onClick={handleToggle} isOpen={isOpen} />
+      {!isOpen && <ChatButton onClick={handleToggle} isOpen={isOpen} />}
     </>
   )
 }

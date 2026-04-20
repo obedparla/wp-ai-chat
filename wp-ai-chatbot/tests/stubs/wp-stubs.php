@@ -1095,7 +1095,7 @@ function wpaic_activate(): void {
 			'greeting_message'      => 'Hello! How can I help you today?',
 			'enabled'               => true,
 			'system_prompt'         => '',
-			'theme_color'           => '#0073aa',
+			'theme_color'           => '#2545B8',
 			'conversation_starters' => array(),
 			'provider_url_override' => '',
 		)

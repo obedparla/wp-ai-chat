@@ -12,6 +12,7 @@ export interface Message {
   id?: string
   products?: Product[]
   comparison?: ComparisonData
+  createdAt?: number
 }
 
 export interface ActiveTool {
@@ -22,6 +23,7 @@ export interface ActiveTool {
 interface PendingUserMessage {
   id: string
   content: string
+  createdAt: number
 }
 
 const MESSAGE_DEBOUNCE_MS = 3000
@@ -53,11 +55,35 @@ function getOrCreateSessionId(): string {
 }
 
 const CHAT_HISTORY_KEY = 'wpaic_chat_history'
+const CHAT_TIMESTAMPS_KEY = 'wpaic_chat_timestamps'
 
 interface StoredMessage {
   id: string
   role: 'user' | 'assistant'
   parts: unknown[]
+}
+
+function loadTimestampsFromStorage(): Record<string, number> {
+  try {
+    const stored = sessionStorage.getItem(CHAT_TIMESTAMPS_KEY)
+    if (!stored) return {}
+    const parsed = JSON.parse(stored) as Record<string, number>
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveTimestampsToStorage(timestamps: Record<string, number>): void {
+  try {
+    sessionStorage.setItem(CHAT_TIMESTAMPS_KEY, JSON.stringify(timestamps))
+  } catch {
+    // Ignore
+  }
+}
+
+function clearStoredTimestamps(): void {
+  sessionStorage.removeItem(CHAT_TIMESTAMPS_KEY)
 }
 
 function isGreetingOnlyConversation(messages: { id?: string; role: string }[]): boolean {
@@ -225,6 +251,8 @@ export function useChat() {
   const statusRef = useRef<'submitted' | 'streaming' | 'ready' | 'error'>('ready')
   const errorRef = useRef<Error | undefined>(undefined)
   const debounceTimerRef = useRef<number | null>(null)
+  const timestampsRef = useRef<Record<string, number>>({})
+  const [timestampsVersion, setTimestampsVersion] = useState(0)
 
   const getDefaultGreetingMessage = useCallback(
     (): string => config?.greeting || 'Hello! How can I help you today?',
@@ -306,6 +334,9 @@ export function useChat() {
     if (!sessionId || restoredSessionIdRef.current === sessionId) return
     restoredSessionIdRef.current = sessionId
 
+    timestampsRef.current = loadTimestampsFromStorage()
+    setTimestampsVersion((v) => v + 1)
+
     const stored = loadMessagesFromStorage()
     if (stored && stored.length > 0) {
       setMessages(stored as UIMessage[])
@@ -318,6 +349,24 @@ export function useChat() {
   // Save messages to storage when they change
   useEffect(() => {
     saveMessagesToStorage(uiMessages)
+  }, [uiMessages])
+
+  // Track timestamps for new message ids.
+  useEffect(() => {
+    const timestamps = timestampsRef.current
+    let changed = false
+    const now = Date.now()
+    for (const msg of uiMessages) {
+      if (!msg.id || msg.id === 'greeting') continue
+      if (timestamps[msg.id] === undefined) {
+        timestamps[msg.id] = now
+        changed = true
+      }
+    }
+    if (changed) {
+      saveTimestampsToStorage(timestamps)
+      setTimestampsVersion((v) => v + 1)
+    }
   }, [uiMessages])
 
   useEffect(() => {
@@ -343,6 +392,7 @@ export function useChat() {
   }, [clearPendingSubmissionTimer])
 
   const messages: Message[] = useMemo(() => {
+    const timestamps = timestampsRef.current
     return uiMessages.map((msg) => {
       const products = msg.role === 'assistant' ? extractProductsFromMessage(msg) : undefined
       const comparison = msg.role === 'assistant' ? extractComparisonFromMessage(msg) : undefined
@@ -353,9 +403,11 @@ export function useChat() {
         id: msg.id,
         products: products && products.length > 0 ? products : undefined,
         comparison,
+        createdAt: msg.id ? timestamps[msg.id] : undefined,
       }
     })
-  }, [uiMessages])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiMessages, timestampsVersion])
 
   const messagesWithError = useMemo(() => {
     if (error && messages.length > 0) {
@@ -393,6 +445,7 @@ export function useChat() {
         role: 'user',
         content: message.content,
         isError: false,
+        createdAt: message.createdAt,
       })),
     [pendingMessages]
   )
@@ -438,16 +491,22 @@ export function useChat() {
       if (!trimmedContent) return
 
       setPendingMessages((currentMessages) => {
+        const id = generateClientMessageId()
+        const createdAt = Date.now()
+        timestampsRef.current[id] = createdAt
+        saveTimestampsToStorage(timestampsRef.current)
         const nextMessages = [
           ...currentMessages,
           {
-            id: generateClientMessageId(),
+            id,
             content: trimmedContent,
+            createdAt,
           },
         ]
         pendingMessagesRef.current = nextMessages
         return nextMessages
       })
+      setTimestampsVersion((v) => v + 1)
       schedulePendingSubmission()
     },
     [schedulePendingSubmission]
@@ -479,6 +538,9 @@ export function useChat() {
     clearPendingSubmissionTimer()
     stop()
     clearStoredMessages()
+    clearStoredTimestamps()
+    timestampsRef.current = {}
+    setTimestampsVersion((v) => v + 1)
     setPendingMessages([])
     pendingFlushRequestedRef.current = false
     setMessages([])

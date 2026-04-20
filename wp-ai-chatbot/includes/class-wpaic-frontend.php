@@ -78,7 +78,7 @@ class WPAIC_Frontend {
 			'apiUrl'               => rest_url( 'wpaic/v1' ),
 			'nonce'                => wp_create_nonce( 'wp_rest' ),
 			'greeting'             => $settings['greeting_message'] ?? 'Hello! How can I help you today?',
-			'themeColor'           => $settings['theme_color'] ?? '#0073aa',
+			'themeColor'           => $settings['theme_color'] ?? '#2545B8',
 			'wcAjaxUrl'            => admin_url( 'admin-ajax.php' ),
 			'cartUrl'              => function_exists( 'wc_get_cart_url' ) ? wc_get_cart_url() : '',
 			'pageContext'          => ( new WPAIC_Page_Context() )->build(),
@@ -87,6 +87,7 @@ class WPAIC_Frontend {
 			'proactiveMessage'     => $proactive_config['message'],
 			'chatbotName'          => $settings['chatbot_name'] ?? '',
 			'chatbotLogo'          => $settings['chatbot_logo'] ?? '',
+			'chatbotRole'          => $settings['chatbot_role'] ?? '',
 			'conversationStarters' => $this->resolve_conversation_starters( $settings ),
 		);
 	}

@@ -3,6 +3,7 @@ import type { Message, ActiveTool } from '../hooks/useChat'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import SendTranscriptDialog from './SendTranscriptDialog'
+import ConfirmDialog from './ConfirmDialog'
 import ConversationStarters from './ConversationStarters'
 
 interface ChatWidgetProps {
@@ -17,6 +18,7 @@ interface ChatWidgetProps {
   }
   chatbotName?: string
   chatbotLogo?: string
+  chatbotRole?: string
   conversationStarters?: string[]
   autoFocusInput?: boolean
 }
@@ -39,18 +41,21 @@ export default function ChatWidget({
   chat,
   chatbotName,
   chatbotLogo,
+  chatbotRole,
   conversationStarters = [],
   autoFocusInput = false,
 }: ChatWidgetProps) {
   const { messages, sendMessage, isLoading, startNewConversation, activeTools, retry } = chat
   const [input, setInput] = useState('')
   const [showTranscriptDialog, setShowTranscriptDialog] = useState(false)
+  const [showNewConversationDialog, setShowNewConversationDialog] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const hasName = chatbotName && chatbotName.trim().length > 0
   const hasLogo = chatbotLogo && chatbotLogo.trim().length > 0
   const displayTitle = hasName ? chatbotName : 'AI Assistant'
-  const showSubtitle = hasName
+  const avatarLetter = (displayTitle || 'A').trim().charAt(0).toUpperCase()
+  const subtitleRole = chatbotRole && chatbotRole.trim().length > 0 ? chatbotRole : 'AI Assistant'
   const isGreetingOnly =
     messages.length === 0 ||
     (messages.length === 1 && messages[0].role === 'assistant' && messages[0].id === 'greeting')
@@ -59,11 +64,18 @@ export default function ChatWidget({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
+      if (e.key !== 'Escape') return
+      if (showTranscriptDialog) {
+        setShowTranscriptDialog(false)
+        return
       }
+      if (showNewConversationDialog) {
+        setShowNewConversationDialog(false)
+        return
+      }
+      onClose()
     },
-    [onClose]
+    [onClose, showTranscriptDialog, showNewConversationDialog]
   )
 
   useEffect(() => {
@@ -97,60 +109,97 @@ export default function ChatWidget({
     [sendMessage]
   )
 
+  const iconButtonClass =
+    'bg-transparent border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-85 transition-all duration-200 flex items-center justify-center hover:opacity-100 hover:bg-white/10'
+
   return (
-    <div className="fixed bottom-[100px] right-6 w-[380px] max-w-[calc(100vw-48px)] h-[600px] max-h-[calc(100vh-140px)] bg-white rounded-2xl shadow-xl flex flex-col z-[9998] overflow-hidden animate-wpaic-slideUp border border-slate-200 max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[calc(100vh-60px)] max-[480px]:max-h-[calc(100vh-60px)] max-[480px]:rounded-t-2xl max-[480px]:rounded-b-none max-[480px]:border-b-0 max-[480px]:animate-wpaic-slideUpMobile">
+    <div className="fixed bottom-6 right-6 w-[428px] max-w-[calc(100vw-48px)] h-[680px] max-h-[calc(100vh-48px)] bg-white rounded-2xl shadow-xl flex flex-col z-[9998] overflow-hidden animate-wpaic-slideUp border border-slate-200 max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[100vh] max-[480px]:max-h-[100vh] max-[480px]:rounded-none max-[480px]:border-0 max-[480px]:animate-wpaic-slideUpMobile">
       {showTranscriptDialog && (
         <SendTranscriptDialog
           messages={messages}
           onClose={() => setShowTranscriptDialog(false)}
         />
       )}
-      <div className="bg-[var(--wpaic-primary)] text-white py-[14px] px-5 flex justify-between items-center shrink-0">
-        <div className="flex items-center gap-2.5">
-          {hasLogo && (
-            <img
-              src={chatbotLogo}
-              alt=""
-              className="h-8 max-h-8 w-auto object-contain"
+      {showNewConversationDialog && (
+        <ConfirmDialog
+          title="Start new conversation?"
+          description="I'll clear everything we've talked about and start fresh."
+          confirmLabel="Start new"
+          onConfirm={() => {
+            setShowNewConversationDialog(false)
+            startNewConversation()
+          }}
+          onCancel={() => setShowNewConversationDialog(false)}
+        />
+      )}
+      <div className="bg-[var(--wpaic-primary)] text-white py-4 px-5 flex justify-between items-center shrink-0 gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative shrink-0">
+            <div className="w-11 h-11 rounded-full bg-white/15 flex items-center justify-center overflow-hidden">
+              {hasLogo ? (
+                <img
+                  src={chatbotLogo}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="font-serif italic text-xl text-white/90 leading-none">
+                  {avatarLetter}
+                </span>
+              )}
+            </div>
+            <span
+              className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[var(--wpaic-primary)]"
+              aria-hidden
             />
-          )}
-          <div className="flex flex-col">
-            <span className="font-semibold text-[15px] tracking-tight leading-tight">{displayTitle}</span>
-            {showSubtitle && (
-              <span className="text-[11px] opacity-80 leading-tight">AI Assistant</span>
-            )}
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="font-semibold text-base tracking-tight leading-tight truncate">{displayTitle}</span>
+            <span className="text-xs opacity-80 leading-tight truncate">
+              {subtitleRole} <span className="opacity-60">·</span> online
+            </span>
           </div>
         </div>
-        <div className="flex gap-1 items-center">
+        <div className="flex gap-0.5 items-center shrink-0">
           <button
-            onClick={startNewConversation}
-            className="bg-white/15 border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-90 transition-all duration-200 flex items-center justify-center text-base hover:opacity-100 hover:bg-white/25 hover:scale-105"
+            onClick={() => {
+              if (isGreetingOnly) {
+                startNewConversation()
+              } else {
+                setShowNewConversationDialog(true)
+              }
+            }}
+            className={iconButtonClass}
             aria-label="New conversation"
             title="New conversation"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M12 6H7a2 2 0 0 0-2 2v9l3-2h4a2 2 0 0 0 2-2v-1" />
-              <path d="M15 3v6" />
-              <path d="M12 6h6" />
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+              <path d="M21 3v5h-5" />
+              <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+              <path d="M3 21v-5h5" />
             </svg>
           </button>
           <button
             onClick={() => setShowTranscriptDialog(true)}
-            className="bg-white/15 border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-90 transition-all duration-200 flex items-center justify-center hover:opacity-100 hover:bg-white/25 hover:scale-105"
+            className={iconButtonClass}
             aria-label="Send transcript"
             title="Send transcript"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
               <rect width="20" height="16" x="2" y="4" rx="2" />
               <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
             </svg>
           </button>
           <button
             onClick={onClose}
-            className="bg-white/15 border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-90 transition-all duration-200 flex items-center justify-center text-xl hover:opacity-100 hover:bg-white/25 hover:scale-105"
+            className={iconButtonClass}
             aria-label="Close"
           >
-            ×
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
           </button>
         </div>
       </div>
@@ -163,7 +212,7 @@ export default function ChatWidget({
         )}
       </MessageList>
       {isLoading && activeTools.length > 0 && (
-        <div className="py-3 px-5 flex flex-col gap-2 bg-white border-t border-slate-200">
+        <div className="py-3 px-5 flex flex-col gap-2 bg-white border-t border-slate-100">
           {activeTools.map((tool, i) => (
             <div
               key={`${tool.toolName}-${i}`}
@@ -176,7 +225,7 @@ export default function ChatWidget({
         </div>
       )}
       {isLoading && activeTools.length === 0 && (
-        <div className="py-3 px-5 text-slate-500 text-[13px] flex items-center gap-2 bg-white border-t border-slate-200 before:content-[''] before:w-2 before:h-2 before:bg-[var(--wpaic-primary)] before:rounded-full before:animate-bounce">
+        <div className="py-3 px-5 text-slate-500 text-[13px] flex items-center gap-2 bg-white border-t border-slate-100 before:content-[''] before:w-2 before:h-2 before:bg-[var(--wpaic-primary)] before:rounded-full before:animate-bounce">
           Typing...
         </div>
       )}
@@ -185,6 +234,7 @@ export default function ChatWidget({
         value={input}
         onChange={setInput}
         onSubmit={handleSubmit}
+        placeholder={hasName ? `Ask ${chatbotName} anything...` : 'Ask anything...'}
       />
     </div>
   )

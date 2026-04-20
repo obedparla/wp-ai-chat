@@ -342,6 +342,9 @@ class WPAIC_Tools {
 			}
 		}
 
+		$categories                 = wp_get_post_terms( $post->ID, 'product_cat', array( 'fields' => 'names' ) );
+		$product_data['categories'] = is_array( $categories ) ? $categories : array();
+
 		// Add variable product data
 		if ( 'variable' === $product_type && $wc_product instanceof WC_Product_Variable ) {
 			$product_data = array_merge( $product_data, $this->get_variable_product_data( $wc_product ) );
@@ -353,9 +356,6 @@ class WPAIC_Tools {
 			$product_data['sku']               = get_post_meta( $post->ID, '_sku', true );
 			$product_data['stock_status']      = get_post_meta( $post->ID, '_stock_status', true );
 			$product_data['stock_quantity']    = get_post_meta( $post->ID, '_stock', true );
-
-			$categories                 = wp_get_post_terms( $post->ID, 'product_cat', array( 'fields' => 'names' ) );
-			$product_data['categories'] = is_array( $categories ) ? $categories : array();
 		}
 
 		return $product_data;

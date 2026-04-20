@@ -167,3 +167,12 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Host themes (especially WP default) underline anchors via unlayered rules
+   like `a:where(:not(.wp-element-button))`. Tailwind utilities live in a
+   layer so they lose the cascade even with higher specificity. Raw rule
+   wins against unlayered host CSS. */
+.wpaic-no-underline,
+.wpaic-no-underline * {
+  text-decoration: none !important;
+}

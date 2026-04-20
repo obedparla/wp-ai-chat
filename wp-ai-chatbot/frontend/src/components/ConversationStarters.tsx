@@ -14,18 +14,15 @@ export default function ConversationStarters({
   }
 
   return (
-    <div className="mt-auto w-full animate-wpaic-fadeIn pt-2">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-        Try asking
-      </p>
-      <div className="flex max-h-48 flex-col gap-2.5 overflow-y-auto pr-1">
+    <div className="w-full animate-wpaic-fadeIn pt-1 -mt-1">
+      <div className="flex flex-wrap gap-2">
         {starters.map((starter) => (
           <button
             key={starter}
             type="button"
             onClick={() => onSelect(starter)}
             disabled={disabled}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:border-[var(--wpaic-primary)] hover:text-[var(--wpaic-primary)] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 max-[480px]:px-4 max-[480px]:py-3.5 max-[480px]:text-[15px]"
+            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition-all duration-200 hover:border-[var(--wpaic-primary)] hover:text-[var(--wpaic-primary)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {starter}
           </button>

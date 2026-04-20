@@ -11,6 +11,43 @@ interface MessageListProps {
   children?: ReactNode
 }
 
+const CLUSTER_GAP_MS = 5 * 60 * 1000
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+
+function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function formatDayLabel(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  if (isSameDay(date, now)) return 'TODAY'
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (isSameDay(date, yesterday)) return 'YESTERDAY'
+  return date.toLocaleDateString([], { weekday: 'long' }).toUpperCase()
+}
+
+function shouldShowSeparator(current: Message, previous: Message | undefined): boolean {
+  if (!current.createdAt) return false
+  if (!previous) return true
+  if (!previous.createdAt) return true
+  const prev = new Date(previous.createdAt)
+  const now = new Date(current.createdAt)
+  if (!isSameDay(prev, now)) return true
+  return current.createdAt - previous.createdAt > CLUSTER_GAP_MS
+}
+
 export default function MessageList({ messages, onRetry, children }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
@@ -35,7 +72,7 @@ export default function MessageList({ messages, onRetry, children }: MessageList
 
   return (
     <div
-      className="flex-1 overflow-y-auto p-5 flex flex-col gap-4 bg-slate-50 scroll-smooth overscroll-contain max-[480px]:p-4 max-[480px]:gap-3.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300"
+      className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 bg-white scroll-smooth overscroll-contain max-[480px]:p-4 max-[480px]:gap-2.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300"
       ref={containerRef}
       onScroll={handleScroll}
     >
@@ -49,34 +86,48 @@ export default function MessageList({ messages, onRetry, children }: MessageList
         const hasComparison = comparison !== undefined
         const hasToolUI = hasProducts || hasComparison
         const hasTextContent = msg.content && msg.content.trim().length > 0
+        const showSeparator = shouldShowSeparator(msg, messages[i - 1])
+
+        const separator = showSeparator && msg.createdAt ? (
+          <div className="flex items-center gap-3 my-2 px-2 self-stretch" aria-hidden>
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-[10px] font-mono tracking-[0.18em] text-slate-500">
+              {formatDayLabel(msg.createdAt)} <span className="opacity-50">·</span> {formatTime(msg.createdAt).toUpperCase()}
+            </span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+        ) : null
 
         // User messages: always show bubble
         if (msg.role === 'user') {
           return (
-            <div
-              key={msg.id ?? i}
-              className={cn(
-                'max-w-[85%] py-3 px-4 rounded-2xl leading-relaxed break-words text-sm tracking-tight animate-wpaic-fadeIn relative rounded-br-sm',
-                'self-end bg-[var(--wpaic-primary)] text-white shadow-sm',
-                'max-[480px]:max-w-[90%] max-[480px]:py-2.5 max-[480px]:px-3.5 max-[480px]:text-[15px]',
-                msg.isError && 'bg-red-50 text-red-800 border border-red-200 shadow-none'
-              )}
-            >
-              <span className="whitespace-pre-wrap">{msg.content}</span>
-            </div>
+            <Fragment key={msg.id ?? i}>
+              {separator}
+              <div
+                className={cn(
+                  'max-w-[85%] py-2.5 px-4 rounded-2xl leading-relaxed break-words text-sm tracking-tight animate-wpaic-fadeIn relative rounded-br-md',
+                  'self-end bg-[var(--wpaic-primary)] text-white',
+                  'max-[480px]:max-w-[90%] max-[480px]:py-2.5 max-[480px]:px-3.5 max-[480px]:text-[15px]',
+                  msg.isError && 'bg-red-50 text-red-800 border border-red-200'
+                )}
+              >
+                <span className="whitespace-pre-wrap">{msg.content}</span>
+              </div>
+            </Fragment>
           )
         }
 
         // Assistant messages: text in bubble, tool UI outside
         return (
           <Fragment key={msg.id ?? i}>
+            {separator}
             {hasTextContent && (
               <div
                 className={cn(
-                  'max-w-[85%] py-3 px-4 rounded-2xl leading-relaxed break-words text-sm tracking-tight animate-wpaic-fadeIn relative rounded-bl-sm',
-                  'self-start bg-white text-slate-800 shadow-md border border-slate-200',
+                  'max-w-[85%] py-3 px-4 rounded-2xl leading-relaxed break-words text-sm tracking-tight animate-wpaic-fadeIn relative rounded-bl-md',
+                  'self-start bg-slate-100 text-slate-800',
                   'max-[480px]:max-w-[90%] max-[480px]:py-2.5 max-[480px]:px-3.5 max-[480px]:text-[15px]',
-                  msg.isError && 'bg-red-50 text-red-800 border border-red-200 shadow-none'
+                  msg.isError && 'bg-red-50 text-red-800 border border-red-200'
                 )}
               >
                 <div className="prose prose-sm prose-slate max-w-none prose-p:my-2 prose-p:last:mb-0 prose-a:text-[var(--wpaic-primary)] prose-a:no-underline hover:prose-a:underline">

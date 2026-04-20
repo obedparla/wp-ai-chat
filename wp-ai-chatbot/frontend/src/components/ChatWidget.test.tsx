@@ -52,7 +52,6 @@ describe('ChatWidget', () => {
   it('renders custom chatbot name', () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} chatbotName="ShopBot" />)
     expect(screen.getByText('ShopBot')).toBeInTheDocument()
-    expect(screen.getAllByText('AI Assistant')).toHaveLength(1)
   })
 
   it('renders chatbot logo when provided', () => {
@@ -68,16 +67,14 @@ describe('ChatWidget', () => {
     expect(container.querySelector('img')).toBeInTheDocument()
   })
 
-  it('shows subtitle when custom name provided', () => {
-    render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} chatbotName="ShopBot" />)
-    const subtitles = screen.getAllByText('AI Assistant')
-    expect(subtitles.length).toBeGreaterThan(0)
+  it('shows configured role in subtitle', () => {
+    render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} chatbotName="ShopBot" chatbotRole="Personal stylist" />)
+    expect(screen.getByText(/Personal stylist/)).toBeInTheDocument()
   })
 
-  it('does not show subtitle when only logo provided', () => {
-    render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} chatbotLogo="https://example.com/logo.png" />)
-    const titles = screen.getAllByText('AI Assistant')
-    expect(titles).toHaveLength(1)
+  it('defaults subtitle to AI Assistant role when no role configured', () => {
+    render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} chatbotName="ShopBot" />)
+    expect(screen.getByText(/AI Assistant/)).toBeInTheDocument()
   })
 
   it('renders close button', () => {
@@ -102,14 +99,14 @@ describe('ChatWidget', () => {
 
   it('renders input field', () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} />)
-    expect(screen.getByPlaceholderText('Type a message...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Ask anything...')).toBeInTheDocument()
   })
 
   it('auto-focuses the input when requested', async () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} autoFocusInput />)
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Type a message...')).toHaveFocus()
+      expect(screen.getByPlaceholderText('Ask anything...')).toHaveFocus()
     })
   })
 
@@ -121,7 +118,7 @@ describe('ChatWidget', () => {
   it('updates input value on change', async () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} />)
 
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
     await userEvent.type(input, 'Hello')
 
     expect(input).toHaveValue('Hello')
@@ -130,7 +127,7 @@ describe('ChatWidget', () => {
   it('clears input after form submit', async () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} />)
 
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
     const form = input.closest('form')
 
     await userEvent.type(input, 'Hello')
@@ -143,7 +140,7 @@ describe('ChatWidget', () => {
     const mockChat = createMockChat()
     render(<ChatWidget onClose={mockOnClose} chat={mockChat} />)
 
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
     const form = input.closest('form')
 
     await userEvent.type(input, 'Hello')
@@ -155,7 +152,7 @@ describe('ChatWidget', () => {
   it('re-focuses the input after submitting a message', async () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} />)
 
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
     await userEvent.type(input, 'Hello')
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
 
@@ -168,7 +165,7 @@ describe('ChatWidget', () => {
     const mockChat = createMockChat()
     render(<ChatWidget onClose={mockOnClose} chat={mockChat} />)
 
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
     await userEvent.type(input, 'Test via Enter{enter}')
 
     expect(mockChat.sendMessage).toHaveBeenCalledWith('Test via Enter')
@@ -184,7 +181,7 @@ describe('ChatWidget', () => {
   it('does not submit when input is only whitespace', async () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} />)
 
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
     await userEvent.type(input, '   ')
 
     const sendBtn = screen.getByRole('button', { name: 'Send' })
@@ -202,7 +199,6 @@ describe('ChatWidget', () => {
       />
     )
 
-    expect(screen.getByText('Try asking')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Find a product' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Track my order' })).toBeInTheDocument()
   })
@@ -216,7 +212,7 @@ describe('ChatWidget', () => {
       />
     )
 
-    expect(screen.queryByText('Try asking')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Find a product' })).not.toBeInTheDocument()
   })
 
   it('sends a starter immediately when clicked', async () => {
@@ -315,14 +311,41 @@ describe('ChatWidget new conversation', () => {
     expect(screen.getByRole('button', { name: 'New conversation' })).toBeInTheDocument()
   })
 
-  it('calls startNewConversation when new conversation button clicked', async () => {
+  it('asks to confirm before starting a new conversation with history', async () => {
     const mockChat = createMockChat()
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
 
-    const newConversationBtn = screen.getByRole('button', { name: 'New conversation' })
-    await userEvent.click(newConversationBtn)
+    await userEvent.click(screen.getByRole('button', { name: 'New conversation' }))
+
+    expect(screen.getByText('Start new conversation?')).toBeInTheDocument()
+    expect(mockChat.startNewConversation).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: /start new/i }))
 
     expect(mockChat.startNewConversation).toHaveBeenCalled()
+  })
+
+  it('cancels the new conversation dialog without resetting', async () => {
+    const mockChat = createMockChat()
+    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'New conversation' }))
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
+
+    expect(mockChat.startNewConversation).not.toHaveBeenCalled()
+    expect(screen.queryByText('Start new conversation?')).not.toBeInTheDocument()
+  })
+
+  it('starts a new conversation immediately when only the greeting is present', async () => {
+    const mockChat = createMockChat({
+      messages: [{ role: 'assistant', content: 'Hello!', id: 'greeting' }],
+    })
+    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'New conversation' }))
+
+    expect(mockChat.startNewConversation).toHaveBeenCalled()
+    expect(screen.queryByText('Start new conversation?')).not.toBeInTheDocument()
   })
 })
 
@@ -336,7 +359,7 @@ describe('ChatWidget loading state', () => {
   it('keeps input enabled when loading', () => {
     const mockChat = createMockChat({ messages: [], isLoading: true })
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
     expect(input).not.toBeDisabled()
   })
 
@@ -357,7 +380,7 @@ describe('ChatWidget loading state', () => {
     const mockChat = createMockChat({ messages: [], isLoading: true })
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
 
-    const input = screen.getByPlaceholderText('Type a message...')
+    const input = screen.getByPlaceholderText('Ask anything...')
     await userEvent.type(input, 'Another question{Enter}')
 
     expect(mockChat.sendMessage).toHaveBeenCalledWith('Another question')

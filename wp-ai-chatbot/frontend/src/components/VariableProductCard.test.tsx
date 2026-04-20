@@ -67,9 +67,9 @@ describe('VariableProductCard', () => {
     expect(screen.getByLabelText('Size')).toBeInTheDocument()
   })
 
-  it('shows Select Options when no attributes selected', () => {
+  it('shows Pick label when no attributes selected', () => {
     render(<VariableProductCard product={mockVariableProduct} />)
-    expect(screen.getByRole('button', { name: /add to cart/i })).toHaveTextContent('Select Options')
+    expect(screen.getByRole('button', { name: /add to cart/i })).toHaveTextContent('PICK')
   })
 
   it('disables Add to Cart until all attributes selected', () => {
@@ -86,7 +86,7 @@ describe('VariableProductCard', () => {
 
     const button = screen.getByRole('button', { name: /add to cart/i })
     expect(button).not.toBeDisabled()
-    expect(button).toHaveTextContent('Add to Cart')
+    expect(button).toHaveTextContent('ADD')
   })
 
   it('updates price when variation is selected', () => {
@@ -104,7 +104,7 @@ describe('VariableProductCard', () => {
     fireEvent.change(screen.getByLabelText('Color'), { target: { value: 'Blue' } })
     fireEvent.change(screen.getByLabelText('Size'), { target: { value: 'S' } })
 
-    expect(screen.getByRole('button')).toHaveTextContent('Out of Stock')
+    expect(screen.getByRole('button')).toHaveTextContent('SOLD OUT')
     expect(screen.getByRole('button')).toBeDisabled()
   })
 
@@ -159,7 +159,7 @@ describe('VariableProductCard', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(screen.getByText('✓ Added')).toBeInTheDocument()
+      expect(screen.getByText('ADDED')).toBeInTheDocument()
     })
   })
 

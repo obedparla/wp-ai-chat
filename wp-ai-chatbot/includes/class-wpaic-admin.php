@@ -266,7 +266,7 @@ class WPAIC_Admin {
 		$tab_fields = array(
 			'general'    => array( 'enabled', 'greeting_message', 'language', 'tone_of_voice', 'system_prompt' ),
 			'api'        => array( 'openai_api_key', 'model', 'provider_url_override' ),
-			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'theme_color' ),
+			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'chatbot_role', 'theme_color' ),
 			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages', 'conversation_starters' ),
 			'search'     => array( 'product_index_enabled', 'content_index_post_types' ),
 		);
@@ -287,8 +287,8 @@ class WPAIC_Admin {
 		$sanitized['greeting_message'] = sanitize_textarea_field( $merged['greeting_message'] ?? '' );
 		$sanitized['enabled']          = ! empty( $merged['enabled'] );
 		$sanitized['system_prompt']    = sanitize_textarea_field( $merged['system_prompt'] ?? '' );
-		$theme_color                   = sanitize_hex_color( $merged['theme_color'] ?? '#0073aa' );
-		$sanitized['theme_color']      = $theme_color ? $theme_color : '#0073aa';
+		$theme_color                   = sanitize_hex_color( $merged['theme_color'] ?? '#2545B8' );
+		$sanitized['theme_color']      = $theme_color ? $theme_color : '#2545B8';
 		$sanitized['language']         = sanitize_text_field( $merged['language'] ?? 'auto' );
 		$tone_of_voice                 = sanitize_key( $merged['tone_of_voice'] ?? 'neutral' );
 		$valid_tones                   = array_keys( $this->get_tone_of_voice_options() );
@@ -302,6 +302,7 @@ class WPAIC_Admin {
 
 		$sanitized['chatbot_name'] = sanitize_text_field( $merged['chatbot_name'] ?? '' );
 		$sanitized['chatbot_logo'] = esc_url_raw( $merged['chatbot_logo'] ?? '' );
+		$sanitized['chatbot_role'] = sanitize_text_field( $merged['chatbot_role'] ?? '' );
 
 		$sanitized['handoff_enabled'] = ! empty( $merged['handoff_enabled'] );
 
@@ -363,8 +364,8 @@ class WPAIC_Admin {
 
 	public function render_theme_color_field(): void {
 		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['theme_color'] ?? '#0073aa' ) : '#0073aa';
-		echo '<input type="text" name="wpaic_settings[theme_color]" value="' . esc_attr( $value ) . '" class="wpaic-color-picker" data-default-color="#0073aa" />';
+		$value    = is_array( $settings ) ? ( $settings['theme_color'] ?? '#2545B8' ) : '#2545B8';
+		echo '<input type="text" name="wpaic_settings[theme_color]" value="' . esc_attr( $value ) . '" class="wpaic-color-picker" data-default-color="#2545B8" />';
 		echo '<p class="description">' . esc_html__( 'Choose the primary color for the chatbot header, buttons, and accents.', 'wp-ai-chatbot' ) . '</p>';
 	}
 
@@ -792,9 +793,10 @@ class WPAIC_Admin {
 	 * @param array<string, mixed> $settings Current settings.
 	 */
 	private function render_appearance_tab( array $settings ): void {
-		$theme_color   = $settings['theme_color'] ?? '#0073aa';
+		$theme_color   = $settings['theme_color'] ?? '#2545B8';
 		$chatbot_name  = $settings['chatbot_name'] ?? '';
 		$chatbot_logo  = $settings['chatbot_logo'] ?? '';
+		$chatbot_role  = $settings['chatbot_role'] ?? '';
 		?>
 		<div class="space-y-4">
 			<div>
@@ -828,11 +830,21 @@ class WPAIC_Admin {
 			</div>
 
 			<div>
+				<label for="wpaic_chatbot_role" class="block text-sm font-medium text-gray-700 mb-2">
+					<?php esc_html_e( 'Chatbot Role', 'wp-ai-chatbot' ); ?>
+				</label>
+				<input type="text" id="wpaic_chatbot_role" name="wpaic_settings[chatbot_role]" value="<?php echo esc_attr( $chatbot_role ); ?>"
+						class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+						placeholder="<?php esc_attr_e( 'e.g. Personal stylist, Support assistant', 'wp-ai-chatbot' ); ?>">
+				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Short role shown under the chatbot name. Leave empty for "AI Assistant".', 'wp-ai-chatbot' ); ?></p>
+			</div>
+
+			<div>
 				<label class="block text-sm font-medium text-gray-700 mb-2">
 					<?php esc_html_e( 'Theme Color', 'wp-ai-chatbot' ); ?>
 				</label>
 				<input type="text" name="wpaic_settings[theme_color]" value="<?php echo esc_attr( $theme_color ); ?>"
-						class="wpaic-color-picker" data-default-color="#0073aa">
+						class="wpaic-color-picker" data-default-color="#2545B8">
 				<p class="mt-2 text-sm text-gray-500"><?php esc_html_e( 'Primary color for the chat header, buttons, and accents.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 		</div>

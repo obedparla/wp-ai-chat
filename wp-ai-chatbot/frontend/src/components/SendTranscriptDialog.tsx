@@ -82,8 +82,18 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
   }
 
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 rounded-2xl">
-      <div className="bg-white rounded-xl shadow-lg mx-5 w-full max-w-[320px] p-5" onKeyDown={handleKeyDown}>
+    <div
+      className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 rounded-2xl animate-wpaic-fadeIn"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wpaic-transcript-title"
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl mx-5 w-full max-w-[360px] p-6"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
         {dialogState === 'success' ? (
           <div className="text-center py-2">
             <div className="text-[var(--wpaic-primary)] mb-2">
@@ -96,31 +106,41 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
           </div>
         ) : (
           <>
-            <h3 className="text-sm font-semibold text-slate-800 mb-3">Send transcript</h3>
+            <h2
+              id="wpaic-transcript-title"
+              className="text-xl font-semibold text-slate-900 leading-tight mb-3"
+            >
+              Email me this chat
+            </h2>
+            <p className="text-sm text-slate-600 leading-relaxed mb-5">
+              We'll send you an email of the conversation.
+            </p>
             <input
               ref={inputRef}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
+              placeholder="you@example.com"
               disabled={dialogState === 'sending'}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--wpaic-primary)] focus:border-transparent disabled:opacity-50"
+              className="w-full px-4 py-3 text-sm bg-slate-50 border border-[var(--wpaic-primary)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--wpaic-primary)] focus:border-transparent disabled:opacity-50"
             />
-            {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-            <div className="flex gap-2 mt-3">
+            {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+            <div className="flex items-center justify-end gap-2 mt-5">
               <button
+                type="button"
                 onClick={onClose}
                 disabled={dialogState === 'sending'}
-                className="flex-1 px-3 py-2 text-sm text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
+                className="rounded-full border border-slate-300 bg-white px-5 py-2.5 text-xs font-semibold tracking-[0.12em] text-slate-700 transition-colors duration-200 hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50"
               >
-                Cancel
+                CANCEL
               </button>
               <button
+                type="button"
                 onClick={handleSend}
                 disabled={dialogState === 'sending'}
-                className="flex-1 px-3 py-2 text-sm text-white bg-[var(--wpaic-primary)] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="rounded-full border-0 bg-[var(--wpaic-primary)] px-5 py-2.5 text-xs font-semibold tracking-[0.12em] text-white transition-all duration-200 hover:scale-[1.03] active:scale-95 shadow-sm disabled:opacity-50 disabled:hover:scale-100"
               >
-                {dialogState === 'sending' ? 'Sending...' : 'Send transcript'}
+                {dialogState === 'sending' ? 'SENDING...' : 'SEND'}
               </button>
             </div>
           </>

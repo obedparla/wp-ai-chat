@@ -248,7 +248,7 @@ class WPAIC_AdminTest extends TestCase {
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertEquals( '#0073aa', $sanitized['theme_color'] );
+		$this->assertEquals( '#2545B8', $sanitized['theme_color'] );
 	}
 
 	public function test_sanitize_settings_defaults_theme_color_when_missing(): void {
@@ -261,7 +261,7 @@ class WPAIC_AdminTest extends TestCase {
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertEquals( '#0073aa', $sanitized['theme_color'] );
+		$this->assertEquals( '#2545B8', $sanitized['theme_color'] );
 	}
 
 	public function test_sanitize_settings_strips_html_from_api_key(): void {
@@ -507,7 +507,7 @@ class WPAIC_AdminTest extends TestCase {
 		$this->admin->render_theme_color_field();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'value="#0073aa"', $output );
+		$this->assertStringContainsString( 'value="#2545B8"', $output );
 	}
 
 	public function test_render_theme_color_field_has_description(): void {

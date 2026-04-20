@@ -191,13 +191,13 @@ describe('useChat', () => {
     const { result } = renderHook(() => useChat())
 
     expect(result.current.messages).toHaveLength(2)
-    expect(result.current.messages[0]).toEqual({
+    expect(result.current.messages[0]).toMatchObject({
       role: 'user',
       content: 'Hello',
       isError: false,
       id: '1',
     })
-    expect(result.current.messages[1]).toEqual({
+    expect(result.current.messages[1]).toMatchObject({
       role: 'assistant',
       content: 'Hi there!',
       isError: false,
@@ -253,7 +253,7 @@ describe('useChat', () => {
     const { result } = renderHook(() => useChat())
 
     expect(result.current.messages).toHaveLength(2)
-    expect(result.current.messages[1]).toEqual({
+    expect(result.current.messages[1]).toMatchObject({
       role: 'assistant',
       content: 'Sorry, something went wrong. Please try again.',
       isError: true,
