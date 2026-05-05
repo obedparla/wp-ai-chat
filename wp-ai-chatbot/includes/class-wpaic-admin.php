@@ -43,18 +43,24 @@ class WPAIC_Admin {
 	public function enqueue_admin_scripts( string $hook ): void {
 		$allowed_hooks = array(
 			'toplevel_page_wp-ai-chatbot',
+			'ai-chatbot_page_wp-ai-chatbot-logs',
 			'ai-chatbot_page_wp-ai-chatbot-support',
 		);
 		if ( ! in_array( $hook, $allowed_hooks, true ) ) {
 			return;
 		}
-		wp_enqueue_style( 'wp-color-picker' );
-		wp_enqueue_script( 'wp-color-picker' );
+
+		wp_enqueue_style(
+			'wpaic-google-fonts',
+			'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap',
+			array(),
+			WPAIC_VERSION
+		);
+
 		wp_enqueue_media();
 		wp_add_inline_script(
-			'wp-color-picker',
+			'jquery',
 			'jQuery(document).ready(function($){' .
-				'$(".wpaic-color-picker").wpColorPicker();' .
 				'var frame;' .
 				'$("#wpaic_logo_upload").on("click",function(e){' .
 					'e.preventDefault();' .
@@ -65,6 +71,7 @@ class WPAIC_Admin {
 						'if(!a.type||a.type!=="image"){alert("Please select an image file (JPEG, PNG, GIF, WebP, or SVG).");return;}' .
 						'$("#wpaic_chatbot_logo").val(a.url);' .
 						'$("#wpaic_logo_preview").attr("src",a.url).show();' .
+						'if($("#wpaic_logo_letter").length){$("#wpaic_logo_letter").hide();}' .
 						'$("#wpaic_logo_remove").show();' .
 					'});' .
 					'frame.open();' .
@@ -73,12 +80,8 @@ class WPAIC_Admin {
 					'e.preventDefault();' .
 					'$("#wpaic_chatbot_logo").val("");' .
 					'$("#wpaic_logo_preview").hide();' .
+					'if($("#wpaic_logo_letter").length){$("#wpaic_logo_letter").show();}' .
 					'$(this).hide();' .
-				'});' .
-				'$(".wpaic-handoff-field-checkbox").on("change",function(){' .
-					'var l=$(this).closest("label");' .
-					'if(this.checked){l.removeClass("bg-gray-200 text-gray-600 hover:bg-gray-300").addClass("bg-blue-100 text-blue-800");}' .
-					'else{l.removeClass("bg-blue-100 text-blue-800").addClass("bg-gray-200 text-gray-600 hover:bg-gray-300");}' .
 				'});' .
 			'});'
 		);
@@ -558,65 +561,72 @@ class WPAIC_Admin {
 			return;
 		}
 		$settings   = get_option( 'wpaic_settings', array() );
+		$settings   = is_array( $settings ) ? $settings : array();
 		$active_tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'general'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$is_enabled = ! empty( $settings['enabled'] );
 		$tabs       = array(
 			'general'    => __( 'General', 'wp-ai-chatbot' ),
-			'api'        => __( 'Licensing', 'wp-ai-chatbot' ),
 			'appearance' => __( 'Appearance', 'wp-ai-chatbot' ),
 			'engagement' => __( 'Engagement', 'wp-ai-chatbot' ),
-			'train'      => __( 'Train Bot', 'wp-ai-chatbot' ),
-			'search'     => __( 'Search Index', 'wp-ai-chatbot' ),
+			'knowledge'  => __( 'Knowledge', 'wp-ai-chatbot' ),
+			'api'        => __( 'Licensing', 'wp-ai-chatbot' ),
+		);
+		$tab_icons = array(
+			'general'    => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+			'appearance' => '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.62-.38-1.01 0-.83.67-1.5 1.5-1.5H16c3.31 0 6-2.69 6-6 0-4.97-4.48-9-10-9z"/>',
+			'engagement' => '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+			'knowledge'  => '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+			'api'        => '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
 		);
 		?>
 		<div class="wpaic-admin-wrap" style="margin-left: -20px;">
-			<div class="bg-white shadow-sm border-b border-gray-200">
-				<div class="max-w-5xl mx-auto px-6 py-6">
-					<div class="flex items-center gap-3">
-						<span class="dashicons dashicons-format-chat text-blue-600 text-2xl"></span>
-						<h1 class="text-2xl font-semibold text-gray-900"><?php esc_html_e( 'AI Chatbot Settings', 'wp-ai-chatbot' ); ?></h1>
+			<div class="bg-surface border-b border-line sticky top-[32px] z-10">
+				<div class="max-w-[960px] mx-auto px-8 pt-5">
+					<div class="flex items-center gap-3 mb-4">
+						<h1 class="text-[22px] font-semibold tracking-tight text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'AI Chatbot', 'wp-ai-chatbot' ); ?></h1>
+						<span class="wpaic-status-pill <?php echo $is_enabled ? 'wpaic-status-pill-live' : 'wpaic-status-pill-paused'; ?>">
+							<span class="wpaic-status-dot <?php echo $is_enabled ? 'wpaic-status-dot-live' : 'wpaic-status-dot-paused'; ?>"></span>
+							<?php echo $is_enabled ? esc_html__( 'Live on site', 'wp-ai-chatbot' ) : esc_html__( 'Paused', 'wp-ai-chatbot' ); ?>
+						</span>
 					</div>
-				</div>
-			</div>
-
-			<div class="max-w-5xl mx-auto px-6 py-4">
-				<div class="bg-white rounded-lg border border-gray-200">
-					<nav class="flex border-b border-gray-200 rounded-t-lg overflow-hidden">
+					<nav class="flex gap-0.5 -mb-px">
 						<?php foreach ( $tabs as $tab_id => $tab_label ) : ?>
 							<a href="<?php echo esc_url( add_query_arg( 'tab', $tab_id, admin_url( 'admin.php?page=wp-ai-chatbot' ) ) ); ?>"
-								class="px-5 py-3 text-sm font-medium transition-colors <?php echo $active_tab === $tab_id ? 'text-blue-600 border-b-2 border-blue-600 -mb-px bg-blue-50' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'; ?>">
+								class="inline-flex items-center gap-2 px-3.5 py-2.5 text-[13.5px] font-medium border-b-2 transition-colors no-underline <?php echo $active_tab === $tab_id ? 'text-ink border-ink' : 'text-muted border-transparent hover:text-ink-2'; ?>">
+								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><?php echo $tab_icons[ $tab_id ]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- hardcoded SVG paths ?></svg>
 								<?php echo esc_html( $tab_label ); ?>
 							</a>
 						<?php endforeach; ?>
 					</nav>
-
-					<form action="options.php" method="post" class="p-6">
-						<?php settings_fields( 'wpaic_settings_group' ); ?>
-						<input type="hidden" name="wpaic_settings[active_tab]" value="<?php echo esc_attr( $active_tab ); ?>">
-
-						<?php if ( 'general' === $active_tab ) : ?>
-							<?php $this->render_general_tab( $settings ); ?>
-						<?php elseif ( 'api' === $active_tab ) : ?>
-							<?php $this->render_api_tab( $settings ); ?>
-						<?php elseif ( 'appearance' === $active_tab ) : ?>
-							<?php $this->render_appearance_tab( $settings ); ?>
-						<?php elseif ( 'engagement' === $active_tab ) : ?>
-							<?php $this->render_engagement_tab( $settings ); ?>
-						<?php elseif ( 'train' === $active_tab ) : ?>
-							<?php $this->render_train_tab(); ?>
-						<?php elseif ( 'search' === $active_tab ) : ?>
-							<?php $this->render_search_tab(); ?>
-						<?php endif; ?>
-
-						<?php if ( 'search' !== $active_tab && 'train' !== $active_tab ) : ?>
-							<div class="pt-4 mt-4 border-t border-gray-200">
-								<button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
-									<?php esc_html_e( 'Save Settings', 'wp-ai-chatbot' ); ?>
-								</button>
-							</div>
-						<?php endif; ?>
-					</form>
 				</div>
 			</div>
+
+			<?php if ( 'knowledge' === $active_tab ) : ?>
+				<?php $this->render_knowledge_tab(); ?>
+			<?php else : ?>
+				<form action="options.php" method="post">
+					<?php settings_fields( 'wpaic_settings_group' ); ?>
+					<input type="hidden" name="wpaic_settings[active_tab]" value="<?php echo esc_attr( $active_tab ); ?>">
+
+					<?php if ( 'general' === $active_tab ) : ?>
+						<?php $this->render_general_tab( $settings ); ?>
+					<?php elseif ( 'api' === $active_tab ) : ?>
+						<?php $this->render_api_tab( $settings ); ?>
+					<?php elseif ( 'appearance' === $active_tab ) : ?>
+						<?php $this->render_appearance_tab( $settings ); ?>
+					<?php elseif ( 'engagement' === $active_tab ) : ?>
+						<?php $this->render_engagement_tab( $settings ); ?>
+					<?php endif; ?>
+
+					<div class="max-w-[960px] mx-auto px-8 pb-8">
+						<div class="pt-4">
+							<button type="submit" class="wpaic-btn wpaic-btn-primary">
+								<?php esc_html_e( 'Save changes', 'wp-ai-chatbot' ); ?>
+							</button>
+						</div>
+					</div>
+				</form>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
@@ -651,64 +661,126 @@ class WPAIC_Admin {
 		if ( ! isset( $tone_options[ $tone_of_voice ] ) ) {
 			$tone_of_voice = 'neutral';
 		}
+		$tone_descriptions = array(
+			'neutral'      => __( 'Balanced, factual, straightforward', 'wp-ai-chatbot' ),
+			'friendly'     => __( 'Warm, conversational, approachable', 'wp-ai-chatbot' ),
+			'professional' => __( 'Polite, concise, business-focused', 'wp-ai-chatbot' ),
+			'enthusiastic' => __( 'Upbeat, energetic, expressive', 'wp-ai-chatbot' ),
+		);
+		$tone_labels = array(
+			'neutral'      => __( 'Neutral', 'wp-ai-chatbot' ),
+			'friendly'     => __( 'Friendly', 'wp-ai-chatbot' ),
+			'professional' => __( 'Professional', 'wp-ai-chatbot' ),
+			'enthusiastic' => __( 'Enthusiastic', 'wp-ai-chatbot' ),
+		);
 		?>
-		<div class="space-y-4">
-			<div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-				<div>
-					<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Enable Chatbot', 'wp-ai-chatbot' ); ?></h3>
-					<p class="text-sm text-gray-500"><?php esc_html_e( 'Show the chat widget on your website', 'wp-ai-chatbot' ); ?></p>
+		<div class="max-w-[960px] mx-auto px-8 pt-7 pb-4">
+			<div class="mb-6">
+				<h2 class="text-[26px] font-semibold text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'General', 'wp-ai-chatbot' ); ?></h2>
+				<p class="text-muted text-sm mt-1"><?php esc_html_e( 'Core chatbot behavior, voice, and language.', 'wp-ai-chatbot' ); ?></p>
+			</div>
+
+			<div class="flex flex-col gap-[18px]">
+				<div class="wpaic-card">
+					<div class="wpaic-card-row">
+						<div class="max-w-[60%]">
+							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Enable chatbot', 'wp-ai-chatbot' ); ?></h4>
+							<p class="text-muted m-0 text-[13px]"><?php esc_html_e( 'Show the chat widget on every page of your website. Turn off to pause without losing settings.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+						<label class="wpaic-toggle">
+							<input type="hidden" name="wpaic_settings[enabled]" value="0">
+							<input type="checkbox" name="wpaic_settings[enabled]" value="1" <?php checked( $enabled ); ?>>
+							<span class="wpaic-toggle-track"><span class="wpaic-toggle-thumb"></span></span>
+						</label>
+					</div>
 				</div>
-				<label class="relative inline-flex items-center cursor-pointer">
-					<input type="checkbox" name="wpaic_settings[enabled]" value="1" <?php checked( $enabled ); ?> class="sr-only peer">
-					<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-				</label>
-			</div>
 
-			<div>
-				<label for="wpaic_greeting" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Greeting Message', 'wp-ai-chatbot' ); ?>
-				</label>
-				<textarea id="wpaic_greeting" name="wpaic_settings[greeting_message]" rows="3"
-							class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"><?php echo esc_textarea( $greeting ); ?></textarea>
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'First message shown when users open the chat.', 'wp-ai-chatbot' ); ?></p>
-			</div>
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div>
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Messaging', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'What users see when they open the chat.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+					</div>
+					<div class="wpaic-card-body flex flex-col gap-[18px]">
+						<div>
+							<label for="wpaic_greeting" class="flex items-center gap-2.5 font-medium text-[13px] mb-1.5 text-ink">
+								<?php esc_html_e( 'Greeting message', 'wp-ai-chatbot' ); ?>
+							</label>
+							<textarea id="wpaic_greeting" name="wpaic_settings[greeting_message]" rows="3"
+								class="wpaic-input" style="resize: vertical; min-height: 88px; line-height: 1.6;"
+								placeholder="<?php esc_attr_e( 'Hi there! Ask me anything about our products.', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $greeting ); ?></textarea>
+							<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'First message shown when users open the chat.', 'wp-ai-chatbot' ); ?></span>
+						</div>
+						<div>
+							<label for="wpaic_language" class="flex items-center gap-2.5 font-medium text-[13px] mb-1.5 text-ink">
+								<?php esc_html_e( 'Response language', 'wp-ai-chatbot' ); ?>
+							</label>
+							<select id="wpaic_language" name="wpaic_settings[language]" class="wpaic-input wpaic-select">
+								<?php foreach ( $languages as $code => $label ) : ?>
+									<option value="<?php echo esc_attr( $code ); ?>" <?php selected( $language, $code ); ?>><?php echo esc_html( $label ); ?></option>
+								<?php endforeach; ?>
+							</select>
+							<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Auto-detect mirrors the user\'s language.', 'wp-ai-chatbot' ); ?></span>
+						</div>
+					</div>
+				</div>
 
-			<div>
-				<label for="wpaic_language" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Response Language', 'wp-ai-chatbot' ); ?>
-				</label>
-				<select id="wpaic_language" name="wpaic_settings[language]"
-						class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-					<?php foreach ( $languages as $code => $label ) : ?>
-						<option value="<?php echo esc_attr( $code ); ?>" <?php selected( $language, $code ); ?>><?php echo esc_html( $label ); ?></option>
-					<?php endforeach; ?>
-				</select>
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Language for chatbot responses. Auto-detect responds in the user\'s language.', 'wp-ai-chatbot' ); ?></p>
-			</div>
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div>
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Personality', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Choose a preset tone, or write a custom system prompt for finer control.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+					</div>
+					<div class="wpaic-card-body flex flex-col gap-[18px]">
+						<div>
+							<span class="block font-medium text-[13px] mb-2.5"><?php esc_html_e( 'Tone of voice', 'wp-ai-chatbot' ); ?></span>
+							<div class="grid grid-cols-4 gap-2.5">
+								<?php foreach ( $tone_labels as $tone_key => $tone_label ) : ?>
+									<label class="p-3.5 border rounded-[10px] flex gap-3 cursor-pointer transition-colors hover:border-ink-2 <?php echo $tone_of_voice === $tone_key ? 'border-ink bg-surface' : 'border-line'; ?>">
+										<input type="radio" name="wpaic_settings[tone_of_voice]" value="<?php echo esc_attr( $tone_key ); ?>" <?php checked( $tone_of_voice, $tone_key ); ?> class="sr-only wpaic-tone-radio">
+										<span class="w-[18px] h-[18px] rounded-[5px] border-[1.5px] grid place-items-center shrink-0 mt-0.5 <?php echo $tone_of_voice === $tone_key ? 'bg-ink border-ink text-white' : 'bg-white border-line-2'; ?>">
+											<?php if ( $tone_of_voice === $tone_key ) : ?>
+												<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+											<?php endif; ?>
+										</span>
+										<span>
+											<span class="font-semibold text-[13.5px] block mb-0.5"><?php echo esc_html( $tone_label ); ?></span>
+											<span class="text-muted text-[12.5px] block"><?php echo esc_html( $tone_descriptions[ $tone_key ] ?? '' ); ?></span>
+										</span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+						</div>
 
-			<div>
-				<label for="wpaic_tone_of_voice" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Tone of Voice', 'wp-ai-chatbot' ); ?>
-				</label>
-				<select id="wpaic_tone_of_voice" name="wpaic_settings[tone_of_voice]"
-						class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-					<?php foreach ( $tone_options as $tone_value => $tone_label ) : ?>
-						<option value="<?php echo esc_attr( $tone_value ); ?>" <?php selected( $tone_of_voice, $tone_value ); ?>><?php echo esc_html( $tone_label ); ?></option>
-					<?php endforeach; ?>
-				</select>
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Choose the bot\'s default writing style. For deeper customization, use the Custom System Prompt below.', 'wp-ai-chatbot' ); ?></p>
-			</div>
-
-			<div>
-				<label for="wpaic_system_prompt" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Custom System Prompt', 'wp-ai-chatbot' ); ?>
-				</label>
-				<textarea id="wpaic_system_prompt" name="wpaic_settings[system_prompt]" rows="6"
-							class="max-w-lg w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
-							placeholder="<?php esc_attr_e( 'Leave empty for default prompt', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $system_prompt ); ?></textarea>
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Define the chatbot\'s personality and behavior. This can further fine-tune or override the selected tone of voice. Leave empty for the default helpful assistant prompt.', 'wp-ai-chatbot' ); ?></p>
+						<div>
+							<label for="wpaic_system_prompt" class="flex items-center justify-between gap-2.5 font-medium text-[13px] mb-1.5 text-ink">
+								<span><?php esc_html_e( 'Custom system prompt', 'wp-ai-chatbot' ); ?></span>
+								<span class="font-normal text-muted text-xs"><?php esc_html_e( 'advanced · overrides tone preset', 'wp-ai-chatbot' ); ?></span>
+							</label>
+							<textarea id="wpaic_system_prompt" name="wpaic_settings[system_prompt]" rows="5"
+								class="wpaic-input font-mono !text-[12.5px]" style="resize: vertical; min-height: 120px; line-height: 1.6;"
+								placeholder="<?php esc_attr_e( 'Leave empty to use the selected tone preset.', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $system_prompt ); ?></textarea>
+							<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Define the chatbot\'s personality and behavior.', 'wp-ai-chatbot' ); ?></span>
+						</div>
+					</div>
+				</div>
 			</div>
 		</div>
+
+		<script>
+		jQuery(document).ready(function($) {
+			$('.wpaic-tone-radio').on('change', function() {
+				var $cards = $(this).closest('.grid').find('label');
+				$cards.removeClass('border-ink bg-surface').addClass('border-line');
+				$cards.find('.w-\\[18px\\]').removeClass('bg-ink border-ink text-white').addClass('bg-white border-line-2').html('');
+				var $selected = $(this).closest('label');
+				$selected.removeClass('border-line').addClass('border-ink bg-surface');
+				$selected.find('.w-\\[18px\\]').removeClass('bg-white border-line-2').addClass('bg-ink border-ink text-white').html('<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>');
+			});
+		});
+		</script>
 		<?php
 	}
 
@@ -729,60 +801,67 @@ class WPAIC_Admin {
 		$provider_override   = $settings['provider_url_override'] ?? '';
 		$show_provider_field = $this->license_manager->is_provider_url_override_allowed();
 		?>
-		<div class="space-y-4">
-			<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-				<div class="flex">
-					<span class="dashicons dashicons-info text-blue-500 mr-2"></span>
-					<p class="text-sm text-blue-700">
-						<?php esc_html_e( 'Licensing, billing, trials, account management, and plugin updates are handled automatically. The chat stays hidden until the trial or an active license is available.', 'wp-ai-chatbot' ); ?>
-					</p>
-				</div>
+		<div class="max-w-[960px] mx-auto px-8 pt-7 pb-4">
+			<div class="mb-6">
+				<h2 class="text-[26px] font-semibold text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'Licensing', 'wp-ai-chatbot' ); ?></h2>
+				<p class="text-muted text-sm mt-1"><?php esc_html_e( 'License status, billing, and provider configuration.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 
-			<fieldset class="p-4 border border-gray-200 rounded-lg">
-				<legend class="text-sm font-semibold text-gray-700 px-1"><?php esc_html_e( 'License Status', 'wp-ai-chatbot' ); ?></legend>
-				<div class="space-y-4 mt-2">
-					<div>
-						<p class="text-sm font-medium text-gray-700"><?php esc_html_e( 'Current Status', 'wp-ai-chatbot' ); ?></p>
-						<p class="mt-1 text-sm text-gray-600"><?php echo esc_html( $license_status ); ?></p>
+			<div class="flex flex-col gap-[18px]">
+				<div class="wpaic-banner-info">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+					<span><?php esc_html_e( 'Licensing, billing, trials, account management, and plugin updates are handled automatically. The chat stays hidden until the trial or an active license is available.', 'wp-ai-chatbot' ); ?></span>
+				</div>
+
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div>
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'License status', 'wp-ai-chatbot' ); ?></h3>
+						</div>
 					</div>
-					<div>
-						<p class="text-sm font-medium text-gray-700"><?php esc_html_e( 'Provider Endpoint', 'wp-ai-chatbot' ); ?></p>
-						<p class="mt-1 text-sm text-gray-600"><?php echo esc_html( $provider_url ); ?></p>
-						<p class="mt-1 text-xs text-gray-500"><?php echo esc_html( $provider_status ); ?></p>
+					<div class="wpaic-card-row">
+						<div>
+							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Current status', 'wp-ai-chatbot' ); ?></h4>
+							<p class="text-muted m-0 text-[13px]"><?php echo esc_html( $license_status ); ?></p>
+						</div>
+					</div>
+					<div class="wpaic-card-row">
+						<div>
+							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Provider endpoint', 'wp-ai-chatbot' ); ?></h4>
+							<p class="text-muted m-0 text-[13px]"><?php echo esc_html( $provider_url ); ?></p>
+							<p class="text-muted-2 m-0 text-xs mt-0.5"><?php echo esc_html( $provider_status ); ?></p>
+						</div>
 					</div>
 					<?php if ( '' !== $activation_url || '' !== $account_url || '' !== $pricing_url ) : ?>
-						<div class="flex flex-wrap gap-3">
+						<div class="wpaic-card-body flex flex-wrap gap-2">
 							<?php if ( '' !== $activation_url ) : ?>
-								<a href="<?php echo esc_url( $activation_url ); ?>" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"><?php esc_html_e( 'Activate License', 'wp-ai-chatbot' ); ?></a>
+								<a href="<?php echo esc_url( $activation_url ); ?>" class="wpaic-btn wpaic-btn-primary no-underline"><?php esc_html_e( 'Activate License', 'wp-ai-chatbot' ); ?></a>
 							<?php endif; ?>
 							<?php if ( '' !== $account_url ) : ?>
-								<a href="<?php echo esc_url( $account_url ); ?>" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"><?php esc_html_e( 'Manage Billing', 'wp-ai-chatbot' ); ?></a>
+								<a href="<?php echo esc_url( $account_url ); ?>" class="wpaic-btn no-underline"><?php esc_html_e( 'Manage Billing', 'wp-ai-chatbot' ); ?></a>
 							<?php endif; ?>
 							<?php if ( '' !== $pricing_url ) : ?>
-								<a href="<?php echo esc_url( $pricing_url ); ?>" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"><?php esc_html_e( 'See Plans', 'wp-ai-chatbot' ); ?></a>
+								<a href="<?php echo esc_url( $pricing_url ); ?>" class="wpaic-btn no-underline"><?php esc_html_e( 'See Plans', 'wp-ai-chatbot' ); ?></a>
 							<?php endif; ?>
 						</div>
 					<?php endif; ?>
 				</div>
-			</fieldset>
 
-			<?php if ( $show_provider_field ) : ?>
-				<fieldset class="p-4 border border-gray-200 rounded-lg">
-					<legend class="text-sm font-semibold text-gray-700 px-1"><?php esc_html_e( 'Staging Override', 'wp-ai-chatbot' ); ?></legend>
-					<div class="space-y-4 mt-2">
-						<div>
-							<label for="wpaic_provider_url_override" class="block text-sm font-medium text-gray-700 mb-2">
-								<?php esc_html_e( 'Provider URL Override', 'wp-ai-chatbot' ); ?>
-							</label>
-							<input type="url" id="wpaic_provider_url_override" name="wpaic_settings[provider_url_override]" value="<?php echo esc_attr( (string) $provider_override ); ?>"
-									class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-									placeholder="https://staging-provider.example.com/wp-json/wpaip/v1/chat">
-							<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Only available when staging overrides are explicitly enabled by constant.', 'wp-ai-chatbot' ); ?></p>
+				<?php if ( $show_provider_field ) : ?>
+					<div class="wpaic-card">
+						<div class="wpaic-card-header">
+							<div>
+								<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Staging override', 'wp-ai-chatbot' ); ?></h3>
+							</div>
+						</div>
+						<div class="wpaic-card-body">
+							<label for="wpaic_provider_url_override" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Provider URL override', 'wp-ai-chatbot' ); ?></label>
+							<input type="url" id="wpaic_provider_url_override" name="wpaic_settings[provider_url_override]" value="<?php echo esc_attr( (string) $provider_override ); ?>" class="wpaic-input" placeholder="https://staging-provider.example.com/wp-json/wpaip/v1/chat">
+							<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Only available when staging overrides are explicitly enabled by constant.', 'wp-ai-chatbot' ); ?></span>
 						</div>
 					</div>
-				</fieldset>
-			<?php endif; ?>
+				<?php endif; ?>
+			</div>
 		</div>
 		<?php
 	}
@@ -797,57 +876,114 @@ class WPAIC_Admin {
 		$chatbot_name  = $settings['chatbot_name'] ?? '';
 		$chatbot_logo  = $settings['chatbot_logo'] ?? '';
 		$chatbot_role  = $settings['chatbot_role'] ?? '';
+		$preset_colors = array( '#1e2b5e', '#0f172a', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#059669', '#0d9488', '#475569' );
 		?>
-		<div class="space-y-4">
-			<div>
-				<label for="wpaic_chatbot_name" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Chatbot Name', 'wp-ai-chatbot' ); ?>
-				</label>
-				<input type="text" id="wpaic_chatbot_name" name="wpaic_settings[chatbot_name]" value="<?php echo esc_attr( $chatbot_name ); ?>"
-						class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-						placeholder="<?php esc_attr_e( 'e.g. ShopBot', 'wp-ai-chatbot' ); ?>">
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Display name for the chatbot. Leave empty for "AI Assistant".', 'wp-ai-chatbot' ); ?></p>
+		<div class="max-w-[960px] mx-auto px-8 pt-7 pb-4">
+			<div class="mb-6">
+				<h2 class="text-[26px] font-semibold text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'Appearance', 'wp-ai-chatbot' ); ?></h2>
+				<p class="text-muted text-sm mt-1"><?php esc_html_e( 'How the chat widget looks on your site.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Chatbot Logo', 'wp-ai-chatbot' ); ?>
-				</label>
-				<input type="hidden" id="wpaic_chatbot_logo" name="wpaic_settings[chatbot_logo]" value="<?php echo esc_attr( $chatbot_logo ); ?>">
-				<div class="flex items-center gap-3">
-					<button type="button" id="wpaic_logo_upload" class="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
-						<?php esc_html_e( 'Upload Logo', 'wp-ai-chatbot' ); ?>
-					</button>
-					<button type="button" id="wpaic_logo_remove" class="px-4 py-2 bg-white border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-600 hover:bg-red-50"
-						style="<?php echo empty( $chatbot_logo ) ? 'display:none' : ''; ?>">
-						<?php esc_html_e( 'Remove', 'wp-ai-chatbot' ); ?>
-					</button>
+			<div class="grid grid-cols-[1fr_340px] gap-6">
+				<div class="flex flex-col gap-[18px]">
+					<div class="wpaic-card">
+						<div class="wpaic-card-header">
+							<div>
+								<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Identity', 'wp-ai-chatbot' ); ?></h3>
+								<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Name, role, and logo.', 'wp-ai-chatbot' ); ?></p>
+							</div>
+						</div>
+						<div class="wpaic-card-body flex flex-col gap-4">
+							<div>
+								<label for="wpaic_chatbot_name" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Chatbot name', 'wp-ai-chatbot' ); ?></label>
+								<input type="text" id="wpaic_chatbot_name" name="wpaic_settings[chatbot_name]" value="<?php echo esc_attr( $chatbot_name ); ?>" class="wpaic-input" placeholder="<?php esc_attr_e( 'e.g. ShopBot', 'wp-ai-chatbot' ); ?>">
+								<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Leave empty for "AI Assistant".', 'wp-ai-chatbot' ); ?></span>
+							</div>
+							<div>
+								<label for="wpaic_chatbot_role" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Role / subtitle', 'wp-ai-chatbot' ); ?></label>
+								<input type="text" id="wpaic_chatbot_role" name="wpaic_settings[chatbot_role]" value="<?php echo esc_attr( $chatbot_role ); ?>" class="wpaic-input" placeholder="<?php esc_attr_e( 'e.g. Sales rep, Support, Concierge', 'wp-ai-chatbot' ); ?>">
+								<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Appears under the chatbot name.', 'wp-ai-chatbot' ); ?></span>
+							</div>
+							<div>
+								<span class="block font-medium text-[13px] mb-1.5"><?php esc_html_e( 'Logo', 'wp-ai-chatbot' ); ?></span>
+								<input type="hidden" id="wpaic_chatbot_logo" name="wpaic_settings[chatbot_logo]" value="<?php echo esc_attr( $chatbot_logo ); ?>">
+								<div class="flex items-center gap-3.5">
+									<div class="w-12 h-12 rounded-[10px] bg-canvas border border-dashed border-line grid place-items-center text-muted font-semibold text-lg overflow-hidden" style="font-family: var(--font-display);">
+										<?php if ( ! empty( $chatbot_logo ) ) : ?>
+											<img id="wpaic_logo_preview" src="<?php echo esc_attr( $chatbot_logo ); ?>" alt="" class="w-full h-full object-contain">
+										<?php else : ?>
+											<span id="wpaic_logo_letter"><?php echo esc_html( mb_strtoupper( mb_substr( $chatbot_name ?: 'A', 0, 1 ) ) ); ?></span>
+											<img id="wpaic_logo_preview" src="" alt="" class="w-full h-full object-contain" style="display:none;">
+										<?php endif; ?>
+									</div>
+									<div class="flex gap-2">
+										<button type="button" id="wpaic_logo_upload" class="wpaic-btn wpaic-btn-sm">
+											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+											<?php esc_html_e( 'Upload', 'wp-ai-chatbot' ); ?>
+										</button>
+										<button type="button" id="wpaic_logo_remove" class="wpaic-btn wpaic-btn-sm wpaic-btn-danger" style="<?php echo empty( $chatbot_logo ) ? 'display:none' : ''; ?>">
+											<?php esc_html_e( 'Remove', 'wp-ai-chatbot' ); ?>
+										</button>
+									</div>
+								</div>
+								<span class="text-xs text-muted mt-2 block"><?php esc_html_e( 'PNG or SVG, max 32px height in widget.', 'wp-ai-chatbot' ); ?></span>
+							</div>
+						</div>
+					</div>
+
+					<div class="wpaic-card">
+						<div class="wpaic-card-header">
+							<div>
+								<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Theme', 'wp-ai-chatbot' ); ?></h3>
+								<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Colors and placement.', 'wp-ai-chatbot' ); ?></p>
+							</div>
+						</div>
+						<div class="wpaic-card-body flex flex-col gap-4">
+							<div>
+								<span class="block font-medium text-[13px] mb-1.5"><?php esc_html_e( 'Primary color', 'wp-ai-chatbot' ); ?></span>
+								<div class="flex gap-2 items-center flex-wrap">
+									<?php foreach ( $preset_colors as $color ) : ?>
+										<div class="wpaic-color-dot <?php echo $theme_color === $color ? 'wpaic-color-dot-active' : ''; ?>"
+											style="background: <?php echo esc_attr( $color ); ?>;"
+											data-color="<?php echo esc_attr( $color ); ?>"></div>
+									<?php endforeach; ?>
+									<input type="text" name="wpaic_settings[theme_color]" value="<?php echo esc_attr( $theme_color ); ?>" class="wpaic-input font-mono !text-[12.5px] !w-28 ml-1.5" id="wpaic_theme_color_input">
+								</div>
+								<span class="text-xs text-muted mt-2.5 block"><?php esc_html_e( 'Used for chat header, buttons, and accents.', 'wp-ai-chatbot' ); ?></span>
+							</div>
+						</div>
+					</div>
 				</div>
-				<img id="wpaic_logo_preview" src="<?php echo esc_attr( $chatbot_logo ); ?>"
-					alt="" class="mt-2 max-h-8 w-auto object-contain border border-gray-200 rounded p-1"
-					style="<?php echo empty( $chatbot_logo ) ? 'display:none' : ''; ?>">
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Upload a logo image (max 32px height in widget). Leave empty for no logo.', 'wp-ai-chatbot' ); ?></p>
-			</div>
 
-			<div>
-				<label for="wpaic_chatbot_role" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Chatbot Role', 'wp-ai-chatbot' ); ?>
-				</label>
-				<input type="text" id="wpaic_chatbot_role" name="wpaic_settings[chatbot_role]" value="<?php echo esc_attr( $chatbot_role ); ?>"
-						class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-						placeholder="<?php esc_attr_e( 'e.g. Personal stylist, Support assistant', 'wp-ai-chatbot' ); ?>">
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Short role shown under the chatbot name. Leave empty for "AI Assistant".', 'wp-ai-chatbot' ); ?></p>
-			</div>
-
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Theme Color', 'wp-ai-chatbot' ); ?>
-				</label>
-				<input type="text" name="wpaic_settings[theme_color]" value="<?php echo esc_attr( $theme_color ); ?>"
-						class="wpaic-color-picker" data-default-color="#2545B8">
-				<p class="mt-2 text-sm text-gray-500"><?php esc_html_e( 'Primary color for the chat header, buttons, and accents.', 'wp-ai-chatbot' ); ?></p>
+				<div class="sticky top-[140px] self-start">
+					<div class="rounded-[14px] border border-line overflow-hidden p-[22px] relative" style="min-height: 440px; background: linear-gradient(180deg, #eeece5, #f7f6f3);">
+						<div class="absolute top-3 left-3.5 text-[10.5px] tracking-widest uppercase font-semibold text-muted bg-surface px-2 py-1 rounded-md border border-line"><?php esc_html_e( 'Live preview', 'wp-ai-chatbot' ); ?></div>
+						<div class="mt-[30px] opacity-50">
+							<div class="h-2.5 w-[40%] bg-black/10 rounded-[3px] mb-2.5"></div>
+							<div class="h-1.5 w-[70%] bg-black/5 rounded-[3px] mb-1.5"></div>
+							<div class="h-1.5 w-[60%] bg-black/5 rounded-[3px] mb-1.5"></div>
+						</div>
+						<div class="text-center text-muted text-[13px] mt-16 px-4"><?php esc_html_e( 'Chat preview coming soon', 'wp-ai-chatbot' ); ?></div>
+					</div>
+				</div>
 			</div>
 		</div>
+
+		<script>
+		jQuery(document).ready(function($) {
+			$('.wpaic-color-dot').on('click', function() {
+				var color = $(this).data('color');
+				$('#wpaic_theme_color_input').val(color);
+				$('.wpaic-color-dot').removeClass('wpaic-color-dot-active');
+				$(this).addClass('wpaic-color-dot-active');
+			});
+			$('#wpaic_theme_color_input').on('input', function() {
+				var val = $(this).val();
+				$('.wpaic-color-dot').removeClass('wpaic-color-dot-active');
+				$('.wpaic-color-dot[data-color="' + val + '"]').addClass('wpaic-color-dot-active');
+			});
+		});
+		</script>
 		<?php
 	}
 
@@ -882,121 +1018,137 @@ class WPAIC_Admin {
 			'product'  => __( 'Product pages only', 'wp-ai-chatbot' ),
 			'homepage' => __( 'Homepage only', 'wp-ai-chatbot' ),
 		);
+		$starter_placeholders = array(
+			__( 'What are your shipping times?', 'wp-ai-chatbot' ),
+			__( 'Tell me about your best sellers', 'wp-ai-chatbot' ),
+			__( 'Do you ship internationally?', 'wp-ai-chatbot' ),
+			__( "What's your return policy?", 'wp-ai-chatbot' ),
+			__( 'How do I contact support?', 'wp-ai-chatbot' ),
+		);
 		?>
-		<div class="space-y-4">
-			<h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2"><?php esc_html_e( 'Human Handoff', 'wp-ai-chatbot' ); ?></h3>
-
-			<div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-				<div>
-					<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Enable Handoff to Human', 'wp-ai-chatbot' ); ?></h3>
-					<p class="text-sm text-gray-500"><?php esc_html_e( 'Allow customers to request human support. Bot collects name/email and sends notification.', 'wp-ai-chatbot' ); ?></p>
-				</div>
-				<label class="relative inline-flex items-center cursor-pointer">
-					<input type="checkbox" name="wpaic_settings[handoff_enabled]" value="1" <?php checked( $handoff_enabled ); ?> class="sr-only peer">
-					<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-				</label>
+		<div class="max-w-[960px] mx-auto px-8 pt-7 pb-4">
+			<div class="mb-6">
+				<h2 class="text-[26px] font-semibold text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'Engagement', 'wp-ai-chatbot' ); ?></h2>
+				<p class="text-muted text-sm mt-1"><?php esc_html_e( 'Conversation starters, handoff, and proactive features.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 
-			<div class="p-4 bg-gray-50 rounded-lg">
-				<h4 class="text-sm font-medium text-gray-900 mb-2"><?php esc_html_e( 'Required Fields', 'wp-ai-chatbot' ); ?></h4>
-				<p class="text-sm text-gray-500 mb-3"><?php esc_html_e( 'Select which fields the bot collects before submitting a support request.', 'wp-ai-chatbot' ); ?></p>
-				<div class="flex flex-wrap gap-2">
-					<span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 cursor-not-allowed opacity-75">
-						<?php esc_html_e( 'Name', 'wp-ai-chatbot' ); ?>
-						<svg class="ml-1 w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0 1 10 0v2a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2zm8-2v2H7V7a3 3 0 0 1 6 0z" clip-rule="evenodd"/></svg>
-					</span>
-					<span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 cursor-not-allowed opacity-75">
-						<?php esc_html_e( 'Email', 'wp-ai-chatbot' ); ?>
-						<svg class="ml-1 w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0 1 10 0v2a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2zm8-2v2H7V7a3 3 0 0 1 6 0z" clip-rule="evenodd"/></svg>
-					</span>
-					<?php foreach ( $optional_fields as $field_key => $field_label ) : ?>
-						<label class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors
-							<?php echo in_array( $field_key, $handoff_fields, true ) ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'; ?>">
-							<input type="checkbox" name="wpaic_settings[handoff_fields][]" value="<?php echo esc_attr( $field_key ); ?>"
-								<?php checked( in_array( $field_key, $handoff_fields, true ) ); ?>
-								class="sr-only wpaic-handoff-field-checkbox">
-							<?php echo esc_html( $field_label ); ?>
-						</label>
-					<?php endforeach; ?>
-				</div>
-			</div>
-
-			<h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2 mt-6"><?php esc_html_e( 'Proactive Engagement', 'wp-ai-chatbot' ); ?></h3>
-
-			<div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-				<div class="flex">
-					<span class="dashicons dashicons-lightbulb text-yellow-500 mr-2"></span>
-					<p class="text-sm text-yellow-700"><?php esc_html_e( 'Proactive engagement automatically opens the chat widget after a delay to encourage visitor interaction.', 'wp-ai-chatbot' ); ?></p>
-				</div>
-			</div>
-
-			<div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-				<div>
-					<h3 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Enable Proactive Popup', 'wp-ai-chatbot' ); ?></h3>
-					<p class="text-sm text-gray-500"><?php esc_html_e( 'Auto-open chat widget after visitor is on page', 'wp-ai-chatbot' ); ?></p>
-				</div>
-				<label class="relative inline-flex items-center cursor-pointer">
-					<input type="checkbox" name="wpaic_settings[proactive_enabled]" value="1" <?php checked( $proactive_enabled ); ?> class="sr-only peer">
-					<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-				</label>
-			</div>
-
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-				<div>
-					<label for="wpaic_proactive_delay" class="block text-sm font-medium text-gray-700 mb-2">
-						<?php esc_html_e( 'Trigger Delay', 'wp-ai-chatbot' ); ?>
-					</label>
-					<div class="flex items-center gap-2">
-						<input type="number" id="wpaic_proactive_delay" name="wpaic_settings[proactive_delay]" value="<?php echo esc_attr( (string) $proactive_delay ); ?>"
-								min="1" max="300"
-								class="w-24 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-						<span class="text-sm text-gray-500"><?php esc_html_e( 'seconds', 'wp-ai-chatbot' ); ?></span>
+			<div class="flex flex-col gap-[18px]">
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div class="min-w-0 flex-1">
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Conversation starters', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Shown as quick-tap chips in the empty chat state.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+						<span class="text-xs text-muted shrink-0"><?php echo esc_html( count( array_filter( $conversation_starters ) ) . '/5' ); ?></span>
+					</div>
+					<div class="wpaic-card-body">
+						<div class="mb-3.5">
+							<div class="wpaic-banner-info">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+								<span><?php esc_html_e( 'Leave all blank to auto-generate starters from your site content.', 'wp-ai-chatbot' ); ?></span>
+							</div>
+						</div>
+						<div class="flex flex-col gap-2">
+							<?php for ( $i = 0; $i < 5; $i++ ) : ?>
+								<div class="flex items-center gap-2.5">
+									<span class="w-[22px] h-[22px] rounded-md bg-canvas grid place-items-center text-[11px] text-muted font-semibold"><?php echo esc_html( (string) ( $i + 1 ) ); ?></span>
+									<input type="text" name="wpaic_settings[conversation_starters][]"
+										value="<?php echo esc_attr( (string) ( $conversation_starters[ $i ] ?? '' ) ); ?>"
+										class="wpaic-input"
+										placeholder="<?php echo esc_attr( 'e.g. ' . $starter_placeholders[ $i ] ); ?>">
+								</div>
+							<?php endfor; ?>
+						</div>
 					</div>
 				</div>
 
-				<div>
-					<label for="wpaic_proactive_pages" class="block text-sm font-medium text-gray-700 mb-2">
-						<?php esc_html_e( 'Show On Pages', 'wp-ai-chatbot' ); ?>
-					</label>
-					<select id="wpaic_proactive_pages" name="wpaic_settings[proactive_pages]"
-							class="max-w-xs w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-						<?php foreach ( $page_options as $key => $label ) : ?>
-							<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $proactive_pages, $key ); ?>><?php echo esc_html( $label ); ?></option>
-						<?php endforeach; ?>
-					</select>
-				</div>
-			</div>
-
-			<div>
-				<label for="wpaic_proactive_message" class="block text-sm font-medium text-gray-700 mb-2">
-					<?php esc_html_e( 'Proactive Message', 'wp-ai-chatbot' ); ?>
-				</label>
-				<textarea id="wpaic_proactive_message" name="wpaic_settings[proactive_message]" rows="2"
-							class="max-w-md w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-							placeholder="<?php esc_attr_e( 'Hi! Looking for something specific? I can help you find the perfect product.', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $proactive_message ); ?></textarea>
-				<p class="mt-1 text-sm text-gray-500"><?php esc_html_e( 'Custom message when chat opens proactively. Leave empty to use the greeting message.', 'wp-ai-chatbot' ); ?></p>
-			</div>
-
-			<h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-2 mt-6"><?php esc_html_e( 'Conversation Starters', 'wp-ai-chatbot' ); ?></h3>
-
-			<div class="p-4 bg-gray-50 rounded-lg">
-				<p class="text-sm text-gray-600 mb-4"><?php esc_html_e( 'Add 3 to 5 starter chips for the empty chat state. Leave them blank to use auto-generated starters based on your site features.', 'wp-ai-chatbot' ); ?></p>
-				<div class="space-y-3 max-w-lg">
-					<?php for ( $i = 0; $i < 5; $i++ ) : ?>
-						<label class="block">
-							<span class="block text-sm font-medium text-gray-700 mb-2">
-								<?php
-								/* translators: %d: starter number */
-								echo esc_html( sprintf( __( 'Starter %d', 'wp-ai-chatbot' ), $i + 1 ) );
-								?>
-							</span>
-							<input type="text"
-								name="wpaic_settings[conversation_starters][]"
-								value="<?php echo esc_attr( (string) ( $conversation_starters[ $i ] ?? '' ) ); ?>"
-								class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-								placeholder="<?php echo esc_attr( 0 === $i ? __( 'Find a product', 'wp-ai-chatbot' ) : __( 'Add a starter prompt', 'wp-ai-chatbot' ) ); ?>">
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div>
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Human handoff', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Allow customers to request human support.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+					</div>
+					<div class="wpaic-card-row">
+						<div class="max-w-[60%]">
+							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Enable handoff', 'wp-ai-chatbot' ); ?></h4>
+							<p class="text-muted m-0 text-[13px]"><?php esc_html_e( 'Bot collects name/email and sends notification.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+						<label class="wpaic-toggle">
+							<input type="hidden" name="wpaic_settings[handoff_enabled]" value="0">
+							<input type="checkbox" name="wpaic_settings[handoff_enabled]" value="1" <?php checked( $handoff_enabled ); ?>>
+							<span class="wpaic-toggle-track"><span class="wpaic-toggle-thumb"></span></span>
 						</label>
-					<?php endfor; ?>
+					</div>
+					<div class="wpaic-card-body">
+						<span class="block font-medium text-[13px] mb-2"><?php esc_html_e( 'Collected fields', 'wp-ai-chatbot' ); ?></span>
+						<p class="text-muted text-[12.5px] mb-3"><?php esc_html_e( 'Select which fields the bot collects before submitting a support request.', 'wp-ai-chatbot' ); ?></p>
+						<div class="flex flex-wrap gap-2">
+							<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-accent-soft text-accent-ink opacity-75 cursor-not-allowed">
+								<?php esc_html_e( 'Name', 'wp-ai-chatbot' ); ?>
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+							</span>
+							<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-accent-soft text-accent-ink opacity-75 cursor-not-allowed">
+								<?php esc_html_e( 'Email', 'wp-ai-chatbot' ); ?>
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+							</span>
+							<?php foreach ( $optional_fields as $field_key => $field_label ) : ?>
+								<label class="inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors
+									<?php echo in_array( $field_key, $handoff_fields, true ) ? 'bg-accent-soft text-accent-ink' : 'bg-canvas text-muted hover:bg-line-2'; ?>">
+									<input type="checkbox" name="wpaic_settings[handoff_fields][]" value="<?php echo esc_attr( $field_key ); ?>"
+										<?php checked( in_array( $field_key, $handoff_fields, true ) ); ?>
+										class="sr-only wpaic-handoff-field-checkbox">
+									<?php echo esc_html( $field_label ); ?>
+								</label>
+							<?php endforeach; ?>
+						</div>
+					</div>
+				</div>
+
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div>
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Proactive popup', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Auto-open chat widget after a delay to encourage interaction.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+					</div>
+					<div class="wpaic-card-row">
+						<div class="max-w-[60%]">
+							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Enable proactive popup', 'wp-ai-chatbot' ); ?></h4>
+							<p class="text-muted m-0 text-[13px]"><?php esc_html_e( 'Auto-open chat after visitor is on page for specified time.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+						<label class="wpaic-toggle">
+							<input type="hidden" name="wpaic_settings[proactive_enabled]" value="0">
+							<input type="checkbox" name="wpaic_settings[proactive_enabled]" value="1" <?php checked( $proactive_enabled ); ?>>
+							<span class="wpaic-toggle-track"><span class="wpaic-toggle-thumb"></span></span>
+						</label>
+					</div>
+					<div class="wpaic-card-body flex flex-col gap-4">
+						<div class="grid grid-cols-2 gap-4">
+							<div>
+								<label for="wpaic_proactive_delay" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Trigger delay', 'wp-ai-chatbot' ); ?></label>
+								<div class="flex items-center gap-2">
+									<input type="number" id="wpaic_proactive_delay" name="wpaic_settings[proactive_delay]" value="<?php echo esc_attr( (string) $proactive_delay ); ?>" min="1" max="300" class="wpaic-input !w-24">
+									<span class="text-[13px] text-muted"><?php esc_html_e( 'seconds', 'wp-ai-chatbot' ); ?></span>
+								</div>
+							</div>
+							<div>
+								<label for="wpaic_proactive_pages" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Show on pages', 'wp-ai-chatbot' ); ?></label>
+								<select id="wpaic_proactive_pages" name="wpaic_settings[proactive_pages]" class="wpaic-input wpaic-select">
+									<?php foreach ( $page_options as $key => $label ) : ?>
+										<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $proactive_pages, $key ); ?>><?php echo esc_html( $label ); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+						</div>
+						<div>
+							<label for="wpaic_proactive_message" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Proactive message', 'wp-ai-chatbot' ); ?></label>
+							<textarea id="wpaic_proactive_message" name="wpaic_settings[proactive_message]" rows="2"
+								class="wpaic-input" style="resize: vertical; min-height: 60px; line-height: 1.6;"
+								placeholder="<?php esc_attr_e( 'Hi! Looking for something specific? I can help you find the perfect product.', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $proactive_message ); ?></textarea>
+							<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Leave empty to use the greeting message.', 'wp-ai-chatbot' ); ?></span>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -1004,9 +1156,9 @@ class WPAIC_Admin {
 	}
 
 	/**
-	 * Render the Search Index settings tab.
+	 * Render the unified Knowledge tab (data sources + FAQs + search index).
 	 */
-	private function render_search_tab(): void {
+	private function render_knowledge_tab(): void {
 		$settings               = get_option( 'wpaic_settings', array() );
 		$settings               = is_array( $settings ) ? $settings : array();
 		$product_index_enabled  = ! array_key_exists( 'product_index_enabled', $settings ) || ! empty( $settings['product_index_enabled'] );
@@ -1014,299 +1166,337 @@ class WPAIC_Admin {
 		$selected_post_types    = array_key_exists( 'content_index_post_types', $settings ) && is_array( $settings['content_index_post_types'] )
 			? array_values( array_intersect( array_map( 'sanitize_key', $settings['content_index_post_types'] ), array_keys( $available_post_types ) ) )
 			: array( 'page', 'post' );
-		$selected_post_labels   = array_values( array_intersect_key( $available_post_types, array_flip( $selected_post_types ) ) );
 		$search_index           = new WPAIC_Search_Index();
 		$product_status         = $search_index->get_index_status();
 		$content_index          = new WPAIC_Content_Index();
 		$content_status         = $content_index->get_index_status();
 		$content_sources_active = ! empty( $selected_post_types );
+
+		global $wpdb;
+		$sources_table = $wpdb->prefix . 'wpaic_data_sources';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$data_sources = $wpdb->get_results( "SELECT * FROM $sources_table ORDER BY created_at DESC" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		$faqs_table = $wpdb->prefix . 'wpaic_faqs';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$faqs       = $wpdb->get_results( "SELECT * FROM $faqs_table ORDER BY id ASC" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$faq_text   = '';
+		if ( ! empty( $faqs ) ) {
+			$pairs = array();
+			foreach ( $faqs as $faq ) {
+				$pairs[] = "Q: " . $faq->question . "\nA: " . $faq->answer;
+			}
+			$faq_text = implode( "\n\n", $pairs );
+		}
+
+		$total_indexed = 0;
+		if ( $product_status['exists'] ) {
+			$total_indexed += (int) $product_status['product_count'];
+		}
+		if ( $content_status['exists'] ) {
+			$total_indexed += (int) $content_status['post_count'];
+		}
 		?>
-		<div class="space-y-4">
-			<div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-				<p class="text-sm text-gray-600"><?php esc_html_e( 'Choose which storefront and site-content sources should be indexed for fast chatbot search.', 'wp-ai-chatbot' ); ?></p>
+		<div class="max-w-[960px] mx-auto px-8 pt-7 pb-16">
+			<div class="mb-6">
+				<h2 class="text-[26px] font-semibold text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'Knowledge', 'wp-ai-chatbot' ); ?></h2>
+				<p class="text-muted text-sm mt-1"><?php esc_html_e( 'Everything the bot knows about your business — uploads, FAQs, and indexed site content.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 
-			<div class="p-6 border border-gray-200 rounded-lg">
-				<div class="space-y-6">
-					<div>
-						<h3 class="text-base font-semibold text-gray-900"><?php esc_html_e( 'Indexed Sources', 'wp-ai-chatbot' ); ?></h3>
-						<p class="mt-1 text-sm text-gray-600"><?php esc_html_e( 'Products use the WooCommerce product index. Site content uses the post types selected below.', 'wp-ai-chatbot' ); ?></p>
-					</div>
+			<div class="flex flex-col gap-[18px]">
 
-					<div class="flex flex-wrap gap-4">
-						<label class="inline-flex items-center gap-2 text-sm text-gray-700">
-							<input type="checkbox"
-								id="wpaic_product_index_enabled"
-								name="product_index_enabled"
-								value="1"
-								<?php checked( $product_index_enabled ); ?>
-								class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-							<?php esc_html_e( 'Products', 'wp-ai-chatbot' ); ?>
-						</label>
-
-						<?php foreach ( $available_post_types as $post_type => $label ) : ?>
-							<label class="inline-flex items-center gap-2 text-sm text-gray-700">
-								<input type="checkbox"
-									name="content_index_post_types[]"
-									value="<?php echo esc_attr( $post_type ); ?>"
-									<?php checked( in_array( $post_type, $selected_post_types, true ) ); ?>
-									class="wpaic-content-index-post-type rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-								<?php echo esc_html( $label ); ?>
-							</label>
-						<?php endforeach; ?>
-					</div>
-
-					<div class="grid gap-4 md:grid-cols-2">
-						<div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-							<div class="flex items-start gap-3">
-								<span id="wpaic-search-product-icon-wrapper" class="flex items-center justify-center w-10 h-10 rounded-full <?php echo $product_index_enabled ? ( $product_status['exists'] ? 'bg-green-100' : 'bg-red-100' ) : 'bg-gray-200'; ?>">
-									<span id="wpaic-search-product-icon" class="dashicons <?php echo $product_index_enabled ? ( $product_status['exists'] ? 'dashicons-yes-alt text-green-600' : 'dashicons-warning text-red-600' ) : 'dashicons-minus text-gray-500'; ?>"></span>
-								</span>
-								<div>
-									<h4 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Products', 'wp-ai-chatbot' ); ?></h4>
-									<p id="wpaic-search-product-summary" class="text-sm text-gray-500">
-									<?php
-									if ( ! $product_index_enabled ) {
-										esc_html_e( 'Products are not selected.', 'wp-ai-chatbot' );
-									} elseif ( $product_status['exists'] ) {
-										printf(
-											/* translators: 1: product count, 2: last updated date */
-											esc_html__( '%1$d products indexed. Last updated: %2$s', 'wp-ai-chatbot' ),
-											esc_html( (string) $product_status['product_count'] ),
-											esc_html( $this->format_index_updated_at( $product_status['last_updated'] ) )
-										);
-									} else {
-										esc_html_e( 'Products are selected, but the index has not been built yet.', 'wp-ai-chatbot' );
-									}
-									?>
-									</p>
-								</div>
-							</div>
+				<!-- Uploaded data sources -->
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div class="min-w-0 flex-1">
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Uploaded data', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'CSV files. Up to 5 MB each.', 'wp-ai-chatbot' ); ?></p>
 						</div>
-
-						<div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-							<div class="flex items-start gap-3">
-								<span id="wpaic-search-content-icon-wrapper" class="flex items-center justify-center w-10 h-10 rounded-full <?php echo $content_sources_active ? ( $content_status['exists'] ? 'bg-green-100' : 'bg-red-100' ) : 'bg-gray-200'; ?>">
-									<span id="wpaic-search-content-icon" class="dashicons <?php echo $content_sources_active ? ( $content_status['exists'] ? 'dashicons-yes-alt text-green-600' : 'dashicons-warning text-red-600' ) : 'dashicons-minus text-gray-500'; ?>"></span>
-								</span>
-								<div>
-									<h4 class="text-sm font-medium text-gray-900"><?php esc_html_e( 'Site Content', 'wp-ai-chatbot' ); ?></h4>
-									<p id="wpaic-search-content-selected" class="text-sm text-gray-500">
-										<?php
-										if ( empty( $selected_post_labels ) ) {
-											esc_html_e( 'No content types selected.', 'wp-ai-chatbot' );
-										} else {
-											printf(
-												/* translators: %s: selected post type labels */
-												esc_html__( 'Selected: %s', 'wp-ai-chatbot' ),
-												esc_html( implode( ', ', $selected_post_labels ) )
-											);
-										}
-										?>
-									</p>
-									<p id="wpaic-search-content-summary" class="text-sm text-gray-500 mt-1">
-									<?php
-									if ( ! $content_sources_active ) {
-										esc_html_e( 'Site content indexing is disabled until at least one content type is selected.', 'wp-ai-chatbot' );
-									} elseif ( $content_status['exists'] ) {
-										printf(
-											/* translators: 1: content count, 2: last updated date */
-											esc_html__( '%1$d items indexed. Last updated: %2$s', 'wp-ai-chatbot' ),
-											esc_html( (string) $content_status['post_count'] ),
-											esc_html( $this->format_index_updated_at( $content_status['last_updated'] ) )
-										);
-									} else {
-										esc_html_e( 'Selected content types have not been indexed yet.', 'wp-ai-chatbot' );
-									}
-									?>
-									</p>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="flex items-center gap-3">
-						<button type="button" id="wpaic-update-search-indexes"
-								class="inline-flex items-center px-4 py-2 bg-white text-gray-700 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
-							<span class="dashicons dashicons-update mr-2" style="font-size: 16px; width: 16px; height: 16px;"></span>
-							<?php esc_html_e( 'Update Search Indexes', 'wp-ai-chatbot' ); ?>
+						<button type="button" id="wpaic-add-source" class="wpaic-btn wpaic-btn-sm">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+							<?php esc_html_e( 'Upload file', 'wp-ai-chatbot' ); ?>
 						</button>
-						<span id="wpaic-update-search-indexes-status" class="text-sm"></span>
+					</div>
+					<div class="wpaic-card-body">
+						<?php if ( ! empty( $data_sources ) ) : ?>
+							<?php foreach ( $data_sources as $source ) : ?>
+								<?php $columns = json_decode( $source->columns, true ) ?: array(); ?>
+								<div class="flex items-center gap-3.5 px-4 py-3.5 border border-line rounded-[10px] bg-surface mb-2 last:mb-0" data-source-id="<?php echo esc_attr( (string) $source->id ); ?>">
+									<div class="w-[34px] h-[34px] rounded-lg bg-canvas text-muted grid place-items-center shrink-0">
+										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+									</div>
+									<div class="flex-1 min-w-0">
+										<div class="font-medium text-[13.5px]"><?php echo esc_html( $source->label ); ?></div>
+										<div class="text-xs text-muted"><?php echo esc_html( $source->name ); ?> · <?php echo esc_html( (string) $source->row_count ); ?> <?php esc_html_e( 'rows', 'wp-ai-chatbot' ); ?></div>
+									</div>
+									<span class="wpaic-tag wpaic-tag-ok">
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+										<?php esc_html_e( 'Trained', 'wp-ai-chatbot' ); ?>
+									</span>
+									<button type="button" class="wpaic-delete-source w-6 h-6 rounded-md grid place-items-center text-muted hover:bg-canvas hover:text-danger bg-transparent border-0 cursor-pointer transition-colors" data-id="<?php echo esc_attr( (string) $source->id ); ?>">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+									</button>
+								</div>
+							<?php endforeach; ?>
+						<?php endif; ?>
+
+						<div class="mt-3 px-5 py-8 rounded-[10px] border-[1.5px] border-dashed border-line bg-surface-2 text-center">
+							<div class="w-10 h-10 rounded-lg bg-canvas grid place-items-center mx-auto mb-2.5 text-muted">
+								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+							</div>
+							<div class="font-medium text-[13.5px]"><?php esc_html_e( 'Drop CSV files here', 'wp-ai-chatbot' ); ?></div>
+							<div class="text-muted text-[12.5px] mt-0.5"><?php esc_html_e( 'or', 'wp-ai-chatbot' ); ?> <span class="text-accent-ink font-medium cursor-pointer wpaic-browse-files"><?php esc_html_e( 'browse files', 'wp-ai-chatbot' ); ?></span> · <?php esc_html_e( 'max 5 MB', 'wp-ai-chatbot' ); ?></div>
+						</div>
+					</div>
+				</div>
+
+				<!-- FAQ pairs -->
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div class="min-w-0 flex-1">
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'FAQ pairs', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Hand-written Q&A pairs. The bot prefers these over generated answers.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+					</div>
+					<div class="wpaic-card-body">
+						<textarea id="wpaic_faq_content" rows="10" class="wpaic-input font-mono !text-[12.5px]" style="resize: vertical; min-height: 140px; line-height: 1.6;"
+							placeholder="Q: What is your return policy?
+A: We offer 30-day returns on all items.
+
+Q: Do you ship internationally?
+A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?></textarea>
+						<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Format: "Q: question" then "A: answer". Separate pairs with a blank line.', 'wp-ai-chatbot' ); ?></span>
+						<div class="mt-4 flex items-center gap-4">
+							<button type="button" id="wpaic-save-faqs" class="wpaic-btn wpaic-btn-primary">
+								<?php esc_html_e( 'Save FAQs', 'wp-ai-chatbot' ); ?>
+							</button>
+							<span id="wpaic-faq-status" class="text-sm hidden"></span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Indexed site content -->
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div class="min-w-0 flex-1">
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Indexed site content', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Choose which content types the bot can search at answer time.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+						<button type="button" id="wpaic-update-search-indexes" class="wpaic-btn wpaic-btn-sm">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+							<?php esc_html_e( 'Re-index all', 'wp-ai-chatbot' ); ?>
+						</button>
+					</div>
+					<div class="wpaic-card-body">
+						<div class="grid grid-cols-2 gap-2.5">
+							<label class="p-3.5 border rounded-[10px] flex gap-3 cursor-pointer transition-colors hover:border-ink-2 <?php echo $product_index_enabled ? 'border-ink bg-surface' : 'border-line'; ?>">
+								<input type="checkbox" id="wpaic_product_index_enabled" name="product_index_enabled" value="1" <?php checked( $product_index_enabled ); ?> class="sr-only wpaic-index-checkbox">
+								<span class="w-[18px] h-[18px] rounded-[5px] border-[1.5px] grid place-items-center shrink-0 mt-0.5 <?php echo $product_index_enabled ? 'bg-ink border-ink text-white' : 'bg-white border-line-2'; ?>">
+									<?php if ( $product_index_enabled ) : ?>
+										<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+									<?php endif; ?>
+								</span>
+								<span class="flex-1">
+									<span class="flex items-center justify-between">
+										<span class="font-semibold text-[13.5px]"><?php esc_html_e( 'Products', 'wp-ai-chatbot' ); ?></span>
+										<span class="wpaic-tag wpaic-tag-neutral" id="wpaic-product-count"><?php echo esc_html( (string) ( $product_status['exists'] ? $product_status['product_count'] : 0 ) ); ?></span>
+									</span>
+									<span class="text-muted text-[12.5px] block"><?php esc_html_e( 'WooCommerce product index', 'wp-ai-chatbot' ); ?></span>
+								</span>
+							</label>
+
+							<?php foreach ( $available_post_types as $post_type => $label ) : ?>
+								<?php $is_checked = in_array( $post_type, $selected_post_types, true ); ?>
+								<label class="p-3.5 border rounded-[10px] flex gap-3 cursor-pointer transition-colors hover:border-ink-2 <?php echo $is_checked ? 'border-ink bg-surface' : 'border-line'; ?>">
+									<input type="checkbox" name="content_index_post_types[]" value="<?php echo esc_attr( $post_type ); ?>" <?php checked( $is_checked ); ?> class="sr-only wpaic-index-checkbox wpaic-content-index-post-type">
+									<span class="w-[18px] h-[18px] rounded-[5px] border-[1.5px] grid place-items-center shrink-0 mt-0.5 <?php echo $is_checked ? 'bg-ink border-ink text-white' : 'bg-white border-line-2'; ?>">
+										<?php if ( $is_checked ) : ?>
+											<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+										<?php endif; ?>
+									</span>
+									<span class="flex-1">
+										<span class="font-semibold text-[13.5px]"><?php echo esc_html( $label ); ?></span>
+										<span class="text-muted text-[12.5px] block"><?php esc_html_e( 'WordPress content', 'wp-ai-chatbot' ); ?></span>
+									</span>
+								</label>
+							<?php endforeach; ?>
+						</div>
+
+						<div class="mt-[18px] px-4 py-3.5 bg-surface-2 rounded-[10px] flex items-center gap-3.5">
+							<span id="wpaic-index-status-dot" class="w-2 h-2 rounded-full <?php echo ( $product_status['exists'] || $content_status['exists'] ) ? 'bg-success' : 'bg-muted-2'; ?>"></span>
+							<span class="flex-1 text-[13px]" id="wpaic-index-status-text">
+								<?php if ( $product_status['exists'] || $content_status['exists'] ) : ?>
+									<span class="font-medium"><?php esc_html_e( 'Index is fresh.', 'wp-ai-chatbot' ); ?></span>
+									<span class="text-muted">
+										<?php echo esc_html( (string) $total_indexed ); ?> <?php esc_html_e( 'items', 'wp-ai-chatbot' ); ?>
+										<?php
+										$last_updated = $product_status['last_updated'] ?? $content_status['last_updated'] ?? null;
+										if ( $last_updated ) :
+											?>
+											· <?php esc_html_e( 'last updated', 'wp-ai-chatbot' ); ?> <?php echo esc_html( $this->format_index_updated_at( $last_updated ) ); ?>
+										<?php endif; ?>
+									</span>
+								<?php else : ?>
+									<span class="font-medium"><?php esc_html_e( 'No index built yet.', 'wp-ai-chatbot' ); ?></span>
+									<span class="text-muted"><?php esc_html_e( 'Click "Re-index all" to build.', 'wp-ai-chatbot' ); ?></span>
+								<?php endif; ?>
+							</span>
+							<span id="wpaic-update-search-indexes-status" class="text-sm"></span>
+						</div>
 					</div>
 				</div>
 			</div>
 		</div>
+
+		<!-- Upload modal -->
+		<div id="wpaic-source-modal" style="display:none;">
+			<div class="wpaic-modal-backdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100000;"></div>
+			<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;width:500px;max-width:90%;border-radius:14px;z-index:100001;overflow:hidden;">
+				<div class="flex items-center justify-between px-5 py-4 border-b border-line">
+					<h2 class="text-[16px] font-semibold m-0" style="font-family: var(--font-display);"><?php esc_html_e( 'Add Data Source', 'wp-ai-chatbot' ); ?></h2>
+					<button type="button" class="wpaic-modal-close w-6 h-6 rounded-md grid place-items-center text-muted hover:bg-canvas bg-transparent border-0 cursor-pointer">&times;</button>
+				</div>
+				<div class="p-5">
+					<form id="wpaic-source-form" enctype="multipart/form-data">
+						<div class="flex flex-col gap-4">
+							<div>
+								<label for="wpaic_source_name" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Name (slug)', 'wp-ai-chatbot' ); ?></label>
+								<input type="text" id="wpaic_source_name" name="source_name" required pattern="[a-z0-9_-]+" class="wpaic-input" placeholder="e.g. services">
+								<span class="text-xs text-muted mt-1 block"><?php esc_html_e( 'Lowercase letters, numbers, underscores, hyphens only.', 'wp-ai-chatbot' ); ?></span>
+							</div>
+							<div>
+								<label for="wpaic_source_label" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Label', 'wp-ai-chatbot' ); ?></label>
+								<input type="text" id="wpaic_source_label" name="source_label" required class="wpaic-input" placeholder="e.g. Our Services">
+							</div>
+							<div>
+								<label for="wpaic_source_desc" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Description', 'wp-ai-chatbot' ); ?></label>
+								<textarea id="wpaic_source_desc" name="source_description" rows="2" required class="wpaic-input" style="resize:vertical;min-height:60px;line-height:1.6;"
+									placeholder="<?php esc_attr_e( 'What information does this data contain? The bot uses this to decide when to query it.', 'wp-ai-chatbot' ); ?>"></textarea>
+							</div>
+							<div>
+								<label for="wpaic_source_file" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'CSV File', 'wp-ai-chatbot' ); ?></label>
+								<input type="file" id="wpaic_source_file" name="csv_file" accept=".csv" required class="wpaic-input !p-0 file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-canvas file:text-ink file:cursor-pointer">
+								<span class="text-xs text-muted mt-1 block"><?php esc_html_e( 'Max 5MB. First row must be column headers.', 'wp-ai-chatbot' ); ?></span>
+							</div>
+							<div id="wpaic-upload-status" class="hidden"><span class="text-muted text-sm"><?php esc_html_e( 'Uploading...', 'wp-ai-chatbot' ); ?></span></div>
+							<div id="wpaic-upload-result" class="hidden"></div>
+						</div>
+						<div class="mt-6 flex justify-end gap-3">
+							<button type="button" class="wpaic-modal-cancel wpaic-btn"><?php esc_html_e( 'Cancel', 'wp-ai-chatbot' ); ?></button>
+							<button type="submit" id="wpaic-upload-btn" class="wpaic-btn wpaic-btn-primary"><?php esc_html_e( 'Upload', 'wp-ai-chatbot' ); ?></button>
+						</div>
+					</form>
+				</div>
+			</div>
+		</div>
+
 		<script>
 		jQuery(document).ready(function($) {
-			var postTypeLabels = <?php echo wp_json_encode( $available_post_types ); ?>;
-			var uiText = {
-				updating: '<?php echo esc_js( __( 'Updating indexes...', 'wp-ai-chatbot' ) ); ?>',
-				error: '<?php echo esc_js( __( 'Error updating search indexes.', 'wp-ai-chatbot' ) ); ?>',
-				requestFailed: '<?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?>',
-				productDisabled: '<?php echo esc_js( __( 'Products are not selected.', 'wp-ai-chatbot' ) ); ?>',
-				productMissing: '<?php echo esc_js( __( 'Products are selected, but the index has not been built yet.', 'wp-ai-chatbot' ) ); ?>',
-				productPendingEnabled: '<?php echo esc_js( __( 'Products will be indexed after you update the search indexes.', 'wp-ai-chatbot' ) ); ?>',
-				productPendingDisabled: '<?php echo esc_js( __( 'Products will be removed from the search index after you update.', 'wp-ai-chatbot' ) ); ?>',
-				contentNoneSelected: '<?php echo esc_js( __( 'No content types selected.', 'wp-ai-chatbot' ) ); ?>',
-				contentDisabled: '<?php echo esc_js( __( 'Site content indexing is disabled until at least one content type is selected.', 'wp-ai-chatbot' ) ); ?>',
-				contentMissing: '<?php echo esc_js( __( 'Selected content types have not been indexed yet.', 'wp-ai-chatbot' ) ); ?>',
-				contentPendingSelected: '<?php echo esc_js( __( 'Selected content will be reindexed after you update the search indexes.', 'wp-ai-chatbot' ) ); ?>',
-				contentPendingDisabled: '<?php echo esc_js( __( 'Site content indexing will be disabled after you update.', 'wp-ai-chatbot' ) ); ?>',
-				selectedPrefix: '<?php echo esc_js( __( 'Selected: ', 'wp-ai-chatbot' ) ); ?>',
-				productIndexed: '<?php echo esc_js( __( '%1$d products indexed. Last updated: %2$s', 'wp-ai-chatbot' ) ); ?>',
-				contentIndexed: '<?php echo esc_js( __( '%1$d items indexed. Last updated: %2$s', 'wp-ai-chatbot' ) ); ?>',
-				unknown: '<?php echo esc_js( __( 'Unknown', 'wp-ai-chatbot' ) ); ?>'
-			};
-			var appliedState = {
-				productEnabled: <?php echo wp_json_encode( $product_index_enabled ); ?>,
-				productExists: <?php echo wp_json_encode( (bool) $product_status['exists'] ); ?>,
-				productCount: <?php echo (int) $product_status['product_count']; ?>,
-				productLastUpdated: <?php echo wp_json_encode( $this->format_index_updated_at( $product_status['last_updated'] ) ); ?>,
-				contentTypes: <?php echo wp_json_encode( $selected_post_types ); ?>,
-				contentExists: <?php echo wp_json_encode( (bool) $content_status['exists'] ); ?>,
-				contentCount: <?php echo (int) $content_status['post_count']; ?>,
-				contentLastUpdated: <?php echo wp_json_encode( $this->format_index_updated_at( $content_status['last_updated'] ) ); ?>
-			};
-
-			function getSelectedContentTypes() {
-				return $('.wpaic-content-index-post-type:checked').map(function() {
-					return $(this).val();
-				}).get();
-			}
-
-			function arraysEqual(left, right) {
-				if (left.length !== right.length) {
-					return false;
+			// Index checkbox toggle styling
+			$('.wpaic-index-checkbox').on('change', function() {
+				var $label = $(this).closest('label');
+				var $box = $label.find('.w-\\[18px\\]');
+				if (this.checked) {
+					$label.removeClass('border-line').addClass('border-ink bg-surface');
+					$box.removeClass('bg-white border-line-2').addClass('bg-ink border-ink text-white')
+						.html('<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>');
+				} else {
+					$label.removeClass('border-ink bg-surface').addClass('border-line');
+					$box.removeClass('bg-ink border-ink text-white').addClass('bg-white border-line-2').html('');
 				}
+			});
 
-				var sortedLeft = left.slice().sort();
-				var sortedRight = right.slice().sort();
+			// Handoff field checkbox styling
+			$('.wpaic-handoff-field-checkbox').on('change', function() {
+				var $label = $(this).closest('label');
+				if (this.checked) {
+					$label.removeClass('bg-canvas text-muted hover:bg-line-2').addClass('bg-accent-soft text-accent-ink');
+				} else {
+					$label.removeClass('bg-accent-soft text-accent-ink').addClass('bg-canvas text-muted hover:bg-line-2');
+				}
+			});
 
-				for (var i = 0; i < sortedLeft.length; i++) {
-					if (sortedLeft[i] !== sortedRight[i]) {
-						return false;
+			// Upload modal
+			$('#wpaic-add-source, .wpaic-browse-files').on('click', function() {
+				$('#wpaic-source-modal').show();
+				$('#wpaic-source-form')[0].reset();
+				$('#wpaic-upload-status, #wpaic-upload-result').addClass('hidden');
+			});
+			$('.wpaic-modal-close, .wpaic-modal-cancel, .wpaic-modal-backdrop').on('click', function() {
+				$('#wpaic-source-modal').hide();
+			});
+
+			$('#wpaic-source-form').on('submit', function(e) {
+				e.preventDefault();
+				var formData = new FormData(this);
+				formData.append('action', 'wpaic_upload_csv');
+				formData.append('_wpnonce', '<?php echo esc_js( wp_create_nonce( 'wpaic_upload_csv' ) ); ?>');
+				$('#wpaic-upload-status').removeClass('hidden');
+				$('#wpaic-upload-result').addClass('hidden');
+				$('#wpaic-upload-btn').prop('disabled', true);
+				$.ajax({
+					url: ajaxurl, type: 'POST', data: formData, processData: false, contentType: false,
+					success: function(response) {
+						$('#wpaic-upload-status').addClass('hidden');
+						$('#wpaic-upload-btn').prop('disabled', false);
+						if (response.success) {
+							$('#wpaic-upload-result').removeClass('hidden').html('<div class="p-3 bg-success-soft text-success-ink rounded-[10px] text-[13px]">' + response.data.message + '</div>');
+							setTimeout(function() { location.reload(); }, 1500);
+						} else {
+							$('#wpaic-upload-result').removeClass('hidden').html('<div class="p-3 bg-warn-soft text-warn-ink rounded-[10px] text-[13px]">' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Upload failed.', 'wp-ai-chatbot' ) ); ?>') + '</div>');
+						}
+					},
+					error: function() {
+						$('#wpaic-upload-status').addClass('hidden');
+						$('#wpaic-upload-btn').prop('disabled', false);
+						$('#wpaic-upload-result').removeClass('hidden').html('<div class="p-3 bg-warn-soft text-warn-ink rounded-[10px] text-[13px]"><?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?></div>');
 					}
-				}
+				});
+			});
 
-				return true;
-			}
+			// Delete data source
+			$('.wpaic-delete-source').on('click', function() {
+				if (!confirm('<?php echo esc_js( __( 'Delete this data source? This cannot be undone.', 'wp-ai-chatbot' ) ); ?>')) return;
+				var $btn = $(this);
+				$.ajax({
+					url: ajaxurl, type: 'POST',
+					data: { action: 'wpaic_delete_data_source', source_id: $btn.data('id'), _wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_delete_source' ) ); ?>' },
+					success: function(response) {
+						if (response.success) $btn.closest('[data-source-id]').fadeOut(function() { $(this).remove(); });
+						else alert(response.data ? response.data.message : '<?php echo esc_js( __( 'Delete failed.', 'wp-ai-chatbot' ) ); ?>');
+					}
+				});
+			});
 
-			function formatIndexedMessage(template, count, updated) {
-				return template
-					.replace('%1$d', count)
-					.replace('%2$s', updated || uiText.unknown);
-			}
+			// Save FAQs
+			$('#wpaic-save-faqs').on('click', function() {
+				var $btn = $(this), $status = $('#wpaic-faq-status');
+				$btn.prop('disabled', true).text('<?php echo esc_js( __( 'Saving...', 'wp-ai-chatbot' ) ); ?>');
+				$status.addClass('hidden');
+				$.ajax({
+					url: ajaxurl, type: 'POST',
+					data: { action: 'wpaic_save_faqs', faq_content: $('#wpaic_faq_content').val(), _wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_save_faqs' ) ); ?>' },
+					success: function(response) {
+						$btn.prop('disabled', false).text('<?php echo esc_js( __( 'Save FAQs', 'wp-ai-chatbot' ) ); ?>');
+						if (response.success) $status.removeClass('hidden').css('color', 'var(--color-success-ink)').text(response.data.message);
+						else $status.removeClass('hidden').css('color', 'var(--color-danger)').text(response.data ? response.data.message : '<?php echo esc_js( __( 'Save failed.', 'wp-ai-chatbot' ) ); ?>');
+					},
+					error: function() {
+						$btn.prop('disabled', false).text('<?php echo esc_js( __( 'Save FAQs', 'wp-ai-chatbot' ) ); ?>');
+						$status.removeClass('hidden').css('color', 'var(--color-danger)').text('<?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?>');
+					}
+				});
+			});
 
-			function applyIndicatorState($wrapper, $icon, state) {
-				$wrapper.removeClass('bg-green-100 bg-red-100 bg-gray-200 bg-blue-100');
-				$icon.removeClass('dashicons-yes-alt dashicons-warning dashicons-minus dashicons-update text-green-600 text-red-600 text-gray-500 text-blue-600');
-
-				if (state === 'success') {
-					$wrapper.addClass('bg-green-100');
-					$icon.addClass('dashicons-yes-alt text-green-600');
-					return;
-				}
-
-				if (state === 'pending') {
-					$wrapper.addClass('bg-blue-100');
-					$icon.addClass('dashicons-update text-blue-600');
-					return;
-				}
-
-				if (state === 'disabled') {
-					$wrapper.addClass('bg-gray-200');
-					$icon.addClass('dashicons-minus text-gray-500');
-					return;
-				}
-
-				$wrapper.addClass('bg-red-100');
-				$icon.addClass('dashicons-warning text-red-600');
-			}
-
-			function syncProductStatus() {
-				var isEnabled = $('#wpaic_product_index_enabled').is(':checked');
-				var hasPendingChanges = isEnabled !== appliedState.productEnabled;
-				var $wrapper = $('#wpaic-search-product-icon-wrapper');
-				var $icon = $('#wpaic-search-product-icon');
-				var $summary = $('#wpaic-search-product-summary');
-
-				if (!isEnabled) {
-					applyIndicatorState($wrapper, $icon, hasPendingChanges ? 'pending' : 'disabled');
-					$summary.text(hasPendingChanges ? uiText.productPendingDisabled : uiText.productDisabled);
-					return;
-				}
-
-				if (hasPendingChanges) {
-					applyIndicatorState($wrapper, $icon, 'pending');
-					$summary.text(uiText.productPendingEnabled);
-					return;
-				}
-
-				if (appliedState.productExists) {
-					applyIndicatorState($wrapper, $icon, 'success');
-					$summary.text(formatIndexedMessage(uiText.productIndexed, appliedState.productCount, appliedState.productLastUpdated));
-					return;
-				}
-
-				applyIndicatorState($wrapper, $icon, 'missing');
-				$summary.text(uiText.productMissing);
-			}
-
-			function syncContentStatus() {
-				var selectedTypes = getSelectedContentTypes();
-				var hasPendingChanges = !arraysEqual(selectedTypes, appliedState.contentTypes);
-				var selectedLabels = selectedTypes.map(function(type) {
-					return postTypeLabels[type];
-				}).filter(Boolean);
-				var $wrapper = $('#wpaic-search-content-icon-wrapper');
-				var $icon = $('#wpaic-search-content-icon');
-				var $selected = $('#wpaic-search-content-selected');
-				var $summary = $('#wpaic-search-content-summary');
-
-				$selected.text(selectedLabels.length ? uiText.selectedPrefix + selectedLabels.join(', ') : uiText.contentNoneSelected);
-
-				if (selectedTypes.length === 0) {
-					applyIndicatorState($wrapper, $icon, hasPendingChanges ? 'pending' : 'disabled');
-					$summary.text(hasPendingChanges ? uiText.contentPendingDisabled : uiText.contentDisabled);
-					return;
-				}
-
-				if (hasPendingChanges) {
-					applyIndicatorState($wrapper, $icon, 'pending');
-					$summary.text(uiText.contentPendingSelected);
-					return;
-				}
-
-				if (appliedState.contentExists) {
-					applyIndicatorState($wrapper, $icon, 'success');
-					$summary.text(formatIndexedMessage(uiText.contentIndexed, appliedState.contentCount, appliedState.contentLastUpdated));
-					return;
-				}
-
-				applyIndicatorState($wrapper, $icon, 'missing');
-				$summary.text(uiText.contentMissing);
-			}
-
-			function syncSearchIndexStatus() {
-				syncProductStatus();
-				syncContentStatus();
-			}
-
-			$('#wpaic_product_index_enabled, .wpaic-content-index-post-type').on('change', syncSearchIndexStatus);
-			syncSearchIndexStatus();
-
+			// Update search indexes
 			$('#wpaic-update-search-indexes').on('click', function() {
 				var $btn = $(this);
 				var $status = $('#wpaic-update-search-indexes-status');
-				var contentTypes = getSelectedContentTypes();
-
-				$btn.prop('disabled', true).addClass('opacity-50 cursor-not-allowed');
-				$btn.find('.dashicons').addClass('animate-spin');
-				$status.html('<span class="text-gray-500">' + uiText.updating + '</span>');
-
+				var contentTypes = $('.wpaic-content-index-post-type:checked').map(function() { return $(this).val(); }).get();
+				$btn.prop('disabled', true).css('opacity', '0.5');
+				$status.html('<span class="text-muted"><?php echo esc_js( __( 'Updating...', 'wp-ai-chatbot' ) ); ?></span>');
 				$.ajax({
-					url: ajaxurl,
-					type: 'POST',
+					url: ajaxurl, type: 'POST',
 					data: {
 						action: 'wpaic_update_search_indexes',
 						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_update_search_indexes' ) ); ?>',
@@ -1314,38 +1504,29 @@ class WPAIC_Admin {
 						content_index_post_types: contentTypes
 					},
 					success: function(response) {
-						$btn.prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
-						$btn.find('.dashicons').removeClass('animate-spin');
+						$btn.prop('disabled', false).css('opacity', '1');
 						if (response.success) {
-							appliedState.productEnabled = !!response.data.product.enabled;
-							appliedState.productExists = !!response.data.product.exists;
-							appliedState.productCount = Number(response.data.product.count || 0);
-							appliedState.productLastUpdated = response.data.product.last_updated_label || uiText.unknown;
-							appliedState.contentTypes = Array.isArray(response.data.content.post_types) ? response.data.content.post_types : [];
-							appliedState.contentExists = !!response.data.content.exists;
-							appliedState.contentCount = Number(response.data.content.count || 0);
-							appliedState.contentLastUpdated = response.data.content.last_updated_label || uiText.unknown;
-							syncSearchIndexStatus();
-							$status.html('<span class="text-green-600">' + response.data.message + '</span>');
+							$status.html('<span style="color:var(--color-success-ink)">' + response.data.message + '</span>');
+							var total = Number(response.data.product.count || 0) + Number(response.data.content.count || 0);
+							$('#wpaic-product-count').text(response.data.product.count || 0);
+							$('#wpaic-index-status-dot').removeClass('bg-muted-2').addClass('bg-success');
+							var updated = response.data.product.last_updated_label || response.data.content.last_updated_label || '';
+							$('#wpaic-index-status-text').html('<span class="font-medium"><?php echo esc_js( __( 'Index is fresh.', 'wp-ai-chatbot' ) ); ?></span> <span class="text-muted">' + total + ' <?php echo esc_js( __( 'items', 'wp-ai-chatbot' ) ); ?>' + (updated ? ' · <?php echo esc_js( __( 'last updated', 'wp-ai-chatbot' ) ); ?> ' + updated : '') + '</span>');
 						} else {
-							$status.html('<span class="text-red-600">' + (response.data ? response.data.message : uiText.error) + '</span>');
+							$status.html('<span style="color:var(--color-danger)">' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Error', 'wp-ai-chatbot' ) ); ?>') + '</span>');
 						}
 					},
 					error: function() {
-						$btn.prop('disabled', false).removeClass('opacity-50 cursor-not-allowed');
-						$btn.find('.dashicons').removeClass('animate-spin');
-						$status.html('<span class="text-red-600">' + uiText.requestFailed + '</span>');
+						$btn.prop('disabled', false).css('opacity', '1');
+						$status.html('<span style="color:var(--color-danger)"><?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?></span>');
 					}
 				});
 			});
 		});
 		</script>
-		<style>
-			@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-			.animate-spin { animation: spin 1s linear infinite; }
-		</style>
 		<?php
 	}
+
 
 	public function render_logs_page(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -1359,145 +1540,89 @@ class WPAIC_Admin {
 		$total         = $this->logs->get_conversation_count();
 		$total_pages   = (int) ceil( $total / $per_page );
 		?>
-		<div class="wrap">
-			<h1><?php esc_html_e( 'Chat Logs', 'wp-ai-chatbot' ); ?></h1>
+		<div class="wpaic-admin-wrap" style="margin-left: -20px;">
+			<div class="bg-surface border-b border-line">
+				<div class="max-w-[960px] mx-auto px-8 pt-5 pb-5">
+					<h1 class="text-[22px] font-semibold tracking-tight text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'Chat Logs', 'wp-ai-chatbot' ); ?></h1>
+					<p class="text-muted text-sm mt-1"><?php esc_html_e( 'Conversation history from all visitors.', 'wp-ai-chatbot' ); ?></p>
+				</div>
+			</div>
 
-			<table class="wp-list-table widefat fixed striped">
-				<thead>
-					<tr>
-						<th scope="col"><?php esc_html_e( 'Messages', 'wp-ai-chatbot' ); ?></th>
-						<th scope="col"><?php esc_html_e( 'Started', 'wp-ai-chatbot' ); ?></th>
-						<th scope="col"><?php esc_html_e( 'Last Activity', 'wp-ai-chatbot' ); ?></th>
-						<th scope="col"><?php esc_html_e( 'Actions', 'wp-ai-chatbot' ); ?></th>
-					</tr>
-				</thead>
-				<tbody>
-					<?php if ( empty( $conversations ) ) : ?>
-						<tr>
-							<td colspan="4"><?php esc_html_e( 'No conversations found.', 'wp-ai-chatbot' ); ?></td>
-						</tr>
-					<?php else : ?>
-						<?php foreach ( $conversations as $conv ) : ?>
-							<tr>
-								<td><?php echo esc_html( (string) $conv->message_count ); ?></td>
-								<td><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $conv->created_at ) ) ); ?></td>
-								<td><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $conv->updated_at ) ) ); ?></td>
-								<td>
-									<button type="button" class="button button-small wpaic-view-conversation" data-id="<?php echo esc_attr( (string) $conv->id ); ?>">
-										<?php esc_html_e( 'View', 'wp-ai-chatbot' ); ?>
-									</button>
-									<button type="button" class="button button-small button-link-delete wpaic-delete-conversation" data-id="<?php echo esc_attr( (string) $conv->id ); ?>">
-										<?php esc_html_e( 'Delete', 'wp-ai-chatbot' ); ?>
-									</button>
-								</td>
-							</tr>
-						<?php endforeach; ?>
-					<?php endif; ?>
-				</tbody>
-			</table>
+			<div class="max-w-[960px] mx-auto px-8 py-6">
+				<?php if ( empty( $conversations ) ) : ?>
+					<div class="wpaic-card p-8 text-center">
+						<div class="w-12 h-12 rounded-lg bg-canvas grid place-items-center mx-auto mb-3 text-muted">
+							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+						</div>
+						<p class="text-muted"><?php esc_html_e( 'No conversations found.', 'wp-ai-chatbot' ); ?></p>
+					</div>
+				<?php else : ?>
+					<div class="wpaic-card overflow-hidden">
+						<table class="min-w-full">
+							<thead>
+								<tr class="border-b border-line-2 bg-surface-2">
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Messages', 'wp-ai-chatbot' ); ?></th>
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Started', 'wp-ai-chatbot' ); ?></th>
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Last Activity', 'wp-ai-chatbot' ); ?></th>
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Actions', 'wp-ai-chatbot' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $conversations as $conv ) : ?>
+									<tr class="border-b border-line-2 last:border-0 hover:bg-surface-2 transition-colors">
+										<td class="px-5 py-3.5 text-[13px]">
+											<span class="wpaic-tag wpaic-tag-neutral"><?php echo esc_html( (string) $conv->message_count ); ?></span>
+										</td>
+										<td class="px-5 py-3.5 text-[13px] text-ink"><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $conv->created_at ) ) ); ?></td>
+										<td class="px-5 py-3.5 text-[13px] text-muted"><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $conv->updated_at ) ) ); ?></td>
+										<td class="px-5 py-3.5 text-sm">
+											<div class="flex items-center gap-2">
+												<button type="button" class="wpaic-btn wpaic-btn-sm wpaic-view-conversation" data-id="<?php echo esc_attr( (string) $conv->id ); ?>"><?php esc_html_e( 'View', 'wp-ai-chatbot' ); ?></button>
+												<button type="button" class="wpaic-btn wpaic-btn-sm wpaic-btn-danger wpaic-delete-conversation" data-id="<?php echo esc_attr( (string) $conv->id ); ?>"><?php esc_html_e( 'Delete', 'wp-ai-chatbot' ); ?></button>
+											</div>
+										</td>
+									</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+				<?php endif; ?>
 
-			<?php if ( $total_pages > 1 ) : ?>
-				<div class="tablenav bottom">
-					<div class="tablenav-pages">
+				<?php if ( $total_pages > 1 ) : ?>
+					<div class="mt-4 flex justify-center">
 						<?php
 						$pagination_args = array(
 							'base'      => add_query_arg( 'paged', '%#%' ),
 							'format'    => '',
 							'current'   => $page,
 							'total'     => $total_pages,
-							'prev_text' => '&laquo;',
-							'next_text' => '&raquo;',
+							'prev_text' => '&laquo; ' . __( 'Previous', 'wp-ai-chatbot' ),
+							'next_text' => __( 'Next', 'wp-ai-chatbot' ) . ' &raquo;',
 						);
 						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- paginate_links output is safe
 						echo paginate_links( $pagination_args );
 						?>
 					</div>
-				</div>
-			<?php endif; ?>
+				<?php endif; ?>
+			</div>
 
 			<div id="wpaic-conversation-modal" style="display:none;">
-				<div class="wpaic-modal-backdrop"></div>
-				<div class="wpaic-modal-content">
-					<div class="wpaic-modal-header">
-						<h2><?php esc_html_e( 'Conversation', 'wp-ai-chatbot' ); ?></h2>
-						<button type="button" class="wpaic-modal-close">&times;</button>
+				<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100000;" class="wpaic-modal-backdrop"></div>
+				<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;width:600px;max-width:90%;max-height:80vh;border-radius:14px;z-index:100001;display:flex;flex-direction:column;overflow:hidden;">
+					<div class="flex items-center justify-between px-5 py-4 border-b border-line">
+						<h2 class="text-[16px] font-semibold m-0" style="font-family: var(--font-display);"><?php esc_html_e( 'Conversation', 'wp-ai-chatbot' ); ?></h2>
+						<button type="button" class="wpaic-modal-close w-6 h-6 rounded-md grid place-items-center text-muted hover:bg-canvas bg-transparent border-0 cursor-pointer">&times;</button>
 					</div>
-					<div class="wpaic-modal-body"></div>
+					<div class="wpaic-modal-body p-5 overflow-y-auto flex-1"></div>
 				</div>
 			</div>
 
 			<style>
-				#wpaic-conversation-modal .wpaic-modal-backdrop {
-					position: fixed;
-					top: 0;
-					left: 0;
-					right: 0;
-					bottom: 0;
-					background: rgba(0,0,0,0.5);
-					z-index: 100000;
-				}
-				#wpaic-conversation-modal .wpaic-modal-content {
-					position: fixed;
-					top: 50%;
-					left: 50%;
-					transform: translate(-50%, -50%);
-					background: #fff;
-					width: 600px;
-					max-width: 90%;
-					max-height: 80vh;
-					border-radius: 4px;
-					z-index: 100001;
-					display: flex;
-					flex-direction: column;
-				}
-				#wpaic-conversation-modal .wpaic-modal-header {
-					padding: 15px 20px;
-					border-bottom: 1px solid #ddd;
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-				}
-				#wpaic-conversation-modal .wpaic-modal-header h2 {
-					margin: 0;
-				}
-				#wpaic-conversation-modal .wpaic-modal-close {
-					background: none;
-					border: none;
-					font-size: 24px;
-					cursor: pointer;
-					padding: 0;
-					line-height: 1;
-				}
-				#wpaic-conversation-modal .wpaic-modal-body {
-					padding: 20px;
-					overflow-y: auto;
-					flex: 1;
-				}
-				.wpaic-message {
-					margin-bottom: 15px;
-					padding: 10px 15px;
-					border-radius: 8px;
-				}
-				.wpaic-message-user {
-					background: #007cba;
-					color: #fff;
-					margin-left: 40px;
-				}
-				.wpaic-message-assistant {
-					background: #f0f0f0;
-					margin-right: 40px;
-				}
-				.wpaic-message-role {
-					font-size: 11px;
-					text-transform: uppercase;
-					opacity: 0.7;
-					margin-bottom: 5px;
-				}
-				.wpaic-message-time {
-					font-size: 11px;
-					opacity: 0.7;
-					margin-top: 5px;
-				}
+				.wpaic-message { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5; }
+				.wpaic-message-user { background: var(--color-ink); color: #fff; margin-left: 40px; }
+				.wpaic-message-assistant { background: var(--color-canvas); color: var(--color-ink); margin-right: 40px; }
+				.wpaic-message-role { font-size: 11px; text-transform: uppercase; opacity: 0.6; margin-bottom: 4px; font-weight: 600; letter-spacing: 0.05em; }
+				.wpaic-message-time { font-size: 11px; opacity: 0.5; margin-top: 5px; }
 			</style>
 
 			<script>
@@ -1700,69 +1825,65 @@ class WPAIC_Admin {
 		);
 
 		$status_colors = array(
-			'new'       => 'bg-yellow-100 text-yellow-800',
-			'contacted' => 'bg-blue-100 text-blue-800',
-			'resolved'  => 'bg-green-100 text-green-800',
+			'new'       => 'bg-warn-soft text-warn-ink',
+			'contacted' => 'bg-accent-soft text-accent-ink',
+			'resolved'  => 'bg-success-soft text-success-ink',
 		);
 		?>
 		<div class="wpaic-admin-wrap" style="margin-left: -20px;">
-			<div class="bg-white shadow-sm border-b border-gray-200">
-				<div class="max-w-5xl mx-auto px-6 py-6">
-					<div class="flex items-center gap-3">
-						<span class="dashicons dashicons-groups text-blue-600 text-2xl"></span>
-						<h1 class="text-2xl font-semibold text-gray-900"><?php esc_html_e( 'Support Requests', 'wp-ai-chatbot' ); ?></h1>
-					</div>
-					<p class="mt-2 text-sm text-gray-600"><?php esc_html_e( 'Customer requests to speak with a human agent.', 'wp-ai-chatbot' ); ?></p>
+			<div class="bg-surface border-b border-line">
+				<div class="max-w-[960px] mx-auto px-8 pt-5 pb-5">
+					<h1 class="text-[22px] font-semibold tracking-tight text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'Support Requests', 'wp-ai-chatbot' ); ?></h1>
+					<p class="text-muted text-sm mt-1"><?php esc_html_e( 'Customer requests to speak with a human agent.', 'wp-ai-chatbot' ); ?></p>
 				</div>
 			</div>
 
-			<div class="max-w-5xl mx-auto px-6 py-4">
+			<div class="max-w-[960px] mx-auto px-8 py-6">
 				<?php if ( empty( $requests ) ) : ?>
-					<div class="bg-white rounded-lg border border-gray-200 p-8 text-center">
-						<span class="dashicons dashicons-format-chat text-gray-400 text-4xl"></span>
-						<p class="mt-4 text-gray-600"><?php esc_html_e( 'No support requests yet. Requests will appear here when customers use the handoff feature.', 'wp-ai-chatbot' ); ?></p>
+					<div class="wpaic-card p-8 text-center">
+						<div class="w-12 h-12 rounded-lg bg-canvas grid place-items-center mx-auto mb-3 text-muted">
+							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+						</div>
+						<p class="text-muted"><?php esc_html_e( 'No support requests yet. Requests will appear here when customers use the handoff feature.', 'wp-ai-chatbot' ); ?></p>
 					</div>
 				<?php else : ?>
-					<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-						<table class="min-w-full divide-y divide-gray-200">
-							<thead class="bg-gray-50">
-								<tr>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php esc_html_e( 'Date', 'wp-ai-chatbot' ); ?></th>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php esc_html_e( 'Customer', 'wp-ai-chatbot' ); ?></th>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php esc_html_e( 'Email', 'wp-ai-chatbot' ); ?></th>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php esc_html_e( 'Status', 'wp-ai-chatbot' ); ?></th>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php esc_html_e( 'Actions', 'wp-ai-chatbot' ); ?></th>
+					<div class="wpaic-card overflow-hidden">
+						<table class="min-w-full">
+							<thead>
+								<tr class="border-b border-line-2 bg-surface-2">
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Date', 'wp-ai-chatbot' ); ?></th>
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Customer', 'wp-ai-chatbot' ); ?></th>
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Email', 'wp-ai-chatbot' ); ?></th>
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Status', 'wp-ai-chatbot' ); ?></th>
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Actions', 'wp-ai-chatbot' ); ?></th>
 								</tr>
 							</thead>
-							<tbody class="bg-white divide-y divide-gray-200">
+							<tbody>
 								<?php foreach ( $requests as $req ) : ?>
-									<tr class="hover:bg-gray-50">
-										<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+									<tr class="border-b border-line-2 last:border-0 hover:bg-surface-2 transition-colors">
+										<td class="px-5 py-3.5 whitespace-nowrap text-[13px] text-ink">
 											<?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $req->created_at ) ) ); ?>
 										</td>
-										<td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+										<td class="px-5 py-3.5 whitespace-nowrap text-[13px] font-medium text-ink">
 											<?php echo esc_html( $req->customer_name ); ?>
 										</td>
-										<td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+										<td class="px-5 py-3.5 whitespace-nowrap text-[13px] text-muted">
 											<?php echo esc_html( $req->customer_email ); ?>
 										</td>
-										<td class="px-4 py-3 whitespace-nowrap">
-											<select class="wpaic-status-select text-xs px-2 py-1 rounded-full border-0 <?php echo esc_attr( $status_colors[ $req->status ] ?? 'bg-gray-100 text-gray-800' ); ?>"
+										<td class="px-5 py-3.5 whitespace-nowrap">
+											<select class="wpaic-support-status-select wpaic-tag text-[11.5px] border-0 cursor-pointer <?php echo esc_attr( $status_colors[ $req->status ] ?? 'wpaic-tag-neutral' ); ?>"
 													data-id="<?php echo esc_attr( (string) $req->id ); ?>">
 												<?php foreach ( $statuses as $status_val => $status_label ) : ?>
 													<option value="<?php echo esc_attr( $status_val ); ?>" <?php selected( $req->status, $status_val ); ?>><?php echo esc_html( $status_label ); ?></option>
 												<?php endforeach; ?>
 											</select>
 										</td>
-										<td class="px-4 py-3 whitespace-nowrap text-sm">
+										<td class="px-5 py-3.5 whitespace-nowrap text-sm">
 											<div class="flex items-center gap-2">
-												<button type="button" class="wpaic-view-transcript inline-flex items-center px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
-														data-id="<?php echo esc_attr( (string) $req->id ); ?>">
-													<span class="dashicons dashicons-visibility" style="font-size: 14px; width: 14px; height: 14px; margin-right: 4px;"></span>
+												<button type="button" class="wpaic-view-transcript wpaic-btn wpaic-btn-sm" data-id="<?php echo esc_attr( (string) $req->id ); ?>">
 													<?php esc_html_e( 'View', 'wp-ai-chatbot' ); ?>
 												</button>
-												<a href="mailto:<?php echo esc_attr( $req->customer_email ); ?>" class="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded hover:bg-blue-200">
-													<span class="dashicons dashicons-email" style="font-size: 14px; width: 14px; height: 14px; margin-right: 4px;"></span>
+												<a href="mailto:<?php echo esc_attr( $req->customer_email ); ?>" class="wpaic-btn wpaic-btn-sm no-underline">
 													<?php esc_html_e( 'Email', 'wp-ai-chatbot' ); ?>
 												</a>
 											</div>
@@ -1794,94 +1915,22 @@ class WPAIC_Admin {
 		</div>
 
 		<div id="wpaic-transcript-modal" style="display:none;">
-			<div class="wpaic-modal-backdrop"></div>
-			<div class="wpaic-modal-content">
-				<div class="wpaic-modal-header">
-					<h2><?php esc_html_e( 'Conversation Transcript', 'wp-ai-chatbot' ); ?></h2>
-					<button type="button" class="wpaic-modal-close">&times;</button>
+			<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100000;" class="wpaic-modal-backdrop"></div>
+			<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;width:600px;max-width:90%;max-height:80vh;border-radius:14px;z-index:100001;display:flex;flex-direction:column;overflow:hidden;">
+				<div class="flex items-center justify-between px-5 py-4 border-b border-line">
+					<h2 class="text-[16px] font-semibold m-0" style="font-family: var(--font-display);"><?php esc_html_e( 'Conversation Transcript', 'wp-ai-chatbot' ); ?></h2>
+					<button type="button" class="wpaic-modal-close w-6 h-6 rounded-md grid place-items-center text-muted hover:bg-canvas bg-transparent border-0 cursor-pointer">&times;</button>
 				</div>
-				<div class="wpaic-modal-body"></div>
+				<div class="wpaic-modal-body p-5 overflow-y-auto flex-1"></div>
 			</div>
 		</div>
 
 		<style>
-			#wpaic-transcript-modal .wpaic-modal-backdrop {
-				position: fixed;
-				top: 0;
-				left: 0;
-				right: 0;
-				bottom: 0;
-				background: rgba(0,0,0,0.5);
-				z-index: 100000;
-			}
-			#wpaic-transcript-modal .wpaic-modal-content {
-				position: fixed;
-				top: 50%;
-				left: 50%;
-				transform: translate(-50%, -50%);
-				background: #fff;
-				width: 600px;
-				max-width: 90%;
-				max-height: 80vh;
-				border-radius: 8px;
-				z-index: 100001;
-				display: flex;
-				flex-direction: column;
-			}
-			#wpaic-transcript-modal .wpaic-modal-header {
-				padding: 16px 20px;
-				border-bottom: 1px solid #e5e7eb;
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-			}
-			#wpaic-transcript-modal .wpaic-modal-header h2 {
-				margin: 0;
-				font-size: 18px;
-			}
-			#wpaic-transcript-modal .wpaic-modal-close {
-				background: none;
-				border: none;
-				font-size: 24px;
-				cursor: pointer;
-				padding: 0;
-				line-height: 1;
-				color: #6b7280;
-			}
-			#wpaic-transcript-modal .wpaic-modal-body {
-				padding: 20px;
-				overflow-y: auto;
-				flex: 1;
-			}
-			.wpaic-transcript-message {
-				margin-bottom: 12px;
-				padding: 10px 14px;
-				border-radius: 8px;
-				font-size: 14px;
-			}
-			.wpaic-transcript-user {
-				background: #3b82f6;
-				color: #fff;
-				margin-left: 40px;
-			}
-			.wpaic-transcript-assistant {
-				background: #f3f4f6;
-				margin-right: 40px;
-			}
-			.wpaic-transcript-role {
-				font-size: 11px;
-				text-transform: uppercase;
-				opacity: 0.7;
-				margin-bottom: 4px;
-			}
-			.wpaic-status-select {
-				cursor: pointer;
-				font-weight: 500;
-			}
-			.wpaic-status-select:focus {
-				outline: none;
-				ring: 2px;
-			}
+			.wpaic-transcript-message { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5; }
+			.wpaic-transcript-user { background: var(--color-ink); color: #fff; margin-left: 40px; }
+			.wpaic-transcript-assistant { background: var(--color-canvas); color: var(--color-ink); margin-right: 40px; }
+			.wpaic-transcript-role { font-size: 11px; text-transform: uppercase; opacity: 0.6; margin-bottom: 4px; font-weight: 600; letter-spacing: 0.05em; }
+			.wpaic-support-status-select:focus { outline: none; }
 		</style>
 
 		<script>
@@ -1889,99 +1938,60 @@ class WPAIC_Admin {
 			$('.wpaic-view-transcript').on('click', function() {
 				var id = $(this).data('id');
 				$('#wpaic-transcript-modal').show();
-				$('#wpaic-transcript-modal .wpaic-modal-body').html('<p class="text-gray-500"><?php echo esc_js( __( 'Loading...', 'wp-ai-chatbot' ) ); ?></p>');
+				$('#wpaic-transcript-modal .wpaic-modal-body').html('<p class="text-muted"><?php echo esc_js( __( 'Loading...', 'wp-ai-chatbot' ) ); ?></p>');
 
 				$.ajax({
-					url: ajaxurl,
-					type: 'POST',
-					data: {
-						action: 'wpaic_get_support_transcript',
-						request_id: id,
-						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_support' ) ); ?>'
-					},
+					url: ajaxurl, type: 'POST',
+					data: { action: 'wpaic_get_support_transcript', request_id: id, _wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_support' ) ); ?>' },
 					success: function(response) {
 						if (response.success && response.data.transcript) {
 							var html = '';
 							if (response.data.extra_fields) {
 								var fieldLabels = {phone_number:'Phone',company:'Company',order_number:'Order Number',request_message:'Message'};
-								html += '<div style="margin-bottom:16px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">';
+								html += '<div class="mb-4 p-3 bg-accent-soft border border-line rounded-[10px]">';
 								$.each(response.data.extra_fields, function(k,v) {
-									html += '<div style="margin-bottom:4px;font-size:13px;"><strong>' + $('<span>').text(fieldLabels[k]||k).html() + ':</strong> ' + $('<span>').text(v).html() + '</div>';
+									html += '<div class="mb-1 text-[13px]"><strong>' + $('<span>').text(fieldLabels[k]||k).html() + ':</strong> ' + $('<span>').text(v).html() + '</div>';
 								});
 								html += '</div>';
 							}
 							var lines = response.data.transcript.split('\n');
-							var currentRole = '';
-							var currentContent = '';
-
-							lines.forEach(function(line) {
-								if (line.startsWith('User: ')) {
-									if (currentContent) {
-										html += '<div class="wpaic-transcript-message wpaic-transcript-' + currentRole + '">';
-										html += '<div class="wpaic-transcript-role">' + currentRole + '</div>';
-										html += '<div>' + $('<div>').text(currentContent.trim()).html().replace(/\n/g, '<br>') + '</div></div>';
-									}
-									currentRole = 'user';
-									currentContent = line.substring(6);
-								} else if (line.startsWith('Assistant: ')) {
-									if (currentContent) {
-										html += '<div class="wpaic-transcript-message wpaic-transcript-' + currentRole + '">';
-										html += '<div class="wpaic-transcript-role">' + currentRole + '</div>';
-										html += '<div>' + $('<div>').text(currentContent.trim()).html().replace(/\n/g, '<br>') + '</div></div>';
-									}
-									currentRole = 'assistant';
-									currentContent = line.substring(11);
-								} else {
-									currentContent += '\n' + line;
-								}
-							});
-
-							if (currentContent) {
+							var currentRole = '', currentContent = '';
+							function flush() {
+								if (!currentContent) return;
 								html += '<div class="wpaic-transcript-message wpaic-transcript-' + currentRole + '">';
 								html += '<div class="wpaic-transcript-role">' + currentRole + '</div>';
 								html += '<div>' + $('<div>').text(currentContent.trim()).html().replace(/\n/g, '<br>') + '</div></div>';
 							}
-
-							$('#wpaic-transcript-modal .wpaic-modal-body').html(html || '<p class="text-gray-500"><?php echo esc_js( __( 'No transcript available.', 'wp-ai-chatbot' ) ); ?></p>');
+							lines.forEach(function(line) {
+								if (line.startsWith('User: ')) { flush(); currentRole = 'user'; currentContent = line.substring(6); }
+								else if (line.startsWith('Assistant: ')) { flush(); currentRole = 'assistant'; currentContent = line.substring(11); }
+								else { currentContent += '\n' + line; }
+							});
+							flush();
+							$('#wpaic-transcript-modal .wpaic-modal-body').html(html || '<p class="text-muted"><?php echo esc_js( __( 'No transcript available.', 'wp-ai-chatbot' ) ); ?></p>');
 						} else {
-							$('#wpaic-transcript-modal .wpaic-modal-body').html('<p class="text-red-600"><?php echo esc_js( __( 'Error loading transcript.', 'wp-ai-chatbot' ) ); ?></p>');
+							$('#wpaic-transcript-modal .wpaic-modal-body').html('<p style="color:var(--color-danger)"><?php echo esc_js( __( 'Error loading transcript.', 'wp-ai-chatbot' ) ); ?></p>');
 						}
 					}
 				});
 			});
 
-			$('.wpaic-status-select').on('change', function() {
-				var $select = $(this);
-				var id = $select.data('id');
-				var status = $select.val();
-
-				var colorMap = {
-					'new': 'bg-yellow-100 text-yellow-800',
-					'contacted': 'bg-blue-100 text-blue-800',
-					'resolved': 'bg-green-100 text-green-800'
-				};
-
+			$('.wpaic-support-status-select').on('change', function() {
+				var $select = $(this), id = $select.data('id'), status = $select.val();
+				var colorMap = { 'new': 'bg-warn-soft text-warn-ink', 'contacted': 'bg-accent-soft text-accent-ink', 'resolved': 'bg-success-soft text-success-ink' };
 				$.ajax({
-					url: ajaxurl,
-					type: 'POST',
-					data: {
-						action: 'wpaic_update_support_status',
-						request_id: id,
-						status: status,
-						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_support' ) ); ?>'
-					},
+					url: ajaxurl, type: 'POST',
+					data: { action: 'wpaic_update_support_status', request_id: id, status: status, _wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_support' ) ); ?>' },
 					success: function(response) {
 						if (response.success) {
-							$select.removeClass('bg-yellow-100 text-yellow-800 bg-blue-100 text-blue-800 bg-green-100 text-green-800');
-							$select.addClass(colorMap[status] || 'bg-gray-100 text-gray-800');
+							$select.removeClass('bg-warn-soft text-warn-ink bg-accent-soft text-accent-ink bg-success-soft text-success-ink');
+							$select.addClass(colorMap[status] || 'wpaic-tag-neutral');
 						}
 					}
 				});
 			});
 
-			$('.wpaic-modal-close, .wpaic-modal-backdrop').on('click', function() {
-				$('#wpaic-transcript-modal').hide();
-			});
+			$('.wpaic-modal-close, .wpaic-modal-backdrop').on('click', function() { $('#wpaic-transcript-modal').hide(); });
 		});
 		</script>
 		<?php
@@ -2054,332 +2064,6 @@ class WPAIC_Admin {
 		}
 	}
 
-	/**
-	 * Render the Train Bot settings tab.
-	 */
-	private function render_train_tab(): void {
-		global $wpdb;
-		$sources_table = $wpdb->prefix . 'wpaic_data_sources';
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$data_sources = $wpdb->get_results( "SELECT * FROM $sources_table ORDER BY created_at DESC" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		?>
-		<div class="space-y-6">
-			<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-				<div class="flex">
-					<span class="dashicons dashicons-info text-blue-500 mr-2"></span>
-					<p class="text-sm text-blue-700"><?php esc_html_e( 'Upload CSV files to train the chatbot with custom data. The bot can then answer questions about this data.', 'wp-ai-chatbot' ); ?></p>
-				</div>
-			</div>
-
-			<div>
-				<div id="wpaic-data-sources-header" class="flex items-center justify-between mb-4 p-3 -m-3 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-					<h3 class="text-lg font-medium text-gray-900"><?php esc_html_e( 'Data Sources', 'wp-ai-chatbot' ); ?></h3>
-					<button type="button" id="wpaic-add-source" class="inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
-						<span class="dashicons dashicons-plus-alt2 mr-1" style="font-size: 16px; width: 16px; height: 16px;"></span>
-						<?php esc_html_e( 'Add Data Source', 'wp-ai-chatbot' ); ?>
-					</button>
-				</div>
-
-				<?php if ( empty( $data_sources ) ) : ?>
-					<div class="p-8 text-center border border-gray-200 rounded-lg bg-gray-50">
-						<span class="dashicons dashicons-database text-gray-400 text-4xl"></span>
-						<p class="mt-4 text-gray-600"><?php esc_html_e( 'No data sources yet. Click "Add Data Source" to upload a CSV file.', 'wp-ai-chatbot' ); ?></p>
-					</div>
-				<?php else : ?>
-					<div class="border border-gray-200 rounded-lg overflow-hidden">
-						<table class="min-w-full divide-y divide-gray-200">
-							<thead class="bg-gray-50">
-								<tr>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php esc_html_e( 'Name', 'wp-ai-chatbot' ); ?></th>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php esc_html_e( 'Description', 'wp-ai-chatbot' ); ?></th>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php esc_html_e( 'Columns', 'wp-ai-chatbot' ); ?></th>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php esc_html_e( 'Rows', 'wp-ai-chatbot' ); ?></th>
-									<th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php esc_html_e( 'Actions', 'wp-ai-chatbot' ); ?></th>
-								</tr>
-							</thead>
-							<tbody class="bg-white divide-y divide-gray-200">
-								<?php foreach ( $data_sources as $source ) : ?>
-									<?php $columns = json_decode( $source->columns, true ) ?: array(); ?>
-									<tr class="hover:bg-gray-50" data-source-id="<?php echo esc_attr( (string) $source->id ); ?>">
-										<td class="px-4 py-3">
-											<div class="text-sm font-medium text-gray-900"><?php echo esc_html( $source->label ); ?></div>
-											<div class="text-xs text-gray-500 font-mono"><?php echo esc_html( $source->name ); ?></div>
-										</td>
-										<td class="px-4 py-3 text-sm text-gray-600 max-w-xs truncate"><?php echo esc_html( $source->description ); ?></td>
-										<td class="px-4 py-3 text-sm text-gray-600">
-											<div class="flex flex-wrap gap-1">
-												<?php foreach ( array_slice( $columns, 0, 4 ) as $col ) : ?>
-													<span class="inline-block px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded"><?php echo esc_html( $col ); ?></span>
-												<?php endforeach; ?>
-												<?php if ( count( $columns ) > 4 ) : ?>
-													<span class="inline-block px-2 py-0.5 text-xs bg-gray-100 text-gray-500 rounded">+<?php echo esc_html( (string) ( count( $columns ) - 4 ) ); ?></span>
-												<?php endif; ?>
-											</div>
-										</td>
-										<td class="px-4 py-3 text-sm text-gray-600"><?php echo esc_html( (string) $source->row_count ); ?></td>
-										<td class="px-4 py-3 text-sm">
-											<button type="button" class="wpaic-delete-source text-red-600 hover:text-red-800" data-id="<?php echo esc_attr( (string) $source->id ); ?>">
-												<span class="dashicons dashicons-trash" style="font-size: 16px; width: 16px; height: 16px;"></span>
-											</button>
-										</td>
-									</tr>
-								<?php endforeach; ?>
-							</tbody>
-						</table>
-					</div>
-				<?php endif; ?>
-			</div>
-
-			<div class="mt-8 pt-8 border-t border-gray-200">
-				<h3 class="text-lg font-medium text-gray-900 mb-4"><?php esc_html_e( 'FAQ Responses', 'wp-ai-chatbot' ); ?></h3>
-				<div class="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
-					<div class="flex">
-						<span class="dashicons dashicons-info text-blue-500 mr-2"></span>
-						<p class="text-sm text-blue-700"><?php esc_html_e( 'Add Q&A pairs for common questions. The bot will use these to answer customer queries.', 'wp-ai-chatbot' ); ?></p>
-					</div>
-				</div>
-				<?php
-				global $wpdb;
-				$faqs_table = $wpdb->prefix . 'wpaic_faqs';
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-				$faqs       = $wpdb->get_results( "SELECT * FROM $faqs_table ORDER BY id ASC" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				$faq_text   = '';
-				if ( ! empty( $faqs ) ) {
-					$pairs = array();
-					foreach ( $faqs as $faq ) {
-						$pairs[] = "Q: " . $faq->question . "\nA: " . $faq->answer;
-					}
-					$faq_text = implode( "\n\n", $pairs );
-				}
-				?>
-				<div>
-					<label for="wpaic_faq_content" class="block text-sm font-medium text-gray-700 mb-1"><?php esc_html_e( 'Questions & Answers', 'wp-ai-chatbot' ); ?></label>
-					<textarea id="wpaic_faq_content" rows="10" class="w-full max-w-2xl px-3 py-2 border border-gray-300 rounded-md text-sm font-mono"
-							  placeholder="Q: What is your return policy?
-A: We offer 30-day returns on all items.
-
-Q: Do you ship internationally?
-A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?></textarea>
-					<p class="mt-1 text-xs text-gray-500"><?php esc_html_e( 'Format: "Q: question" then "A: answer". Separate pairs with a blank line.', 'wp-ai-chatbot' ); ?></p>
-				</div>
-				<div class="mt-4 flex items-center gap-4">
-					<button type="button" id="wpaic-save-faqs" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
-						<?php esc_html_e( 'Save FAQs', 'wp-ai-chatbot' ); ?>
-					</button>
-					<span id="wpaic-faq-status" class="text-sm hidden"></span>
-				</div>
-			</div>
-		</div>
-
-		<div id="wpaic-source-modal" style="display:none;">
-			<div class="wpaic-modal-backdrop"></div>
-			<div class="wpaic-modal-content">
-				<div class="wpaic-modal-header">
-					<h2><?php esc_html_e( 'Add Data Source', 'wp-ai-chatbot' ); ?></h2>
-					<button type="button" class="wpaic-modal-close">&times;</button>
-				</div>
-				<div class="wpaic-modal-body">
-					<form id="wpaic-source-form" enctype="multipart/form-data">
-						<div class="space-y-4">
-							<div>
-								<label for="wpaic_source_name" class="block text-sm font-medium text-gray-700 mb-1"><?php esc_html_e( 'Name (slug)', 'wp-ai-chatbot' ); ?></label>
-								<input type="text" id="wpaic_source_name" name="source_name" required pattern="[a-z0-9_-]+"
-									   class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="e.g. services">
-								<p class="mt-1 text-xs text-gray-500"><?php esc_html_e( 'Lowercase letters, numbers, underscores, hyphens only.', 'wp-ai-chatbot' ); ?></p>
-							</div>
-							<div>
-								<label for="wpaic_source_label" class="block text-sm font-medium text-gray-700 mb-1"><?php esc_html_e( 'Label', 'wp-ai-chatbot' ); ?></label>
-								<input type="text" id="wpaic_source_label" name="source_label" required
-									   class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="e.g. Our Services">
-							</div>
-							<div>
-								<label for="wpaic_source_desc" class="block text-sm font-medium text-gray-700 mb-1"><?php esc_html_e( 'Description', 'wp-ai-chatbot' ); ?></label>
-								<textarea id="wpaic_source_desc" name="source_description" rows="2" required
-										  class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="<?php esc_attr_e( 'What information does this data contain? The bot uses this to decide when to query it.', 'wp-ai-chatbot' ); ?>"></textarea>
-							</div>
-							<div>
-								<label for="wpaic_source_file" class="block text-sm font-medium text-gray-700 mb-1"><?php esc_html_e( 'CSV File', 'wp-ai-chatbot' ); ?></label>
-								<input type="file" id="wpaic_source_file" name="csv_file" accept=".csv" required
-									   class="w-full text-sm text-gray-700 border border-gray-300 rounded-md cursor-pointer file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 file:cursor-pointer hover:file:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-								<p class="mt-1 text-xs text-gray-500"><?php esc_html_e( 'Max 5MB. First row must be column headers.', 'wp-ai-chatbot' ); ?></p>
-							</div>
-							<div id="wpaic-upload-status" class="hidden">
-								<div class="flex items-center text-sm">
-									<span class="spinner is-active" style="float: none; margin: 0 8px 0 0;"></span>
-									<span><?php esc_html_e( 'Uploading...', 'wp-ai-chatbot' ); ?></span>
-								</div>
-							</div>
-							<div id="wpaic-upload-result" class="hidden"></div>
-						</div>
-						<div class="mt-6 flex justify-end gap-3">
-							<button type="button" class="wpaic-modal-cancel px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
-								<?php esc_html_e( 'Cancel', 'wp-ai-chatbot' ); ?>
-							</button>
-							<button type="submit" id="wpaic-upload-btn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
-								<?php esc_html_e( 'Upload', 'wp-ai-chatbot' ); ?>
-							</button>
-						</div>
-					</form>
-				</div>
-			</div>
-		</div>
-
-		<style>
-			#wpaic-source-modal .wpaic-modal-backdrop {
-				position: fixed;
-				top: 0; left: 0; right: 0; bottom: 0;
-				background: rgba(0,0,0,0.5);
-				z-index: 100000;
-			}
-			#wpaic-source-modal .wpaic-modal-content {
-				position: fixed;
-				top: 50%; left: 50%;
-				transform: translate(-50%, -50%);
-				background: #fff;
-				width: 500px;
-				max-width: 90%;
-				border-radius: 8px;
-				z-index: 100001;
-			}
-			#wpaic-source-modal .wpaic-modal-header {
-				padding: 16px 20px;
-				border-bottom: 1px solid #e5e7eb;
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-			}
-			#wpaic-source-modal .wpaic-modal-header h2 {
-				margin: 0;
-				font-size: 18px;
-			}
-			#wpaic-source-modal .wpaic-modal-close {
-				background: none;
-				border: none;
-				font-size: 24px;
-				cursor: pointer;
-				padding: 0;
-				color: #6b7280;
-			}
-			#wpaic-source-modal .wpaic-modal-body {
-				padding: 20px;
-			}
-		</style>
-
-		<script>
-		jQuery(document).ready(function($) {
-			$('#wpaic-add-source, #wpaic-data-sources-header').on('click', function() {
-				$('#wpaic-source-modal').show();
-				$('#wpaic-source-form')[0].reset();
-				$('#wpaic-upload-status, #wpaic-upload-result').addClass('hidden');
-			});
-
-			$('.wpaic-modal-close, .wpaic-modal-cancel, .wpaic-modal-backdrop').on('click', function() {
-				$('#wpaic-source-modal').hide();
-			});
-
-			$('#wpaic-source-form').on('submit', function(e) {
-				e.preventDefault();
-				var formData = new FormData(this);
-				formData.append('action', 'wpaic_upload_csv');
-				formData.append('_wpnonce', '<?php echo esc_js( wp_create_nonce( 'wpaic_upload_csv' ) ); ?>');
-
-				$('#wpaic-upload-status').removeClass('hidden');
-				$('#wpaic-upload-result').addClass('hidden');
-				$('#wpaic-upload-btn').prop('disabled', true);
-
-				$.ajax({
-					url: ajaxurl,
-					type: 'POST',
-					data: formData,
-					processData: false,
-					contentType: false,
-					success: function(response) {
-						$('#wpaic-upload-status').addClass('hidden');
-						$('#wpaic-upload-btn').prop('disabled', false);
-						if (response.success) {
-							$('#wpaic-upload-result').removeClass('hidden').html(
-								'<div class="p-3 bg-green-50 text-green-700 rounded-md text-sm">' +
-								'<strong><?php echo esc_js( __( 'Success!', 'wp-ai-chatbot' ) ); ?></strong> ' + response.data.message +
-								'</div>'
-							);
-							setTimeout(function() { location.reload(); }, 1500);
-						} else {
-							$('#wpaic-upload-result').removeClass('hidden').html(
-								'<div class="p-3 bg-red-50 text-red-700 rounded-md text-sm">' +
-								'<strong><?php echo esc_js( __( 'Error:', 'wp-ai-chatbot' ) ); ?></strong> ' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Upload failed.', 'wp-ai-chatbot' ) ); ?>') +
-								'</div>'
-							);
-						}
-					},
-					error: function() {
-						$('#wpaic-upload-status').addClass('hidden');
-						$('#wpaic-upload-btn').prop('disabled', false);
-						$('#wpaic-upload-result').removeClass('hidden').html(
-							'<div class="p-3 bg-red-50 text-red-700 rounded-md text-sm"><?php echo esc_js( __( 'Request failed. Please try again.', 'wp-ai-chatbot' ) ); ?></div>'
-						);
-					}
-				});
-			});
-
-			$('.wpaic-delete-source').on('click', function() {
-				if (!confirm('<?php echo esc_js( __( 'Delete this data source? This cannot be undone.', 'wp-ai-chatbot' ) ); ?>')) {
-					return;
-				}
-				var $btn = $(this);
-				var id = $btn.data('id');
-				$.ajax({
-					url: ajaxurl,
-					type: 'POST',
-					data: {
-						action: 'wpaic_delete_data_source',
-						source_id: id,
-						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_delete_source' ) ); ?>'
-					},
-					success: function(response) {
-						if (response.success) {
-							$btn.closest('tr').fadeOut(function() { $(this).remove(); });
-						} else {
-							alert(response.data ? response.data.message : '<?php echo esc_js( __( 'Delete failed.', 'wp-ai-chatbot' ) ); ?>');
-						}
-					}
-				});
-			});
-
-			$('#wpaic-save-faqs').on('click', function() {
-				var $btn = $(this);
-				var $status = $('#wpaic-faq-status');
-				var content = $('#wpaic_faq_content').val();
-
-				$btn.prop('disabled', true).text('<?php echo esc_js( __( 'Saving...', 'wp-ai-chatbot' ) ); ?>');
-				$status.addClass('hidden');
-
-				$.ajax({
-					url: ajaxurl,
-					type: 'POST',
-					data: {
-						action: 'wpaic_save_faqs',
-						faq_content: content,
-						_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_save_faqs' ) ); ?>'
-					},
-					success: function(response) {
-						$btn.prop('disabled', false).text('<?php echo esc_js( __( 'Save FAQs', 'wp-ai-chatbot' ) ); ?>');
-						if (response.success) {
-							$status.removeClass('hidden text-red-600').addClass('text-green-600').text(response.data.message);
-						} else {
-							$status.removeClass('hidden text-green-600').addClass('text-red-600').text(response.data ? response.data.message : '<?php echo esc_js( __( 'Save failed.', 'wp-ai-chatbot' ) ); ?>');
-						}
-					},
-					error: function() {
-						$btn.prop('disabled', false).text('<?php echo esc_js( __( 'Save FAQs', 'wp-ai-chatbot' ) ); ?>');
-						$status.removeClass('hidden text-green-600').addClass('text-red-600').text('<?php echo esc_js( __( 'Request failed.', 'wp-ai-chatbot' ) ); ?>');
-					}
-				});
-			});
-		});
-		</script>
-		<?php
-	}
 
 	public function ajax_upload_csv(): void {
 		check_ajax_referer( 'wpaic_upload_csv', '_wpnonce' );

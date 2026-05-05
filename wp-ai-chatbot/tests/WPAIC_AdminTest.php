@@ -614,8 +614,7 @@ class WPAIC_AdminTest extends TestCase {
 		$output = ob_get_clean();
 
 		$this->assertStringContainsString( 'Chat Logs', $output );
-		$this->assertStringContainsString( '<table', $output );
-		$this->assertStringContainsString( 'wp-list-table', $output );
+		$this->assertStringContainsString( 'wpaic-card', $output );
 	}
 
 	public function test_render_logs_page_hides_id_user_session_columns(): void {
@@ -633,10 +632,8 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertStringNotContainsString( '>ID<', $output );
 		$this->assertStringNotContainsString( '>Session<', $output );
 		$this->assertStringNotContainsString( '>User<', $output );
-		$this->assertStringContainsString( 'Messages', $output );
-		$this->assertStringContainsString( 'Started', $output );
-		$this->assertStringContainsString( 'Last Activity', $output );
-		$this->assertStringContainsString( 'Actions', $output );
+		$this->assertStringContainsString( 'Chat Logs', $output );
+		$this->assertStringContainsString( 'No conversations found', $output );
 	}
 
 	public function test_all_settings_fields_have_correct_names(): void {
@@ -800,14 +797,14 @@ class WPAIC_AdminTest extends TestCase {
 		$this->admin->render_settings_page();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'Tone of Voice', $output );
+		$this->assertStringContainsString( 'Tone of voice', $output );
 		$this->assertStringContainsString( 'name="wpaic_settings[tone_of_voice]"', $output );
-		$this->assertStringContainsString( 'Neutral (Balanced, factual, straightforward, no strong tone)', $output );
-		$this->assertStringContainsString( 'Friendly (Warm, conversational, approachable, uses casual language)', $output );
-		$this->assertStringContainsString( 'Professional (Neutral, task-focused, clear and efficient, straight to the point)', $output );
-		$this->assertStringContainsString( 'Enthusiastic (Upbeat, energetic, positive, more expressive without being pushy)', $output );
-		$this->assertMatchesRegularExpression( '/value="professional"[^>]*selected/', $output );
-		$this->assertStringContainsString( 'fine-tune or override the selected tone of voice', $output );
+		$this->assertStringContainsString( 'Neutral', $output );
+		$this->assertStringContainsString( 'Friendly', $output );
+		$this->assertStringContainsString( 'Professional', $output );
+		$this->assertStringContainsString( 'Enthusiastic', $output );
+		$this->assertMatchesRegularExpression( '/value="professional"[^>]*checked/', $output );
+		$this->assertStringContainsString( 'overrides tone preset', $output );
 
 		unset( $_GET['tab'] );
 	}
@@ -980,7 +977,7 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertSame( array(), $sanitized['content_index_post_types'] );
 	}
 
-	public function test_search_tab_renders_unified_search_controls(): void {
+	public function test_knowledge_tab_renders_indexed_content_controls(): void {
 		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
@@ -989,18 +986,15 @@ class WPAIC_AdminTest extends TestCase {
 				'content_index_post_types' => array( 'page', 'post' ),
 			)
 		);
-		$_GET['tab'] = 'search';
+		$_GET['tab'] = 'knowledge';
 
 		ob_start();
 		$this->admin->render_settings_page();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'Indexed Sources', $output );
+		$this->assertStringContainsString( 'Indexed site content', $output );
 		$this->assertStringContainsString( 'Products', $output );
-		$this->assertStringContainsString( 'Site Content', $output );
-		$this->assertStringContainsString( 'Update Search Indexes', $output );
 		$this->assertStringContainsString( 'wpaic-update-search-indexes', $output );
-		$this->assertStringNotContainsString( 'Rebuild Content Index', $output );
 
 		unset( $_GET['tab'] );
 	}
@@ -1290,11 +1284,11 @@ class WPAIC_AdminTest extends TestCase {
 
 		$this->assertStringContainsString( 'id="wpaic_logo_upload"', $output );
 		$this->assertMatchesRegularExpression( '/id="wpaic_logo_remove"[^>]*style="display:none"/', $output );
-		$this->assertMatchesRegularExpression( '/id="wpaic_logo_preview"[^>]*style="display:none"/', $output );
+		$this->assertMatchesRegularExpression( '/id="wpaic_logo_preview"[^>]*style="display:none;?"/', $output );
 		unset( $_GET['tab'] );
 	}
 
-	public function test_logo_preview_constrained_to_32px_height(): void {
+	public function test_logo_preview_shows_image_when_logo_set(): void {
 		$_GET['tab'] = 'appearance';
 		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
 		WPAICTestHelper::set_option( 'wpaic_settings', array(
@@ -1307,8 +1301,8 @@ class WPAIC_AdminTest extends TestCase {
 		$this->admin->render_settings_page();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'max-h-8', $output );
-		$this->assertStringNotContainsString( 'max-h-16', $output );
+		$this->assertStringContainsString( 'id="wpaic_logo_preview"', $output );
+		$this->assertStringContainsString( 'https://example.com/big-logo.png', $output );
 		unset( $_GET['tab'] );
 	}
 
@@ -1365,7 +1359,7 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 		$this->admin->render_settings_page();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'Required Fields', $output );
+		$this->assertStringContainsString( 'Collected fields', $output );
 		$this->assertStringContainsString( 'Phone Number', $output );
 		$this->assertStringContainsString( 'Company', $output );
 		$this->assertStringContainsString( 'Order Number', $output );
@@ -1456,7 +1450,7 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 		$this->admin->render_settings_page();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( 'Conversation Starters', $output );
+		$this->assertStringContainsString( 'Conversation starters', $output );
 		$this->assertStringContainsString( 'wpaic_settings[conversation_starters][]', $output );
 		$this->assertStringContainsString( 'Find a product', $output );
 		$this->assertStringContainsString( 'Track my order', $output );
