@@ -69,7 +69,7 @@ class WPAIC_Admin {
 					'frame.on("select",function(){' .
 						'var a=frame.state().get("selection").first().toJSON();' .
 						'if(!a.type||a.type!=="image"){alert("Please select an image file (JPEG, PNG, GIF, WebP, or SVG).");return;}' .
-						'$("#wpaic_chatbot_logo").val(a.url);' .
+						'$("#wpaic_chatbot_logo").val(a.url).trigger("input")[0].dispatchEvent(new Event("input",{bubbles:true}));' .
 						'$("#wpaic_logo_preview").attr("src",a.url).show();' .
 						'if($("#wpaic_logo_letter").length){$("#wpaic_logo_letter").hide();}' .
 						'$("#wpaic_logo_remove").show();' .
@@ -78,7 +78,7 @@ class WPAIC_Admin {
 				'});' .
 				'$("#wpaic_logo_remove").on("click",function(e){' .
 					'e.preventDefault();' .
-					'$("#wpaic_chatbot_logo").val("");' .
+					'$("#wpaic_chatbot_logo").val("")[0].dispatchEvent(new Event("input",{bubbles:true}));' .
 					'$("#wpaic_logo_preview").hide();' .
 					'if($("#wpaic_logo_letter").length){$("#wpaic_logo_letter").show();}' .
 					'$(this).hide();' .
@@ -99,6 +99,52 @@ class WPAIC_Admin {
 						array(),
 						WPAIC_VERSION
 					);
+				}
+				if ( is_array( $manifest ) && isset( $manifest['src/admin-preview.tsx'] ) ) {
+					$preview_entry = $manifest['src/admin-preview.tsx'];
+					$css_files     = array();
+					if ( ! empty( $preview_entry['css'] ) ) {
+						$css_files = array_merge( $css_files, (array) $preview_entry['css'] );
+					}
+					if ( ! empty( $preview_entry['imports'] ) ) {
+						foreach ( (array) $preview_entry['imports'] as $import_key ) {
+							if ( isset( $manifest[ $import_key ]['css'] ) ) {
+								$css_files = array_merge( $css_files, (array) $manifest[ $import_key ]['css'] );
+							}
+						}
+					}
+					foreach ( $css_files as $index => $css_file ) {
+						wp_enqueue_style(
+							'wpaic-admin-preview-css-' . $index,
+							WPAIC_PLUGIN_URL . 'frontend/dist/' . $css_file,
+							array(),
+							WPAIC_VERSION
+						);
+					}
+					wp_enqueue_script(
+						'wpaic-admin-preview',
+						WPAIC_PLUGIN_URL . 'frontend/dist/' . $preview_entry['file'],
+						array(),
+						WPAIC_VERSION,
+						true
+					);
+					add_filter( 'script_loader_tag', function ( string $tag, string $handle ) {
+						if ( 'wpaic-admin-preview' === $handle ) {
+							return str_replace( '<script ', '<script type="module" ', $tag );
+						}
+						return $tag;
+					}, 10, 2 );
+					$settings = get_option( 'wpaic_settings', array() );
+					if ( ! is_array( $settings ) ) {
+						$settings = array();
+					}
+					wp_localize_script( 'wpaic-admin-preview', 'wpaicAdminPreview', array(
+						'greeting'    => $settings['greeting_message'] ?? 'Hello! How can I help you today?',
+						'chatbotName' => $settings['chatbot_name'] ?? '',
+						'chatbotLogo' => $settings['chatbot_logo'] ?? '',
+						'chatbotRole' => $settings['chatbot_role'] ?? '',
+						'themeColor'  => $settings['theme_color'] ?? '#2545B8',
+					) );
 				}
 			}
 		}
@@ -878,13 +924,13 @@ class WPAIC_Admin {
 		$chatbot_role  = $settings['chatbot_role'] ?? '';
 		$preset_colors = array( '#1e2b5e', '#0f172a', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#059669', '#0d9488', '#475569' );
 		?>
-		<div class="max-w-[960px] mx-auto px-8 pt-7 pb-4">
+		<div class="max-w-[1200px] mx-auto px-8 pt-7 pb-4">
 			<div class="mb-6">
 				<h2 class="text-[26px] font-semibold text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'Appearance', 'wp-ai-chatbot' ); ?></h2>
 				<p class="text-muted text-sm mt-1"><?php esc_html_e( 'How the chat widget looks on your site.', 'wp-ai-chatbot' ); ?></p>
 			</div>
 
-			<div class="grid grid-cols-[1fr_340px] gap-6">
+			<div class="grid grid-cols-[1fr_480px] gap-6">
 				<div class="flex flex-col gap-[18px]">
 					<div class="wpaic-card">
 						<div class="wpaic-card-header">
@@ -957,13 +1003,8 @@ class WPAIC_Admin {
 
 				<div class="sticky top-[140px] self-start">
 					<div class="rounded-[14px] border border-line overflow-hidden p-[22px] relative" style="min-height: 440px; background: linear-gradient(180deg, #eeece5, #f7f6f3);">
-						<div class="absolute top-3 left-3.5 text-[10.5px] tracking-widest uppercase font-semibold text-muted bg-surface px-2 py-1 rounded-md border border-line"><?php esc_html_e( 'Live preview', 'wp-ai-chatbot' ); ?></div>
-						<div class="mt-[30px] opacity-50">
-							<div class="h-2.5 w-[40%] bg-black/10 rounded-[3px] mb-2.5"></div>
-							<div class="h-1.5 w-[70%] bg-black/5 rounded-[3px] mb-1.5"></div>
-							<div class="h-1.5 w-[60%] bg-black/5 rounded-[3px] mb-1.5"></div>
-						</div>
-						<div class="text-center text-muted text-[13px] mt-16 px-4"><?php esc_html_e( 'Chat preview coming soon', 'wp-ai-chatbot' ); ?></div>
+						<div class="absolute top-3 left-3.5 text-[10.5px] tracking-widest uppercase font-semibold text-muted bg-surface px-2 py-1 rounded-md border border-line z-10"><?php esc_html_e( 'Live preview', 'wp-ai-chatbot' ); ?></div>
+						<div class="mt-[30px]" id="wpaic-admin-preview"></div>
 					</div>
 				</div>
 			</div>

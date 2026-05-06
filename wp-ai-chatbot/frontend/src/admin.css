@@ -271,3 +271,24 @@
     border-color: var(--color-ink);
   }
 }
+
+#wpaic-admin-preview textarea {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 8px 8px 8px 0;
+  margin: 0;
+  min-height: 0;
+  max-height: none;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.4;
+  color: #1e293b;
+  resize: none;
+  outline: none;
+}
+#wpaic-admin-preview textarea:focus {
+  box-shadow: none;
+  border: 0;
+  outline: none;
+}

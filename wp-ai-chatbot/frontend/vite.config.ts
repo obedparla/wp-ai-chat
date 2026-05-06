@@ -16,6 +16,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         admin: 'admin.html',
+        'admin-preview': 'src/admin-preview.tsx',
       },
     },
   },

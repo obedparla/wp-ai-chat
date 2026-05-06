@@ -39,15 +39,24 @@ class WPAIC_Frontend {
 			$entry = $manifest['index.html'] ?? null;
 
 			if ( is_array( $entry ) && isset( $entry['file'] ) ) {
+				$css_files = array();
 				if ( ! empty( $entry['css'] ) && is_array( $entry['css'] ) ) {
-					foreach ( $entry['css'] as $css_file ) {
-						wp_enqueue_style(
-							'wpaic-chatbot',
-							WPAIC_PLUGIN_URL . 'frontend/dist/' . $css_file,
-							array(),
-							WPAIC_VERSION
-						);
+					$css_files = array_merge( $css_files, (array) $entry['css'] );
+				}
+				if ( ! empty( $entry['imports'] ) && is_array( $entry['imports'] ) ) {
+					foreach ( $entry['imports'] as $import_key ) {
+						if ( isset( $manifest[ $import_key ]['css'] ) ) {
+							$css_files = array_merge( $css_files, (array) $manifest[ $import_key ]['css'] );
+						}
 					}
+				}
+				foreach ( $css_files as $index => $css_file ) {
+					wp_enqueue_style(
+						'wpaic-chatbot-' . $index,
+						WPAIC_PLUGIN_URL . 'frontend/dist/' . $css_file,
+						array(),
+						WPAIC_VERSION
+					);
 				}
 
 				wp_enqueue_script(
@@ -57,6 +66,12 @@ class WPAIC_Frontend {
 					WPAIC_VERSION,
 					true
 				);
+				add_filter( 'script_loader_tag', function ( string $tag, string $handle ) {
+					if ( 'wpaic-chatbot' === $handle ) {
+						return str_replace( '<script ', '<script type="module" ', $tag );
+					}
+					return $tag;
+				}, 10, 2 );
 			}
 		}
 

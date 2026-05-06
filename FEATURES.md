@@ -94,3 +94,9 @@
 ## Conversation starters
 - Customizable options that show up at the start of a conversation
 - Shows sensible defaults
+
+## Admin Live Chat Preview
+- Appearance tab renders real ChatWidget UI (reuses production component)
+- Live updates from form inputs: name, role, logo, theme color
+- Sample conversation with greeting, customer message, and product carousel
+- Inert links/buttons but scrollable message list and carousel
