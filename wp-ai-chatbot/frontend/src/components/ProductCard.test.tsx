@@ -182,6 +182,26 @@ describe('ProductCard', () => {
     })
   })
 
+  it('renders SOLD OUT button when stock_status is outofstock', () => {
+    const outOfStock: Product = { ...mockProduct, stock_status: 'outofstock' }
+    render(<ProductCard product={outOfStock} />)
+    const soldOut = screen.getByRole('button', { name: /sold out/i })
+    expect(soldOut).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /add to cart/i })).not.toBeInTheDocument()
+  })
+
+  it('renders SOLD OUT button when not purchasable', () => {
+    const notPurchasable: Product = { ...mockProduct, is_purchasable: false }
+    render(<ProductCard product={notPurchasable} />)
+    expect(screen.getByRole('button', { name: /sold out/i })).toBeDisabled()
+  })
+
+  it('treats onbackorder as in-stock', () => {
+    const backorder: Product = { ...mockProduct, stock_status: 'onbackorder' }
+    render(<ProductCard product={backorder} />)
+    expect(screen.getByRole('button', { name: /add to cart/i })).toBeInTheDocument()
+  })
+
   it('falls back to redirect on fetch error', async () => {
     const originalLocation = window.location
     Object.defineProperty(window, 'location', {

@@ -7,5 +7,6 @@ parameters:
         - vendor
     bootstrapFiles:
         - phpstan-bootstrap.php
+        - phpstan-bootstrap-cli.php
         - vendor/autoload.php
     treatPhpDocTypesAsCertain: false

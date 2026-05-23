@@ -35,5 +35,4 @@ Once done, reassess them and ask yourself if the descriptions are clear enough f
 
 Features/fixes to write PRD for:
 
-- Implement a "Send transcript" button in the chatbot frontend. the button should be next to the "clat chat" as an email icon. Once clicked it should open a little dialog asking for the email, and a "Send transcript" button below it. Once clicked it should update the dialog to a "We've sent you the email transcript over email" which shows for 5 seconds. Use shadcn/ui component for this if possible. The dialog should remain WITHIN the chatbot, not go outside its boundaries. The email should be sent right away with a very basic text transcript.
 - 

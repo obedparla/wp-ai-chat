@@ -1,5 +1,6 @@
 import ProductCard, { Product } from './ProductCard'
 import VariableProductCard from './VariableProductCard'
+import LinkProductCard from './LinkProductCard'
 import {
   Carousel,
   CarouselContent,
@@ -12,9 +13,12 @@ interface ProductGridProps {
   products: Product[]
 }
 
-function isSimpleVariableProduct(product: Product): boolean {
+const VARIABLE_TYPES = new Set(['variable', 'variable-subscription'])
+const SIMPLE_TYPES = new Set(['simple', 'subscription'])
+
+function canRenderVariableInline(product: Product): boolean {
   return (
-    product.product_type === 'variable' &&
+    VARIABLE_TYPES.has(product.product_type ?? '') &&
     !product.is_complex &&
     Array.isArray(product.attributes) &&
     product.attributes.length > 0 &&
@@ -24,10 +28,49 @@ function isSimpleVariableProduct(product: Product): boolean {
 }
 
 function renderProductCard(product: Product) {
-  return isSimpleVariableProduct(product) ? (
-    <VariableProductCard key={product.id} product={product} />
-  ) : (
-    <ProductCard key={product.id} product={product} />
+  const type = product.product_type ?? 'simple'
+
+  if (canRenderVariableInline(product)) {
+    return <VariableProductCard key={product.id} product={product} />
+  }
+
+  if (type === 'external') {
+    const href = product.external_url || product.url
+    return (
+      <LinkProductCard
+        key={product.id}
+        product={product}
+        href={href}
+        target="_blank"
+        label={product.button_text || 'Buy product'}
+      />
+    )
+  }
+
+  if (type === 'grouped' || type === 'bundle') {
+    return (
+      <LinkProductCard
+        key={product.id}
+        product={product}
+        href={product.url}
+        target="_blank"
+        label="View options"
+      />
+    )
+  }
+
+  if (SIMPLE_TYPES.has(type) || VARIABLE_TYPES.has(type)) {
+    return <ProductCard key={product.id} product={product} />
+  }
+
+  return (
+    <LinkProductCard
+      key={product.id}
+      product={product}
+      href={product.url}
+      target="_blank"
+      label="View product"
+    />
   )
 }
 

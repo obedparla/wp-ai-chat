@@ -51,6 +51,7 @@
 - Categories listing tool
 - Guided shopping flow for broad queries (top categories first + one clarifying question)
 - Product cards with images, prices, descriptions
+- Product type-aware cards: external products link to affiliate URL with custom button text, grouped/bundle link to product page with "View options", out-of-stock simple products show disabled "Sold out" button, subscriptions render as simple/variable, unknown types fall back to "View product" link
 
 ## Handoff to Human Support
 - Toggle to enable/disable handoff feature

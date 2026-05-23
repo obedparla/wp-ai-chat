@@ -15,6 +15,7 @@ interface ChatWidgetUIProps {
   inputRef?: React.Ref<HTMLTextAreaElement>
   placeholder?: string
   headerActions?: ReactNode
+  loadingIndicator?: ReactNode
   children?: ReactNode
 }
 
@@ -30,6 +31,7 @@ export default function ChatWidgetUI({
   inputRef,
   placeholder,
   headerActions,
+  loadingIndicator,
   children,
 }: ChatWidgetUIProps) {
   const hasName = chatbotName && chatbotName.trim().length > 0
@@ -77,6 +79,7 @@ export default function ChatWidgetUI({
       <MessageList messages={messages} onRetry={onRetry}>
         {children}
       </MessageList>
+      {loadingIndicator}
       <ChatInput
         ref={inputRef}
         value={input}

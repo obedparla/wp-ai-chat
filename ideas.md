@@ -1,0 +1,6 @@
+- Daily message cap per visitor on the chatbot
+- System prompt variables
+- Add more languages to response language
+- Overview page like designed by claude design
+- Timezone for timestamps should be translated to the user's locale
+- Business hours only for human handoff?

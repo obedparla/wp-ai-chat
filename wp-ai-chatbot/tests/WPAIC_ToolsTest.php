@@ -15,14 +15,16 @@ class WPAIC_ToolsTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		WPAICTestHelper::reset();
-		global $mock_wc;
-		$mock_wc    = new MockWooCommerce();
-		$this->tools = new WPAIC_Tools();
+		global $mock_wc, $mock_wc_products;
+		$mock_wc          = new MockWooCommerce();
+		$mock_wc_products = array();
+		$this->tools      = new WPAIC_Tools();
 	}
 
 	protected function tearDown(): void {
-		global $mock_wc;
-		$mock_wc = null;
+		global $mock_wc, $mock_wc_products;
+		$mock_wc          = null;
+		$mock_wc_products = array();
 		WPAICTestHelper::reset();
 		parent::tearDown();
 	}
@@ -193,6 +195,52 @@ class WPAIC_ToolsTest extends TestCase {
 		$result = $this->tools->get_product_details( 1 );
 
 		$this->assertNull( $result );
+	}
+
+	public function test_search_products_includes_stock_status_and_purchasable(): void {
+		$this->create_mock_product( 1, 'In Stock Product', '19.99' );
+		global $mock_wc_products;
+		$mock_wc_products[1] = new MockWCProduct( 1, true, true, 'simple' );
+
+		$result = $this->tools->search_products( array() );
+
+		$this->assertArrayHasKey( 'stock_status', $result[0] );
+		$this->assertArrayHasKey( 'is_purchasable', $result[0] );
+		$this->assertEquals( 'instock', $result[0]['stock_status'] );
+		$this->assertTrue( $result[0]['is_purchasable'] );
+	}
+
+	public function test_search_products_marks_out_of_stock(): void {
+		$this->create_mock_product( 1, 'Sold Out', '19.99' );
+		global $mock_wc_products;
+		$mock_wc_products[1] = new MockWCProduct( 1, true, false, 'simple' );
+
+		$result = $this->tools->search_products( array() );
+
+		$this->assertEquals( 'outofstock', $result[0]['stock_status'] );
+	}
+
+	public function test_search_products_includes_external_url_and_button_text(): void {
+		$this->create_mock_product( 1, 'Affiliate Product', '99.00' );
+		global $mock_wc_products;
+		$mock = new MockWCProduct( 1, true, true, 'external' );
+		$mock->set_external( 'https://amazon.com/dp/ABC', 'Buy on Amazon' );
+		$mock_wc_products[1] = $mock;
+
+		$result = $this->tools->search_products( array() );
+
+		$this->assertEquals( 'external', $result[0]['product_type'] );
+		$this->assertEquals( 'https://amazon.com/dp/ABC', $result[0]['external_url'] );
+		$this->assertEquals( 'Buy on Amazon', $result[0]['button_text'] );
+	}
+
+	public function test_search_products_omits_external_fields_for_simple_products(): void {
+		$this->create_mock_product( 1, 'Simple Product', '19.99' );
+
+		$result = $this->tools->search_products( array() );
+
+		$this->assertArrayNotHasKey( 'external_url', $result[0] );
+		$this->assertArrayNotHasKey( 'button_text', $result[0] );
 	}
 
 	public function test_get_product_details_returns_detailed_product_info(): void {

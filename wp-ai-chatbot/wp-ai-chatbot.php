@@ -133,6 +133,10 @@ if ( file_exists( WPAIC_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
 
 require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-loader.php';
 
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+	require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-cli.php';
+}
+
 /**
  * Read local file contents using WP filesystem.
  *

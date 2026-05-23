@@ -182,6 +182,25 @@ export default function ChatWidget({
         onRetry={retry}
         inputRef={inputRef}
         headerActions={headerActions}
+        loadingIndicator={
+          isLoading && activeTools.length > 0 ? (
+            <div className="py-3 px-5 flex flex-col gap-2 bg-white border-t border-slate-100">
+              {activeTools.map((tool, i) => (
+                <div
+                  key={`${tool.toolName}-${i}`}
+                  className="flex items-center gap-2.5 text-[var(--wpaic-primary)] text-[13px] font-medium"
+                >
+                  <span className="w-4 h-4 border-2 border-slate-200 border-t-[var(--wpaic-primary)] rounded-full animate-spin" />
+                  {getToolProgressMessage(tool)}
+                </div>
+              ))}
+            </div>
+          ) : isLoading ? (
+            <div className="py-3 px-5 text-slate-500 text-[13px] flex items-center gap-2 bg-white border-t border-slate-100 before:content-[''] before:w-2 before:h-2 before:bg-[var(--wpaic-primary)] before:rounded-full before:animate-bounce">
+              Typing...
+            </div>
+          ) : null
+        }
       >
         {showConversationStarters && (
           <ConversationStarters
@@ -190,24 +209,6 @@ export default function ChatWidget({
           />
         )}
       </ChatWidgetUI>
-      {isLoading && activeTools.length > 0 && (
-        <div className="absolute bottom-[72px] left-0 right-0 py-3 px-5 flex flex-col gap-2 bg-white border-t border-slate-100">
-          {activeTools.map((tool, i) => (
-            <div
-              key={`${tool.toolName}-${i}`}
-              className="flex items-center gap-2.5 text-[var(--wpaic-primary)] text-[13px] font-medium"
-            >
-              <span className="w-4 h-4 border-2 border-slate-200 border-t-[var(--wpaic-primary)] rounded-full animate-spin" />
-              {getToolProgressMessage(tool)}
-            </div>
-          ))}
-        </div>
-      )}
-      {isLoading && activeTools.length === 0 && (
-        <div className="absolute bottom-[72px] left-0 right-0 py-3 px-5 text-slate-500 text-[13px] flex items-center gap-2 bg-white border-t border-slate-100 before:content-[''] before:w-2 before:h-2 before:bg-[var(--wpaic-primary)] before:rounded-full before:animate-bounce">
-          Typing...
-        </div>
-      )}
     </div>
   )
 }

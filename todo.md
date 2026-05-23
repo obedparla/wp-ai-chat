@@ -1,3 +1,14 @@
+## Before release:
+
+- Test everything
+- Add test products to test 
+- Make sure the flow works great
+- test Freemius
+- Give to someone to early test?
+- Join fb/telegram/discord groups for wordpress 
+
+
+
 Feature ideas. Mark as "Done: true" when one is finished.
 
 # WP AI Chatbot — Feature Ideas

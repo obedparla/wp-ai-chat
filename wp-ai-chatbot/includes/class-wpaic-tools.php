@@ -332,7 +332,20 @@ class WPAIC_Tools {
 			'short_description' => wp_strip_all_tags( $post->post_excerpt ),
 			'add_to_cart_url'   => add_query_arg( 'add-to-cart', $post->ID, wc_get_cart_url() ),
 			'product_type'      => $product_type,
+			'stock_status'      => $wc_product->get_stock_status(),
+			'is_purchasable'    => $wc_product->is_purchasable(),
 		);
+
+		if ( 'external' === $product_type && method_exists( $wc_product, 'get_product_url' ) ) {
+			$external_url = $wc_product->get_product_url();
+			$button_text  = method_exists( $wc_product, 'get_button_text' ) ? $wc_product->get_button_text() : '';
+			if ( is_string( $external_url ) && '' !== $external_url ) {
+				$product_data['external_url'] = $external_url;
+			}
+			if ( is_string( $button_text ) && '' !== $button_text ) {
+				$product_data['button_text'] = $button_text;
+			}
+		}
 
 		$thumbnail_id = get_post_thumbnail_id( $post->ID );
 		if ( $thumbnail_id ) {
@@ -354,7 +367,6 @@ class WPAIC_Tools {
 			$product_data['description']       = $post->post_content;
 			$product_data['short_description'] = $post->post_excerpt;
 			$product_data['sku']               = get_post_meta( $post->ID, '_sku', true );
-			$product_data['stock_status']      = get_post_meta( $post->ID, '_stock_status', true );
 			$product_data['stock_quantity']    = get_post_meta( $post->ID, '_stock', true );
 		}
 

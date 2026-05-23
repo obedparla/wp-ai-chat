@@ -106,4 +106,94 @@ describe('ProductGrid', () => {
     expect(screen.getByText('Variable Product')).toBeInTheDocument()
     expect(screen.getByLabelText('Size')).toBeInTheDocument()
   })
+
+  it('renders external products with custom button text linking to external_url', () => {
+    const external: Product = {
+      id: 10,
+      name: 'Affiliate Item',
+      url: 'https://example.com/product/10',
+      price: '99.00',
+      product_type: 'external',
+      external_url: 'https://amazon.com/dp/ABC',
+      button_text: 'Buy on Amazon',
+    }
+    render(<ProductGrid products={[external]} />)
+    const links = screen.getAllByRole('link')
+    const buyLink = links.find((l) => l.textContent?.includes('BUY ON AMAZON'))
+    expect(buyLink).toBeDefined()
+    expect(buyLink).toHaveAttribute('href', 'https://amazon.com/dp/ABC')
+    expect(buyLink).toHaveAttribute('target', '_blank')
+  })
+
+  it('falls back to "Buy product" label for external without button_text', () => {
+    const external: Product = {
+      id: 11,
+      name: 'External Item',
+      url: 'https://example.com/product/11',
+      price: '50.00',
+      product_type: 'external',
+      external_url: 'https://other.com',
+    }
+    render(<ProductGrid products={[external]} />)
+    expect(screen.getByText(/BUY PRODUCT/i)).toBeInTheDocument()
+  })
+
+  it('renders grouped products with View options button', () => {
+    const grouped: Product = {
+      id: 12,
+      name: 'Grouped Item',
+      url: 'https://example.com/product/12',
+      price: '20.00',
+      product_type: 'grouped',
+    }
+    render(<ProductGrid products={[grouped]} />)
+    expect(screen.getByText(/VIEW OPTIONS/i)).toBeInTheDocument()
+  })
+
+  it('renders bundle products with View options button', () => {
+    const bundle: Product = {
+      id: 13,
+      name: 'Bundle Item',
+      url: 'https://example.com/product/13',
+      price: '120.00',
+      product_type: 'bundle',
+    }
+    render(<ProductGrid products={[bundle]} />)
+    expect(screen.getByText(/VIEW OPTIONS/i)).toBeInTheDocument()
+  })
+
+  it('renders unknown product types as link cards with View product label', () => {
+    const unknown: Product = {
+      id: 14,
+      name: 'Unknown Item',
+      url: 'https://example.com/product/14',
+      price: '10.00',
+      product_type: 'composite' as Product['product_type'],
+    }
+    render(<ProductGrid products={[unknown]} />)
+    expect(screen.getByText(/VIEW PRODUCT/i)).toBeInTheDocument()
+  })
+
+  it('renders subscription products as ProductCard with Add button', () => {
+    const subscription: Product = {
+      id: 15,
+      name: 'Monthly Box',
+      url: 'https://example.com/product/15',
+      price: '29.99',
+      product_type: 'subscription',
+    }
+    render(<ProductGrid products={[subscription]} />)
+    expect(screen.getByRole('button', { name: /add to cart/i })).toBeInTheDocument()
+  })
+
+  it('renders variable-subscription as VariableProductCard', () => {
+    const varSub: Product = {
+      ...mockVariableProduct,
+      id: 16,
+      name: 'Variable Subscription',
+      product_type: 'variable-subscription',
+    }
+    render(<ProductGrid products={[varSub]} />)
+    expect(screen.getByLabelText('Size')).toBeInTheDocument()
+  })
 })

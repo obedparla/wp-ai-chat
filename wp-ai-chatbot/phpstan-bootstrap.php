@@ -120,6 +120,9 @@ if (!class_exists('WC_Product')) {
         public function is_in_stock(): bool {
             return true;
         }
+        public function get_stock_status(): string {
+            return 'instock';
+        }
         public function get_id(): int {
             return 0;
         }
@@ -333,5 +336,68 @@ if (!function_exists('get_post_type_archive_link')) {
 if (!function_exists('get_the_title')) {
     function get_the_title(int $post_id = 0): string {
         return '';
+    }
+}
+
+if (!class_exists('WC_Product_Simple')) {
+    class WC_Product_Simple extends WC_Product {
+        public function set_name(string $name): void {}
+        public function set_description(string $description): void {}
+        public function set_short_description(string $description): void {}
+        public function set_regular_price(string $price): void {}
+        public function set_sale_price(string $price): void {}
+        public function set_sku(string $sku): void {}
+        public function set_manage_stock(bool $manage): void {}
+        public function set_stock_quantity(?int $quantity): void {}
+        public function set_stock_status(string $status): void {}
+        public function set_weight(string $weight): void {}
+        public function set_width(string $width): void {}
+        public function set_height(string $height): void {}
+        public function set_length(string $length): void {}
+        public function set_average_rating(string $rating): void {}
+        public function set_review_count(int $count): void {}
+        /** @param array<int, int> $ids */
+        public function set_category_ids(array $ids): void {}
+        /** @param array<int, int> $ids */
+        public function set_tag_ids(array $ids): void {}
+        /** @param array<int, WC_Product_Attribute> $attributes */
+        public function set_attributes(array $attributes): void {}
+        public function update_meta_data(string $key, mixed $value): void {}
+        public function save(): int {
+            return 0;
+        }
+    }
+}
+
+if (!class_exists('WC_Product_Attribute')) {
+    class WC_Product_Attribute {
+        public function set_name(string $name): void {}
+        /** @param array<int, string> $options */
+        public function set_options(array $options): void {}
+        public function set_visible(bool $visible): void {}
+        public function set_variation(bool $variation): void {}
+    }
+}
+
+if (!function_exists('wc_get_product_id_by_sku')) {
+    function wc_get_product_id_by_sku(string $sku): int {
+        return 0;
+    }
+}
+
+if (!class_exists('WP_CLI')) {
+    class WP_CLI {
+        public static function error(string $message): void {}
+        public static function warning(string $message): void {}
+        public static function log(string $message): void {}
+        public static function success(string $message): void {}
+        public static function add_command(string $name, mixed $callable): void {}
+    }
+}
+
+if (!class_exists('WPAIC_PHPStan_ProgressBar')) {
+    class WPAIC_PHPStan_ProgressBar {
+        public function tick(): void {}
+        public function finish(): void {}
     }
 }

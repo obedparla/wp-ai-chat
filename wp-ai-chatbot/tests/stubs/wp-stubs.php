@@ -1708,12 +1708,15 @@ if ( ! class_exists( 'MockWCProduct' ) ) {
 		private int $id;
 		private bool $purchasable;
 		private bool $in_stock;
-		private string $type = 'simple';
+		private string $type      = 'simple';
+		private string $external_url = '';
+		private string $button_text  = '';
 
-		public function __construct( int $id, bool $purchasable = true, bool $in_stock = true ) {
+		public function __construct( int $id, bool $purchasable = true, bool $in_stock = true, string $type = 'simple' ) {
 			$this->id          = $id;
 			$this->purchasable = $purchasable;
 			$this->in_stock    = $in_stock;
+			$this->type        = $type;
 		}
 
 		public function get_id(): int {
@@ -1728,8 +1731,25 @@ if ( ! class_exists( 'MockWCProduct' ) ) {
 			return $this->in_stock;
 		}
 
+		public function get_stock_status(): string {
+			return $this->in_stock ? 'instock' : 'outofstock';
+		}
+
 		public function get_type(): string {
 			return $this->type;
+		}
+
+		public function set_external( string $url, string $button_text ): void {
+			$this->external_url = $url;
+			$this->button_text  = $button_text;
+		}
+
+		public function get_product_url(): string {
+			return $this->external_url;
+		}
+
+		public function get_button_text(): string {
+			return $this->button_text;
 		}
 
 		public function get_name(): string {
