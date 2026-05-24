@@ -196,25 +196,123 @@ class WPAIC_Search_Index {
 		$index_file = $this->index_path . $this->index_name;
 
 		if ( ! file_exists( $index_file ) ) {
-			return $this->fallback_search( $query, $filters, $limit );
+			$product_ids = $this->fallback_search( $query, $filters, $limit * 2 );
+			$product_ids = $this->filter_by_relevance( $product_ids, $query );
+			return array_slice( $product_ids, 0, $limit );
 		}
 
 		$tnt = $this->get_tnt();
 		$tnt->selectIndex( $this->index_name );
 		$tnt->fuzziness = true;
 
-		$results     = $tnt->search( $query, $limit * 2 );
+		$results     = $tnt->search( $query, $limit * 4 );
 		$product_ids = isset( $results['ids'] ) && is_array( $results['ids'] ) ? array_map( 'intval', $results['ids'] ) : array();
 
 		if ( empty( $product_ids ) ) {
-			return $this->fallback_search( $query, $filters, $limit );
+			$product_ids = $this->fallback_search( $query, $filters, $limit * 2 );
 		}
 
 		if ( ! empty( $filters ) ) {
 			$product_ids = $this->apply_filters( $product_ids, $filters );
 		}
 
+		$product_ids = $this->filter_by_relevance( $product_ids, $query );
+
 		return array_slice( $product_ids, 0, $limit );
+	}
+
+	/**
+	 * Drop candidates whose indexed text does not contain every significant
+	 * token from the query. Keeps the carousel and LLM text aligned with the
+	 * user's intent and prevents irrelevant fuzzy/LIKE matches from leaking
+	 * through.
+	 *
+	 * @param array<int> $product_ids
+	 * @return array<int>
+	 */
+	private function filter_by_relevance( array $product_ids, string $query ): array {
+		if ( empty( $product_ids ) ) {
+			return array();
+		}
+
+		$tokens = $this->significant_query_tokens( $query );
+		if ( empty( $tokens ) ) {
+			return $product_ids;
+		}
+
+		$filtered = array();
+		foreach ( $product_ids as $product_id ) {
+			$data = $this->get_product_data( (int) $product_id );
+			if ( null === $data ) {
+				continue;
+			}
+
+			$haystack_raw = strtolower(
+				(string) $data['title']
+				. ' ' . (string) $data['description']
+				. ' ' . (string) $data['sku']
+				. ' ' . (string) $data['categories']
+				. ' ' . (string) $data['attributes']
+			);
+			$haystack_normalized = preg_replace( '/[^a-z0-9]+/', ' ', $haystack_raw );
+			$haystack            = is_string( $haystack_normalized ) ? $haystack_normalized : $haystack_raw;
+			$haystack_tokens     = array_flip( preg_split( '/\s+/', trim( $haystack ) ) ?: array() );
+
+			$matches_all = true;
+			foreach ( $tokens as $token ) {
+				if ( ! isset( $haystack_tokens[ $token ] ) ) {
+					$matches_all = false;
+					break;
+				}
+			}
+
+			if ( $matches_all ) {
+				$filtered[] = (int) $product_id;
+			}
+		}
+
+		return $filtered;
+	}
+
+	/**
+	 * Extract lowercased query tokens worth filtering against. Drops short
+	 * fragments and generic stopwords that would otherwise reject relevant
+	 * products.
+	 *
+	 * @return array<string>
+	 */
+	private function significant_query_tokens( string $query ): array {
+		$normalized = strtolower( $query );
+		$normalized = preg_replace( '/[^a-z0-9]+/', ' ', $normalized );
+		if ( ! is_string( $normalized ) ) {
+			return array();
+		}
+
+		$stopwords = array(
+			'a', 'an', 'the', 'and', 'or', 'but', 'of', 'for', 'with', 'to', 'in', 'on',
+			'at', 'by', 'is', 'are', 'be', 'this', 'that', 'these', 'those', 'i', 'me',
+			'my', 'we', 'our', 'you', 'your', 'show', 'find', 'list', 'give', 'me',
+			'some', 'any', 'please', 'looking', 'need', 'want', 'have', 'has', 'do',
+			'does', 'can', 'could', 'would', 'should', 'product', 'products', 'item',
+			'items', 'price', 'prices', 'picture', 'pictures', 'image', 'images',
+			'actual', 'really', 'real',
+		);
+
+		$tokens = array();
+		foreach ( preg_split( '/\s+/', trim( $normalized ) ) ?: array() as $token ) {
+			if ( '' === $token ) {
+				continue;
+			}
+			if ( strlen( $token ) < 3 ) {
+				continue;
+			}
+			if ( in_array( $token, $stopwords, true ) ) {
+				continue;
+			}
+			$tokens[ $token ] = true;
+		}
+
+		return array_keys( $tokens );
 	}
 
 	/**

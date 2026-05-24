@@ -33,14 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 2. 🔴 Critical — Product carousel relevance is poor / disconnected from the text answer
-When the LLM text response names specific products, the carousel below it often shows different / unrelated items.
-- Asked for "actual men's watches with prices and pictures" → text listed 3 Rolex/Longines watches, but the "10 PICKS" carousel showed Vaseline lotion, a Gigabyte men's t-shirt, women's wrist watches, and shirts mixed in with the watches.
-- Asked for "running shoes" → carousel included **Calvin Klein heels** (clearly not running shoes) and a placeholder product literally named "Shoes — This is a simple product. $0".
-- Asked for "coffee beans or coffee makers" (no matching products) → the bot correctly said it couldn't find any, **but still showed a 10-card carousel of women's watches anyway** — confusing for users.
-
-**Fix:** The carousel must be driven by the same query/result set the LLM cites. Don't render a carousel when there are no relevant matches. Apply the category/keyword filter to the carousel, not just the text.
-
 ### 3. 🟠 High — Hallucinated product details
 When asked for details about the Rolex Submariner, the bot replied with confidently-stated specs that it admitted weren't in the data:
 > "Constructed to withstand extreme conditions, though specific material details weren't provided. Rolex typically uses high-quality stainless steel… the Submariner typically features a 40mm case size…"

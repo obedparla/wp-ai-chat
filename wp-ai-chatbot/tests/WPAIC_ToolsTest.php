@@ -56,6 +56,35 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertEquals( 'Red Shirt', $result[0]['name'] );
 	}
 
+	public function test_search_products_drops_results_missing_query_tokens(): void {
+		$this->create_mock_product( 1, 'Mens Watches Classic', '199.00' );
+		$this->create_mock_product( 2, 'Womens Watches Pearl', '149.00' );
+
+		$result = $this->tools->search_products( array( 'search' => 'mens watches' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Mens Watches Classic', $result[0]['name'] );
+	}
+
+	public function test_relevance_filter_keeps_only_products_matching_all_significant_tokens(): void {
+		$this->create_mock_product( 1, 'Rolex Mens Watches Submariner', '5000.00' );
+		$this->create_mock_product( 2, 'Vaseline Lotion Beauty', '5.00' );
+		$this->create_mock_product( 3, 'Womens Heels Shoes', '60.00' );
+
+		$index   = new WPAIC_Search_Index();
+		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'filter_by_relevance' );
+		$reflect->setAccessible( true );
+
+		$kept = $reflect->invoke( $index, array( 1, 2, 3 ), 'mens watches' );
+		$this->assertSame( array( 1 ), $kept );
+
+		$kept = $reflect->invoke( $index, array( 1, 2, 3 ), 'coffee beans' );
+		$this->assertSame( array(), $kept );
+
+		$kept = $reflect->invoke( $index, array( 1, 2, 3 ), 'running shoes' );
+		$this->assertSame( array(), $kept );
+	}
+
 	public function test_search_products_respects_limit(): void {
 		$this->create_mock_product( 1, 'Product 1', '10' );
 		$this->create_mock_product( 2, 'Product 2', '20' );
