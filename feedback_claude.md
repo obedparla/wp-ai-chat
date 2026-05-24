@@ -33,14 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 4. 🟠 High — Inconsistent shipping information
-- Asked "How long does shipping take?" → "Typically 3 to 7 business days."
-- But product cards openly contradict this: "Ships in 1 month" (Red Shoes), "Ships in 2 weeks", "Ships in 1 week", "Ships overnight", etc.
-
-Either the per-product shipping field is wrong, or the policy answer is. They need to be reconciled, and the bot should ideally reference the product-level shipping estimate when the user is in a product context.
-
-Fix: we need to implement a shipping info tool, does Woocommerce have this built in? Users may use other popular plugins, what are they? Can we reliably get this info from such plugins? If we don't have any shipping info the bot should say so instead of hallucinating.
-
 ### 6. 🟠 High — No direct checkout action
 When the user says "I want to checkout now," the bot responds with prose ("To proceed with checkout, please follow the prompts in your shopping cart…") but doesn't provide a clickable Checkout link/button. Adding a CTA button here would be a meaningful conversion boost.
 

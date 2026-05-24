@@ -850,6 +850,184 @@ class WPAIC_ToolsTest extends TestCase {
 
 	// --- End content index tool tests ---
 
+	public function test_get_shipping_info_returns_not_configured_when_no_zones(): void {
+		WPAICTestHelper::set_option( 'test_shipping_zones', array() );
+		WPAICTestHelper::set_option( 'test_shipping_rest_of_world_methods', array() );
+
+		$result = $this->tools->get_shipping_info();
+
+		$this->assertFalse( $result['has_shipping_configured'] );
+		$this->assertArrayHasKey( 'message', $result );
+	}
+
+	public function test_get_shipping_info_returns_zones_with_methods(): void {
+		WPAICTestHelper::set_option( 'woocommerce_currency', 'USD' );
+		WPAICTestHelper::set_option(
+			'test_shipping_zones',
+			array(
+				array(
+					'zone_id'                 => 1,
+					'zone_name'               => 'United States',
+					'formatted_zone_location' => 'United States',
+					'zone_locations'          => array(
+						(object) array( 'type' => 'country', 'code' => 'US' ),
+					),
+					'shipping_methods'        => array(
+						new MockShippingMethod(
+							array(
+								'id'    => 'flat_rate',
+								'title' => 'Flat rate',
+								'cost'  => '5.00',
+							)
+						),
+						new MockShippingMethod(
+							array(
+								'id'         => 'free_shipping',
+								'title'      => 'Free shipping',
+								'min_amount' => '50.00',
+								'requires'   => 'min_amount',
+							)
+						),
+					),
+				),
+			)
+		);
+		WPAICTestHelper::set_option( 'test_shipping_rest_of_world_methods', array() );
+
+		$result = $this->tools->get_shipping_info();
+
+		$this->assertTrue( $result['has_shipping_configured'] );
+		$this->assertSame( 'USD', $result['currency'] );
+		$this->assertCount( 1, $result['zones'] );
+
+		$zone = $result['zones'][0];
+		$this->assertSame( 'United States', $zone['zone_name'] );
+		$this->assertSame( 'United States', $zone['formatted_location'] );
+		$this->assertSame( array( array( 'type' => 'country', 'code' => 'US' ) ), $zone['locations'] );
+		$this->assertCount( 2, $zone['methods'] );
+
+		$this->assertSame( 'flat_rate', $zone['methods'][0]['method_id'] );
+		$this->assertSame( 'Flat rate', $zone['methods'][0]['title'] );
+		$this->assertSame( '5.00', $zone['methods'][0]['cost'] );
+
+		$this->assertSame( 'free_shipping', $zone['methods'][1]['method_id'] );
+		$this->assertSame( '50.00', $zone['methods'][1]['min_amount'] );
+		$this->assertSame( 'min_amount', $zone['methods'][1]['requires'] );
+	}
+
+	public function test_get_shipping_info_skips_disabled_methods(): void {
+		WPAICTestHelper::set_option(
+			'test_shipping_zones',
+			array(
+				array(
+					'zone_id'                 => 1,
+					'zone_name'               => 'EU',
+					'formatted_zone_location' => 'Europe',
+					'zone_locations'          => array(),
+					'shipping_methods'        => array(
+						new MockShippingMethod(
+							array(
+								'id'      => 'flat_rate',
+								'title'   => 'Flat rate',
+								'cost'    => '10.00',
+								'enabled' => 'no',
+							)
+						),
+						new MockShippingMethod(
+							array(
+								'id'    => 'local_pickup',
+								'title' => 'Local pickup',
+								'cost'  => '0',
+							)
+						),
+					),
+				),
+			)
+		);
+		WPAICTestHelper::set_option( 'test_shipping_rest_of_world_methods', array() );
+
+		$result = $this->tools->get_shipping_info();
+
+		$this->assertTrue( $result['has_shipping_configured'] );
+		$this->assertCount( 1, $result['zones'][0]['methods'] );
+		$this->assertSame( 'local_pickup', $result['zones'][0]['methods'][0]['method_id'] );
+	}
+
+	public function test_get_shipping_info_drops_zones_with_no_enabled_methods(): void {
+		WPAICTestHelper::set_option(
+			'test_shipping_zones',
+			array(
+				array(
+					'zone_id'                 => 1,
+					'zone_name'               => 'Empty Zone',
+					'formatted_zone_location' => 'Empty',
+					'zone_locations'          => array(),
+					'shipping_methods'        => array(
+						new MockShippingMethod(
+							array(
+								'id'      => 'flat_rate',
+								'title'   => 'Flat rate',
+								'enabled' => 'no',
+							)
+						),
+					),
+				),
+			)
+		);
+		WPAICTestHelper::set_option( 'test_shipping_rest_of_world_methods', array() );
+
+		$result = $this->tools->get_shipping_info();
+
+		$this->assertFalse( $result['has_shipping_configured'] );
+	}
+
+	public function test_get_shipping_info_includes_rest_of_world_zone(): void {
+		WPAICTestHelper::set_option( 'test_shipping_zones', array() );
+		WPAICTestHelper::set_option(
+			'test_shipping_rest_of_world_methods',
+			array(
+				new MockShippingMethod(
+					array(
+						'id'    => 'flat_rate',
+						'title' => 'International flat rate',
+						'cost'  => '25.00',
+					)
+				),
+			)
+		);
+
+		$result = $this->tools->get_shipping_info();
+
+		$this->assertTrue( $result['has_shipping_configured'] );
+		$this->assertCount( 1, $result['zones'] );
+		$this->assertSame( 0, $result['zones'][0]['zone_id'] );
+		$this->assertSame( 'International flat rate', $result['zones'][0]['methods'][0]['title'] );
+	}
+
+	public function test_get_shipping_info_includes_grounding_note(): void {
+		WPAICTestHelper::set_option(
+			'test_shipping_zones',
+			array(
+				array(
+					'zone_id'                 => 1,
+					'zone_name'               => 'US',
+					'formatted_zone_location' => 'United States',
+					'zone_locations'          => array(),
+					'shipping_methods'        => array(
+						new MockShippingMethod( array( 'id' => 'flat_rate', 'title' => 'Flat rate', 'cost' => '5.00' ) ),
+					),
+				),
+			)
+		);
+		WPAICTestHelper::set_option( 'test_shipping_rest_of_world_methods', array() );
+
+		$result = $this->tools->get_shipping_info();
+
+		$this->assertArrayHasKey( 'notes', $result );
+		$this->assertNotEmpty( $result['notes'] );
+		$this->assertStringContainsString( 'processing time', $result['notes'][0] );
+	}
+
 	/**
 	 * Creates a mock WooCommerce order.
 	 *

@@ -229,6 +229,162 @@ class WPAIC_Tools {
 	}
 
 	/**
+	 * Get site-level shipping info from WooCommerce shipping zones and methods.
+	 *
+	 * Reads only what WooCommerce reliably exposes: zones, their locations, and
+	 * the enabled shipping methods on each zone (flat rate, free shipping with
+	 * minimum, local pickup, etc.). Does NOT invent processing times or
+	 * delivery estimates — WooCommerce core does not store those.
+	 *
+	 * @return array<string, mixed> Shipping info or a notice that none is configured.
+	 */
+	public function get_shipping_info(): array {
+		if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
+			return array( 'error' => 'Shipping information is not available on this site.' );
+		}
+
+		$raw_zones = WC_Shipping_Zones::get_zones();
+		if ( ! is_array( $raw_zones ) ) {
+			$raw_zones = array();
+		}
+
+		$currency = function_exists( 'get_woocommerce_currency' ) ? (string) get_woocommerce_currency() : '';
+
+		$zones = array();
+		foreach ( $raw_zones as $raw_zone ) {
+			$zone = $this->format_shipping_zone( $raw_zone );
+			if ( null !== $zone ) {
+				$zones[] = $zone;
+			}
+		}
+
+		// "Rest of the World" zone (id 0) is implicit — fetch it explicitly.
+		$rest_of_world = WC_Shipping_Zones::get_zone( 0 );
+		if ( $rest_of_world ) {
+			$methods = $this->format_shipping_methods( $rest_of_world->get_shipping_methods( true, 'admin' ) );
+			if ( ! empty( $methods ) ) {
+				$zones[] = array(
+					'zone_id'   => 0,
+					'zone_name' => 'Locations not covered by your other zones',
+					'locations' => array(),
+					'methods'   => $methods,
+				);
+			}
+		}
+
+		if ( empty( $zones ) ) {
+			return array(
+				'has_shipping_configured' => false,
+				'message'                 => 'No shipping zones or methods are configured on this site.',
+			);
+		}
+
+		return array(
+			'has_shipping_configured' => true,
+			'currency'                => $currency,
+			'zones'                   => $zones,
+			'notes'                   => array(
+				'WooCommerce core does not store processing time or delivery estimates. Only the configured zones, methods, and costs are reported. Do not invent durations.',
+			),
+		);
+	}
+
+	/**
+	 * Format a single shipping zone array (as returned by WC_Shipping_Zones::get_zones()).
+	 *
+	 * @param array<string, mixed> $raw_zone Zone data from WC.
+	 * @return array<string, mixed>|null Formatted zone, or null if it has no usable methods.
+	 */
+	private function format_shipping_zone( array $raw_zone ): ?array {
+		$zone_id   = isset( $raw_zone['zone_id'] ) ? (int) $raw_zone['zone_id'] : 0;
+		$zone_name = isset( $raw_zone['zone_name'] ) && is_string( $raw_zone['zone_name'] ) ? $raw_zone['zone_name'] : '';
+
+		$locations = array();
+		if ( isset( $raw_zone['zone_locations'] ) && is_array( $raw_zone['zone_locations'] ) ) {
+			foreach ( $raw_zone['zone_locations'] as $location ) {
+				if ( is_object( $location ) && isset( $location->code, $location->type ) ) {
+					$locations[] = array(
+						'type' => (string) $location->type,
+						'code' => (string) $location->code,
+					);
+				}
+			}
+		}
+
+		$formatted_location = isset( $raw_zone['formatted_zone_location'] ) && is_string( $raw_zone['formatted_zone_location'] )
+			? $raw_zone['formatted_zone_location']
+			: '';
+
+		$raw_methods = isset( $raw_zone['shipping_methods'] ) && is_array( $raw_zone['shipping_methods'] ) ? $raw_zone['shipping_methods'] : array();
+		$methods     = $this->format_shipping_methods( $raw_methods );
+
+		if ( empty( $methods ) ) {
+			return null;
+		}
+
+		return array(
+			'zone_id'            => $zone_id,
+			'zone_name'          => $zone_name,
+			'formatted_location' => $formatted_location,
+			'locations'          => $locations,
+			'methods'            => $methods,
+		);
+	}
+
+	/**
+	 * Format a list of WC shipping method objects into a simple array shape.
+	 *
+	 * @param array<int|string, object> $raw_methods Shipping method instances from WC.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function format_shipping_methods( array $raw_methods ): array {
+		$methods = array();
+		foreach ( $raw_methods as $method ) {
+			if ( ! is_object( $method ) ) {
+				continue;
+			}
+
+			$enabled = isset( $method->enabled ) ? ( 'yes' === $method->enabled ) : true;
+			if ( ! $enabled ) {
+				continue;
+			}
+
+			$method_id = isset( $method->id ) && is_string( $method->id ) ? $method->id : '';
+			$title     = isset( $method->title ) && is_string( $method->title ) ? $method->title : '';
+			if ( '' === $title && method_exists( $method, 'get_method_title' ) ) {
+				$maybe_title = $method->get_method_title();
+				if ( is_string( $maybe_title ) ) {
+					$title = $maybe_title;
+				}
+			}
+
+			$entry = array(
+				'method_id' => $method_id,
+				'title'     => $title,
+			);
+
+			$cost = isset( $method->cost ) ? (string) $method->cost : '';
+			if ( '' !== $cost ) {
+				$entry['cost'] = $cost;
+			}
+
+			if ( 'free_shipping' === $method_id ) {
+				$min_amount = isset( $method->min_amount ) ? (string) $method->min_amount : '';
+				$requires   = isset( $method->requires ) && is_string( $method->requires ) ? $method->requires : '';
+				if ( '' !== $min_amount ) {
+					$entry['min_amount'] = $min_amount;
+				}
+				if ( '' !== $requires ) {
+					$entry['requires'] = $requires;
+				}
+			}
+
+			$methods[] = $entry;
+		}
+		return $methods;
+	}
+
+	/**
 	 * Get the current cart contents and totals for the active WooCommerce session.
 	 *
 	 * @return array<string, mixed> Cart state or error payload.

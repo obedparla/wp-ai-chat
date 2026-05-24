@@ -655,7 +655,7 @@ class WPAIC_Chat {
 	}
 
 	private function get_tool_response_instruction(): string {
-		return ' When presenting product search or comparison results, provide ONLY a single short sentence intro (max 10 words) that relates to the query. Example: "Here are some red shoes:" - NEVER list product names, prices, or details in your text response. The product cards will show all details. Your text should be a brief intro only, not a summary of results. For current cart questions, use get_cart_contents and answer directly from its totals and items in plain text. If no results found, explain briefly. STRICT PRODUCT GROUNDING: When answering questions about a specific product (specs, materials, dimensions, features, compatibility, included items, warranty, brand details, etc.), state ONLY facts present in the tool output (name, price, description, attributes, categories, tags, stock, and other returned meta). The merchant-written description is allowed. If a requested attribute is not in the tool output, say explicitly that you do not have that information and offer to help another way. NEVER fill gaps using general or brand knowledge (e.g. "Rolex typically uses...", "this model usually has..."), and NEVER guess, infer, or hedge with "typically", "usually", "commonly", or similar. Do not invent case sizes, materials, movements, capacities, measurements, or any spec not in the data.';
+		return ' When presenting product search or comparison results, provide ONLY a single short sentence intro (max 10 words) that relates to the query. Example: "Here are some red shoes:" - NEVER list product names, prices, or details in your text response. The product cards will show all details. Your text should be a brief intro only, not a summary of results. For current cart questions, use get_cart_contents and answer directly from its totals and items in plain text. If no results found, explain briefly. STRICT PRODUCT GROUNDING: When answering questions about a specific product (specs, materials, dimensions, features, compatibility, included items, warranty, brand details, etc.), state ONLY facts present in the tool output (name, price, description, attributes, categories, tags, stock, and other returned meta). The merchant-written description is allowed. If a requested attribute is not in the tool output, say explicitly that you do not have that information and offer to help another way. NEVER fill gaps using general or brand knowledge (e.g. "Rolex typically uses...", "this model usually has..."), and NEVER guess, infer, or hedge with "typically", "usually", "commonly", or similar. Do not invent case sizes, materials, movements, capacities, measurements, or any spec not in the data. STRICT SHIPPING GROUNDING: For any shipping question (cost, methods, regions, delivery time), first call get_shipping_info for site-wide policy and/or check the product short_description for per-product shipping notes. State only what those sources contain. NEVER invent delivery durations like "3 to 7 business days" or generic estimates; WooCommerce does not store processing times by default, so if no duration is in the data, say so explicitly. If the tool returns has_shipping_configured=false, tell the customer shipping policy is not configured on this site and offer to connect them with a human via support handoff if available.';
 	}
 
 	private function get_guided_shopping_instruction(): string {
@@ -904,6 +904,17 @@ class WPAIC_Chat {
 							),
 						),
 						'required'   => array( 'order_number', 'email' ),
+					),
+				),
+			);
+			$tools[] = array(
+				'type'     => 'function',
+				'function' => array(
+					'name'        => 'get_shipping_info',
+					'description' => 'Get site-wide shipping zones, methods, and costs configured in WooCommerce. Use when the customer asks about shipping cost, shipping options, where the store ships, or shipping times. Returns only what is actually configured — never invent delivery times or costs not in the response.',
+					'parameters'  => array(
+						'type'       => 'object',
+						'properties' => new \stdClass(),
 					),
 				),
 			);
@@ -1197,6 +1208,7 @@ class WPAIC_Chat {
 			'get_cart_contents' => $this->tools->get_cart_contents(),
 			'compare_products' => $this->tools->compare_products( isset( $arguments['product_ids'] ) && is_array( $arguments['product_ids'] ) ? $arguments['product_ids'] : array() ),
 			'get_order_status' => $this->tools->get_order_status( $arguments ),
+			'get_shipping_info' => $this->tools->get_shipping_info(),
 			default => array( 'error' => 'Unknown tool' ),
 		};
 	}

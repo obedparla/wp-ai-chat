@@ -117,7 +117,7 @@ class WPAIC_ChatTest extends TestCase {
 
 		$tools = $method->invoke( $chat );
 
-		$this->assertCount( 8, $tools );
+		$this->assertCount( 9, $tools );
 
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertContains( 'search_products', $tool_names );
@@ -126,6 +126,7 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertContains( 'get_cart_contents', $tool_names );
 		$this->assertContains( 'compare_products', $tool_names );
 		$this->assertContains( 'get_order_status', $tool_names );
+		$this->assertContains( 'get_shipping_info', $tool_names );
 		$this->assertContains( 'search_site_content', $tool_names );
 		$this->assertContains( 'get_page_content', $tool_names );
 

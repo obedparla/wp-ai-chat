@@ -92,6 +92,10 @@
 ## Cart awareness tool
 - Knows about products in the cart and total
 
+## Shipping info tool
+- Reads WooCommerce shipping zones, methods, and costs from the actual store config
+- Bot grounded to only state shipping info present in tool output (no made-up "3 to 7 business days")
+
 ## Conversation starters
 - Customizable options that show up at the start of a conversation
 - Shows sensible defaults

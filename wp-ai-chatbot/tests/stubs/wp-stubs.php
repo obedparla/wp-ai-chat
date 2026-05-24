@@ -1965,3 +1965,86 @@ if ( ! function_exists( 'woocommerce_mini_cart' ) ) {
 		echo '<div class="mini-cart-content">Mini Cart</div>';
 	}
 }
+
+if ( ! function_exists( 'get_woocommerce_currency' ) ) {
+	function get_woocommerce_currency(): string {
+		return WPAICTestHelper::get_option( 'woocommerce_currency', 'USD' );
+	}
+}
+
+if ( ! class_exists( 'MockShippingMethod' ) ) {
+	class MockShippingMethod {
+		public string $id;
+		public string $title;
+		public string $enabled;
+		public string $cost;
+		public string $min_amount;
+		public string $requires;
+
+		/**
+		 * @param array<string, mixed> $data
+		 */
+		public function __construct( array $data = array() ) {
+			$this->id         = (string) ( $data['id'] ?? '' );
+			$this->title      = (string) ( $data['title'] ?? '' );
+			$this->enabled    = (string) ( $data['enabled'] ?? 'yes' );
+			$this->cost       = (string) ( $data['cost'] ?? '' );
+			$this->min_amount = (string) ( $data['min_amount'] ?? '' );
+			$this->requires   = (string) ( $data['requires'] ?? '' );
+		}
+
+		public function get_method_title(): string {
+			return $this->title;
+		}
+	}
+}
+
+if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
+	class WC_Shipping_Zones {
+		/**
+		 * @return array<int, array<string, mixed>>
+		 */
+		public static function get_zones( string $context = 'admin' ): array {
+			$zones = WPAICTestHelper::get_option( 'test_shipping_zones', array() );
+			return is_array( $zones ) ? $zones : array();
+		}
+
+		/**
+		 * @return MockShippingZone|false
+		 */
+		public static function get_zone( int $zone_id ): MockShippingZone|false {
+			if ( 0 === $zone_id ) {
+				$rest_methods = WPAICTestHelper::get_option( 'test_shipping_rest_of_world_methods', array() );
+				return new MockShippingZone( 0, is_array( $rest_methods ) ? $rest_methods : array() );
+			}
+			return false;
+		}
+	}
+}
+
+if ( ! class_exists( 'MockShippingZone' ) ) {
+	class MockShippingZone {
+		private int $id;
+		/** @var array<int, MockShippingMethod> */
+		private array $methods;
+
+		/**
+		 * @param array<int, MockShippingMethod> $methods
+		 */
+		public function __construct( int $id, array $methods ) {
+			$this->id      = $id;
+			$this->methods = $methods;
+		}
+
+		/**
+		 * @return array<int, MockShippingMethod>
+		 */
+		public function get_shipping_methods( bool $enabled_only = false, string $context = 'admin' ): array {
+			return $this->methods;
+		}
+
+		public function get_id(): int {
+			return $this->id;
+		}
+	}
+}
