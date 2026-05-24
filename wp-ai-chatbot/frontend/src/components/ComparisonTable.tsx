@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { formatPrice } from '@/lib/price'
 import { applyCartUpdate, hasCartUpdateError } from '@/lib/cart'
 
 export interface ComparisonProduct {
@@ -107,18 +108,18 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
           return (
             <>
               <span className="line-through text-slate-400 text-xs mr-1">
-                ${product.regular_price}
+                {formatPrice(product.regular_price)}
               </span>
-              <span className="text-red-600 font-bold">${product.sale_price}</span>
+              <span className="text-red-600 font-bold">{formatPrice(product.sale_price)}</span>
             </>
           )
         }
         return (
-          <span className="font-bold text-[var(--wpaic-primary)]">${product.price || '0'}</span>
+          <span className="font-bold text-[var(--wpaic-primary)]">{formatPrice(product.price)}</span>
         )
       }
       case 'regular_price':
-        return product.regular_price ? `$${product.regular_price}` : '—'
+        return product.regular_price ? formatPrice(product.regular_price) : '—'
       case 'stock_status':
         return STOCK_STATUS_LABELS[product.stock_status || ''] || product.stock_status || '—'
       case 'rating':

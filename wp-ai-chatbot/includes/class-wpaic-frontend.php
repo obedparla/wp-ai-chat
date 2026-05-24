@@ -103,7 +103,27 @@ class WPAIC_Frontend {
 			'chatbotName'          => $settings['chatbot_name'] ?? '',
 			'chatbotLogo'          => $settings['chatbot_logo'] ?? '',
 			'chatbotRole'          => $settings['chatbot_role'] ?? '',
+			'currency'             => $this->get_currency_config(),
 			'conversationStarters' => $this->resolve_conversation_starters( $settings ),
+		);
+	}
+
+	/**
+	 * @return array{symbol: string, decimals: int, decimalSeparator: string, thousandSeparator: string, position: string}
+	 */
+	private function get_currency_config(): array {
+		$symbol             = function_exists( 'get_woocommerce_currency_symbol' ) ? html_entity_decode( (string) get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ) : '$';
+		$decimals           = function_exists( 'wc_get_price_decimals' ) ? (int) wc_get_price_decimals() : 2;
+		$decimal_separator  = function_exists( 'wc_get_price_decimal_separator' ) ? (string) wc_get_price_decimal_separator() : '.';
+		$thousand_separator = function_exists( 'wc_get_price_thousand_separator' ) ? (string) wc_get_price_thousand_separator() : ',';
+		$position           = function_exists( 'get_option' ) ? (string) get_option( 'woocommerce_currency_pos', 'left' ) : 'left';
+
+		return array(
+			'symbol'            => $symbol,
+			'decimals'          => $decimals,
+			'decimalSeparator'  => $decimal_separator,
+			'thousandSeparator' => $thousand_separator,
+			'position'          => $position,
 		);
 	}
 

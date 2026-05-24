@@ -33,11 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 8. 🟡 Medium — Price formatting bugs
-Prices on the cards are displayed with inconsistent decimals: `$28.8` (should be `$28.80`), `$24.76`, `$24.8`, `$13292.99`, `$1241.39`, etc. Large prices also lack thousand-separators (`$13292.99` vs. `$13,292.99`). The bot text formats them correctly ("$13,292.99") but the cards do not.
-
-Fix: format card prices consistently with a function.
-
 ### 13. 🟢 Low — Accessibility gaps
 - The main message textarea has no `aria-label` and no associated `<label>` (screen readers will read only the placeholder).
 - Carousel "Previous slide" / "Next slide" buttons are missing `aria-label` (their visible text exists, but verify focus order and keyboard support).

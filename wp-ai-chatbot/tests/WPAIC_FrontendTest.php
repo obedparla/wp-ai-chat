@@ -71,6 +71,23 @@ class WPAIC_FrontendTest extends TestCase {
 		$this->assertNotContains( 'I need help from support', $config['conversationStarters'] );
 	}
 
+	public function test_build_frontend_config_includes_currency_defaults(): void {
+		$frontend = new WPAIC_Frontend();
+		$config   = $frontend->build_frontend_config(
+			array(
+				'greeting_message' => 'Hello!',
+			)
+		);
+
+		$this->assertArrayHasKey( 'currency', $config );
+		$this->assertArrayHasKey( 'symbol', $config['currency'] );
+		$this->assertArrayHasKey( 'decimals', $config['currency'] );
+		$this->assertArrayHasKey( 'decimalSeparator', $config['currency'] );
+		$this->assertArrayHasKey( 'thousandSeparator', $config['currency'] );
+		$this->assertArrayHasKey( 'position', $config['currency'] );
+		$this->assertIsInt( $config['currency']['decimals'] );
+	}
+
 	public function test_build_frontend_config_includes_page_context(): void {
 		$page = WPAICTestHelper::add_mock_post(
 			array(

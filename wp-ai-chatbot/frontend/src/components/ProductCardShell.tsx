@@ -1,4 +1,5 @@
 import { ReactNode } from 'react'
+import { formatPrice } from '@/lib/price'
 import { Product } from './ProductCard'
 
 interface ProductCardShellProps {
@@ -81,12 +82,12 @@ export default function ProductCardShell({
           {hasDiscount ? (
             <>
               <span className="line-through text-slate-400 font-normal mr-1.5 text-sm">
-                ${regularPrice}
+                {formatPrice(regularPrice)}
               </span>
-              <span>${displayCurrent}</span>
+              <span>{formatPrice(displayCurrent)}</span>
             </>
           ) : (
-            <span>${displayCurrent || '0'}</span>
+            <span>{formatPrice(displayCurrent)}</span>
           )}
         </div>
         {bottomSlot}

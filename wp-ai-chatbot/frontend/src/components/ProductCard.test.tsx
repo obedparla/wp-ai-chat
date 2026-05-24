@@ -72,7 +72,7 @@ describe('ProductCard', () => {
     expect(screen.queryByText(/\$0/)).not.toBeInTheDocument()
   })
 
-  it('shows $0 when price is empty', () => {
+  it('shows $0.00 when price is empty', () => {
     const productNoPrice: Product = {
       id: 3,
       name: 'Free Product',
@@ -80,7 +80,7 @@ describe('ProductCard', () => {
       price: '',
     }
     render(<ProductCard product={productNoPrice} />)
-    expect(screen.getByText('$0')).toBeInTheDocument()
+    expect(screen.getByText('$0.00')).toBeInTheDocument()
   })
 
   it('renders Add to Cart button', () => {

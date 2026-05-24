@@ -8,6 +8,13 @@ declare global {
       greeting: string
       chatbotName?: string
       chatbotLogo?: string
+      currency?: {
+        symbol?: string
+        decimals?: number
+        decimalSeparator?: string
+        thousandSeparator?: string
+        position?: 'left' | 'right' | 'left_space' | 'right_space'
+      }
       pageContext?: {
         page_type: 'product' | 'cart' | 'checkout' | 'shop' | 'product_category' | 'product_tag' | 'singular' | 'other'
         title: string
