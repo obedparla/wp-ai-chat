@@ -33,11 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 15. 🟢 Low — Bot stays vague on category suggestions
-The first reply to "gift for my husband" was just category names ("Mens Shirts / Mens Shoes / Mens Watches") with no actual products. A better default would be to also show 2–3 best-selling items per category as a starting point, instead of forcing another turn.
-
-Fix: tweak the prompt for such cases to return a few bestselling items in the relevant category (men in this case for example)
-
 ### 16. 🟢 Low — No "back to top / scroll-to-latest" affordance in long chats
 After many messages, scrolling around the chat history is awkward.
 
