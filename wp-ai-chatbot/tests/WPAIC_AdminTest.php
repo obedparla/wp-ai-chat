@@ -55,6 +55,7 @@ class WPAIC_AdminTest extends TestCase {
 			'provider_url'                  => 'https://provider.example.com/wp-json/wpaip/v1/chat',
 			'provider_url_configured'       => true,
 			'license_status_label'          => 'License required',
+			'has_valid_chat_license'        => false,
 			'activation_url'                => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot',
 			'account_url'                   => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot-account',
 			'pricing_url'                   => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot-pricing',
@@ -82,6 +83,10 @@ class WPAIC_AdminTest extends TestCase {
 
 			public function get_license_status_label(): string {
 				return (string) $this->config['license_status_label'];
+			}
+
+			public function has_valid_chat_license(): bool {
+				return (bool) $this->config['has_valid_chat_license'];
 			}
 
 			public function get_activation_url(): string {
@@ -584,8 +589,30 @@ class WPAIC_AdminTest extends TestCase {
 
 		$this->assertStringContainsString( 'Activate License', $output );
 		$this->assertStringContainsString( 'page=wp-ai-chatbot', $output );
+		$this->assertStringNotContainsString( 'Manage Billing', $output );
+		$this->assertStringContainsString( 'See Plans', $output );
+		unset( $_GET['tab'] );
+	}
+
+	public function test_render_settings_page_license_tab_shows_manage_billing_when_licensed(): void {
+		$_GET['tab'] = 'api';
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		$this->admin = new WPAIC_Admin(
+			$this->create_license_manager_stub(
+				array(
+					'has_valid_chat_license' => true,
+					'license_status_label'   => 'Active license',
+				)
+			)
+		);
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
 		$this->assertStringContainsString( 'Manage Billing', $output );
 		$this->assertStringContainsString( 'See Plans', $output );
+		$this->assertStringNotContainsString( 'Activate License', $output );
 		unset( $_GET['tab'] );
 	}
 
