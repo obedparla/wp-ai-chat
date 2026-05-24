@@ -33,14 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 7. 🟡 Medium — Markdown link rendering is inconsistent
-At one point a product line was rendered as raw markdown:
-> "Tropical Earring - $19.84 ( http://wp-ai-chatbot.local/product/tropical-ear "
-
-The `[text](url)` syntax was not parsed. Other replies render the same syntax fine. There seems to be an edge case in the markdown parser (possibly when a `]` appears inside the text).
-
-Fix: not sure, maybe it was a one-off, investigate if theres a bug only, do not implement any fix unless a concrete bug is found.
-
 ### 8. 🟡 Medium — Price formatting bugs
 Prices on the cards are displayed with inconsistent decimals: `$28.8` (should be `$28.80`), `$24.76`, `$24.8`, `$13292.99`, `$1241.39`, etc. Large prices also lack thousand-separators (`$13292.99` vs. `$13,292.99`). The bot text formats them correctly ("$13,292.99") but the cards do not.
 
