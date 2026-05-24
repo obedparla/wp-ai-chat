@@ -1,10 +1,12 @@
-import { useEffect, useRef, useCallback, Fragment, type ReactNode } from 'react'
+import { useEffect, useRef, useCallback, useState, Fragment, type ReactNode } from 'react'
 import { Message } from '../hooks/useChat'
 import ProductGrid from './ProductGrid'
 import ComparisonTable from './ComparisonTable'
 import CheckoutButton from './CheckoutButton'
 import MarkdownContent from './MarkdownContent'
 import { cn } from '@/lib/utils'
+
+const JUMP_BUTTON_THRESHOLD = 100
 
 interface MessageListProps {
   messages: Message[]
@@ -52,6 +54,7 @@ function shouldShowSeparator(current: Message, previous: Message | undefined): b
 export default function MessageList({ messages, onRetry, children }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
+  const [showJumpButton, setShowJumpButton] = useState(false)
   const lastMessageContent = messages[messages.length - 1]?.content
 
   const checkIfAtBottom = useCallback(() => {
@@ -62,16 +65,28 @@ export default function MessageList({ messages, onRetry, children }: MessageList
   }, [])
 
   const handleScroll = useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
     isUserAtBottomRef.current = checkIfAtBottom()
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    setShowJumpButton(distanceFromBottom > JUMP_BUTTON_THRESHOLD)
   }, [checkIfAtBottom])
+
+  const scrollToLatest = useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+  }, [])
 
   useEffect(() => {
     if (containerRef.current && isUserAtBottomRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
+      setShowJumpButton(false)
     }
   }, [messages.length, lastMessageContent])
 
   return (
+    <div className="flex-1 relative flex min-h-0">
     <div
       className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 bg-white scroll-smooth overscroll-contain max-[480px]:p-4 max-[480px]:gap-2.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300"
       ref={containerRef}
@@ -173,6 +188,18 @@ export default function MessageList({ messages, onRetry, children }: MessageList
         )
       })}
       {children}
+    </div>
+    {showJumpButton && (
+      <button
+        type="button"
+        onClick={scrollToLatest}
+        aria-label="Jump to latest message"
+        className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 py-1.5 px-3.5 rounded-full bg-[var(--wpaic-primary)] text-white text-xs font-medium shadow-md shadow-slate-900/15 hover:shadow-lg hover:brightness-110 transition-[box-shadow,filter] duration-200 animate-wpaic-fadeIn focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--wpaic-primary)]"
+      >
+        <span aria-hidden>↓</span>
+        <span>Jump to latest</span>
+      </button>
+    )}
     </div>
   )
 }

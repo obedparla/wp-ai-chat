@@ -33,11 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 16. 🟢 Low — No "back to top / scroll-to-latest" affordance in long chats
-After many messages, scrolling around the chat history is awkward.
-
-Fix: A floating "↓ Jump to latest" button would help. Show only when scrolling above
-
 ### 17. 🟢 Low — Off-topic redirection could be stronger
 The weather-in-Paris answer was polite but didn't redirect back to shopping ("…in the meantime, can I help you find something for your trip?"). A small persona tweak would keep users engaged.
 

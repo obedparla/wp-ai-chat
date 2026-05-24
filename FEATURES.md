@@ -7,6 +7,7 @@
 - Markdown support with prose styling
 - Product cards display search results
 - Carousel for 3+ products
+- Jump-to-latest pill appears when scrolled up in long conversations
 
 ## Admin Configuration
 - Provider connection and licensing status
