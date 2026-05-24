@@ -664,7 +664,7 @@ class WPAIC_Admin {
 						<?php $this->render_engagement_tab( $settings ); ?>
 					<?php endif; ?>
 
-					<div class="max-w-[960px] mx-auto px-8 pb-8">
+					<div class="<?php echo 'appearance' === $active_tab ? 'max-w-[1200px]' : 'max-w-[960px]'; ?> mx-auto px-8 pb-8">
 						<div class="pt-4">
 							<button type="submit" class="wpaic-btn wpaic-btn-primary">
 								<?php esc_html_e( 'Save changes', 'wp-ai-chatbot' ); ?>
@@ -837,10 +837,9 @@ class WPAIC_Admin {
 	 */
 	private function render_api_tab( array $settings ): void {
 		$provider_url        = $this->license_manager->get_provider_url();
-		$provider_status     = $this->license_manager->is_provider_url_configured()
-			? __( 'Connected', 'wp-ai-chatbot' )
-			: __( 'Placeholder URL', 'wp-ai-chatbot' );
+		$provider_configured = $this->license_manager->is_provider_url_configured();
 		$license_status      = $this->license_manager->get_license_status_label();
+		$license_ok          = $this->license_manager->has_valid_chat_license();
 		$activation_url      = $this->license_manager->get_activation_url();
 		$account_url         = $this->license_manager->get_account_url();
 		$pricing_url         = $this->license_manager->get_pricing_url();
@@ -860,37 +859,38 @@ class WPAIC_Admin {
 				</div>
 
 				<div class="wpaic-card">
-					<div class="wpaic-card-header">
-						<div>
-							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'License status', 'wp-ai-chatbot' ); ?></h3>
+					<div class="px-5 pt-5 pb-4 flex items-start justify-between gap-4 flex-wrap">
+						<div class="min-w-0">
+							<div class="text-[11px] uppercase tracking-[0.08em] font-semibold text-muted-2 mb-2"><?php esc_html_e( 'License', 'wp-ai-chatbot' ); ?></div>
+							<div class="flex items-center gap-2.5 flex-wrap">
+								<h3 class="text-[18px] font-semibold m-0 leading-none"><?php echo esc_html( $license_status ); ?></h3>
+								<span class="wpaic-status-pill <?php echo $license_ok ? 'wpaic-status-pill-live' : 'wpaic-status-pill-paused'; ?>">
+									<span class="wpaic-status-dot <?php echo $license_ok ? 'wpaic-status-dot-live' : 'wpaic-status-dot-paused'; ?>"></span>
+									<?php echo $license_ok ? esc_html__( 'Active', 'wp-ai-chatbot' ) : esc_html__( 'Inactive', 'wp-ai-chatbot' ); ?>
+								</span>
+							</div>
 						</div>
-					</div>
-					<div class="wpaic-card-row">
-						<div>
-							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Current status', 'wp-ai-chatbot' ); ?></h4>
-							<p class="text-muted m-0 text-[13px]"><?php echo esc_html( $license_status ); ?></p>
-						</div>
-					</div>
-					<div class="wpaic-card-row">
-						<div>
-							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Provider endpoint', 'wp-ai-chatbot' ); ?></h4>
-							<p class="text-muted m-0 text-[13px]"><?php echo esc_html( $provider_url ); ?></p>
-							<p class="text-muted-2 m-0 text-xs mt-0.5"><?php echo esc_html( $provider_status ); ?></p>
-						</div>
-					</div>
-					<?php if ( '' !== $activation_url || '' !== $account_url || '' !== $pricing_url ) : ?>
-						<div class="wpaic-card-body flex flex-wrap gap-2">
-							<?php if ( '' !== $activation_url ) : ?>
+						<div class="flex flex-wrap gap-2 shrink-0">
+							<?php if ( ! $license_ok && '' !== $activation_url ) : ?>
 								<a href="<?php echo esc_url( $activation_url ); ?>" class="wpaic-btn wpaic-btn-primary no-underline"><?php esc_html_e( 'Activate License', 'wp-ai-chatbot' ); ?></a>
 							<?php endif; ?>
-							<?php if ( '' !== $account_url ) : ?>
+							<?php if ( $license_ok && '' !== $account_url ) : ?>
 								<a href="<?php echo esc_url( $account_url ); ?>" class="wpaic-btn no-underline"><?php esc_html_e( 'Manage Billing', 'wp-ai-chatbot' ); ?></a>
 							<?php endif; ?>
 							<?php if ( '' !== $pricing_url ) : ?>
 								<a href="<?php echo esc_url( $pricing_url ); ?>" class="wpaic-btn no-underline"><?php esc_html_e( 'See Plans', 'wp-ai-chatbot' ); ?></a>
 							<?php endif; ?>
 						</div>
-					<?php endif; ?>
+					</div>
+					<div class="border-t border-line-2 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+						<div class="min-w-0 flex-1">
+							<div class="text-[11px] uppercase tracking-[0.08em] font-semibold text-muted-2 mb-1.5"><?php esc_html_e( 'Provider endpoint', 'wp-ai-chatbot' ); ?></div>
+							<code class="font-mono text-[12.5px] text-ink break-all block bg-canvas px-2 py-1 rounded-[6px] border border-line-2"><?php echo esc_html( $provider_url ); ?></code>
+						</div>
+						<span class="wpaic-tag <?php echo $provider_configured ? 'wpaic-tag-ok' : 'wpaic-tag-warn'; ?> shrink-0">
+							<?php echo $provider_configured ? esc_html__( 'Connected', 'wp-ai-chatbot' ) : esc_html__( 'Placeholder URL', 'wp-ai-chatbot' ); ?>
+						</span>
+					</div>
 				</div>
 
 				<?php if ( $show_provider_field ) : ?>
@@ -898,12 +898,12 @@ class WPAIC_Admin {
 						<div class="wpaic-card-header">
 							<div>
 								<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Staging override', 'wp-ai-chatbot' ); ?></h3>
+								<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Only available when staging overrides are explicitly enabled by constant.', 'wp-ai-chatbot' ); ?></p>
 							</div>
 						</div>
 						<div class="wpaic-card-body">
 							<label for="wpaic_provider_url_override" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Provider URL override', 'wp-ai-chatbot' ); ?></label>
 							<input type="url" id="wpaic_provider_url_override" name="wpaic_settings[provider_url_override]" value="<?php echo esc_attr( (string) $provider_override ); ?>" class="wpaic-input" placeholder="https://staging-provider.example.com/wp-json/wpaip/v1/chat">
-							<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Only available when staging overrides are explicitly enabled by constant.', 'wp-ai-chatbot' ); ?></span>
 						</div>
 					</div>
 				<?php endif; ?>
