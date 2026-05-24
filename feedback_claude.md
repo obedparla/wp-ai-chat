@@ -33,7 +33,4 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 17. 🟢 Low — Off-topic redirection could be stronger
-The weather-in-Paris answer was polite but didn't redirect back to shopping ("…in the meantime, can I help you find something for your trip?"). A small persona tweak would keep users engaged.
-
-Fix: tweak the prompt so that after answering irrelevant questions, we lead back to a relevant response focused on shopping
+_All previously listed items have been resolved._

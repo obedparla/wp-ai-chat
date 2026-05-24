@@ -604,6 +604,7 @@ class WPAIC_Chat {
 		if ( $include_tool_response_guidance ) {
 			$prompt .= $this->get_tool_response_instruction();
 			$prompt .= $this->get_guided_shopping_instruction();
+			$prompt .= $this->get_off_topic_redirection_instruction();
 		} else {
 			$prompt .= $this->get_non_woocommerce_instruction();
 		}
@@ -660,6 +661,10 @@ class WPAIC_Chat {
 
 	private function get_guided_shopping_instruction(): string {
 		return ' For broad shopping-discovery asks (for example: "show me products" or "what do you sell?"), call get_categories first. List only the top 3-5 categories sorted by highest count, then ask one short clarifying question. Offer the full category list only if requested. Do not call search_products until the user gives direction (such as category, use case, budget, or audience), unless their request is already specific. For "what do you sell?", after category guidance you may use search_site_content and get_page_content for brief business context. If context is missing, say so and do not invent claims. Keep this guidance supportive and non-pushy. GIFT AND RECOMMENDATION QUERIES: When the user asks for gift ideas or recommendations for a person (e.g. "gift for my husband", "something for my mom", "present for a kid"), do not stop at category names. After picking 2-3 relevant categories, call search_products once per category (limit 2-3, using the category slug) so each category is paired with actual product picks. Present the products via the cards; keep your text to the same brief intro rule.';
+	}
+
+	private function get_off_topic_redirection_instruction(): string {
+		return ' OFF-TOPIC REDIRECTION: After politely answering or declining any non-shopping question, ALWAYS end with a short, natural shopping-related follow-up that\'s relevant to the user\'s apparent context. Keep it conversational, not pushy or templated.';
 	}
 
 	private function get_non_woocommerce_instruction(): string {

@@ -925,6 +925,29 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'Do not call search_products until the user gives direction', $prompt );
 	}
 
+	public function test_system_prompt_includes_off_topic_redirection_clause(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'OFF-TOPIC REDIRECTION', $prompt );
+		$this->assertStringContainsString( 'After politely answering or declining any non-shopping question', $prompt );
+		$this->assertStringContainsString( 'ALWAYS end with a short, natural shopping-related follow-up', $prompt );
+		$this->assertStringContainsString( 'not pushy or templated', $prompt );
+	}
+
 	public function test_system_prompt_pairs_categories_with_products_for_gift_queries(): void {
 		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
 		WPAICTestHelper::set_option(
