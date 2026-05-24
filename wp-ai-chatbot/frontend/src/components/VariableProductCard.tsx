@@ -143,6 +143,7 @@ export default function VariableProductCard({ product }: VariableProductCardProp
       className={cn(
         'inline-flex items-center gap-1 rounded-full border-0 cursor-pointer font-semibold text-xs transition-all duration-200 px-3.5 py-2 shrink-0',
         'bg-[var(--wpaic-primary)] text-white hover:enabled:scale-[1.04] active:enabled:scale-95 shadow-sm',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wpaic-primary)]',
         'disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none',
         cartState === 'loading' && 'bg-slate-200 text-slate-500 shadow-none',
         cartState === 'success' && 'bg-emerald-600',

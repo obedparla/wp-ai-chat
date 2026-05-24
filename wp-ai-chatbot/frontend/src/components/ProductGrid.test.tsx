@@ -59,6 +59,12 @@ describe('ProductGrid', () => {
     expect(container.firstChild).toBeNull()
   })
 
+  it('carousel prev/next buttons have accessible aria-labels', () => {
+    render(<ProductGrid products={mockProducts} />)
+    expect(screen.getByRole('button', { name: 'Previous slide' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next slide' })).toBeInTheDocument()
+  })
+
   it('renders grid for 1-2 products, carousel for 3+', () => {
     // 2 products = grid (uses grid CSS classes)
     const { container: gridContainer, unmount } = render(

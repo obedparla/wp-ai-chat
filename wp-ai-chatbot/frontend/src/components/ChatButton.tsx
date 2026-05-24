@@ -17,6 +17,7 @@ export default function ChatButton({ onClick, isOpen }: ChatButtonProps) {
         'hover:scale-[1.08] hover:shadow-xl',
         'active:scale-95',
         'animate-wpaic-pulse hover:animate-none',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wpaic-primary)]',
         'max-[480px]:bottom-5 max-[480px]:right-5 max-[480px]:w-14 max-[480px]:h-14',
         isOpen && 'max-[480px]:hidden'
       )}

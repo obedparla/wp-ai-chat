@@ -104,7 +104,7 @@ export default function ChatWidget({
   )
 
   const iconButtonClass =
-    'bg-transparent border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-85 transition-all duration-200 flex items-center justify-center hover:opacity-100 hover:bg-white/10'
+    'bg-transparent border-0 text-white cursor-pointer leading-none p-2 rounded-lg opacity-85 transition-all duration-200 flex items-center justify-center hover:opacity-100 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white focus-visible:opacity-100'
 
   const headerActions = (
     <>

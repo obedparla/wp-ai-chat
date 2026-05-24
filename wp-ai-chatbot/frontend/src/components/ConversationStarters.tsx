@@ -22,7 +22,7 @@ export default function ConversationStarters({
             type="button"
             onClick={() => onSelect(starter)}
             disabled={disabled}
-            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition-all duration-200 hover:border-[var(--wpaic-primary)] hover:text-[var(--wpaic-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition-all duration-200 hover:border-[var(--wpaic-primary)] hover:text-[var(--wpaic-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wpaic-primary)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {starter}
           </button>

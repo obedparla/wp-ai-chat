@@ -102,6 +102,11 @@ describe('ChatWidget', () => {
     expect(screen.getByPlaceholderText('Ask anything...')).toBeInTheDocument()
   })
 
+  it('input has accessible aria-label for screen readers', () => {
+    render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} />)
+    expect(screen.getByRole('textbox', { name: 'Type your message' })).toBeInTheDocument()
+  })
+
   it('auto-focuses the input when requested', async () => {
     render(<ChatWidget onClose={mockOnClose} chat={createMockChat()} autoFocusInput />)
 

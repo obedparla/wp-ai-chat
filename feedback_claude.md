@@ -33,11 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 13. 🟢 Low — Accessibility gaps
-- The main message textarea has no `aria-label` and no associated `<label>` (screen readers will read only the placeholder).
-- Carousel "Previous slide" / "Next slide" buttons are missing `aria-label` (their visible text exists, but verify focus order and keyboard support).
-- No visible focus ring tested on the chips/buttons — worth verifying keyboard nav.
-
 ### 15. 🟢 Low — Bot stays vague on category suggestions
 The first reply to "gift for my husband" was just category names ("Mens Shirts / Mens Shoes / Mens Watches") with no actual products. A better default would be to also show 2–3 best-selling items per category as a starting point, instead of forcing another turn.
 

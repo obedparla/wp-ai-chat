@@ -57,6 +57,7 @@ const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(function ChatI
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={1}
+          aria-label="Type your message"
           className={cn(
             'flex-1 bg-transparent border-0 outline-none text-sm resize-none py-2 pr-2 m-0',
             'text-slate-800 placeholder:text-slate-500 leading-snug',
@@ -69,6 +70,7 @@ const ChatInput = forwardRef<HTMLTextAreaElement, ChatInputProps>(function ChatI
           disabled={isEmpty}
           className={cn(
             'shrink-0 w-9 h-9 rounded-full border-0 flex items-center justify-center cursor-pointer transition-all duration-200 mb-0.5',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wpaic-primary)]',
             isEmpty
               ? 'bg-[var(--wpaic-primary)]/25 text-white cursor-not-allowed'
               : 'bg-[var(--wpaic-primary)] text-white hover:scale-105 active:scale-95 shadow-sm'

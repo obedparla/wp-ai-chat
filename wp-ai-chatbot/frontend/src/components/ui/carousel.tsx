@@ -182,6 +182,7 @@ function CarouselPrevious({
       data-slot="carousel-previous"
       variant={variant}
       size={size}
+      aria-label="Previous slide"
       className={cn(
         "absolute size-8 rounded-full",
         orientation === "horizontal"
@@ -212,6 +213,7 @@ function CarouselNext({
       data-slot="carousel-next"
       variant={variant}
       size={size}
+      aria-label="Next slide"
       className={cn(
         "absolute size-8 rounded-full",
         orientation === "horizontal"
