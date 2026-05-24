@@ -896,6 +896,30 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'If context is missing, say so and do not invent claims', $prompt );
 	}
 
+	public function test_system_prompt_enforces_strict_product_grounding(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'STRICT PRODUCT GROUNDING', $prompt );
+		$this->assertStringContainsString( 'state ONLY facts present in the tool output', $prompt );
+		$this->assertStringContainsString( 'say explicitly that you do not have that information', $prompt );
+		$this->assertStringContainsString( 'NEVER fill gaps using general or brand knowledge', $prompt );
+		$this->assertStringContainsString( '"typically"', $prompt );
+	}
+
 	public function test_system_prompt_no_products_when_woocommerce_not_active(): void {
 		WPAICTestHelper::set_option( 'test_woocommerce_active', false );
 		WPAICTestHelper::set_option(

@@ -33,12 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 3. 🟠 High — Hallucinated product details
-When asked for details about the Rolex Submariner, the bot replied with confidently-stated specs that it admitted weren't in the data:
-> "Constructed to withstand extreme conditions, though specific material details weren't provided. Rolex typically uses high-quality stainless steel… the Submariner typically features a 40mm case size…"
-
-This mixes real product data with general internet knowledge about the brand. For a sales bot this is risky (returns disputes, misleading specs). **Fix:** Constrain the model to only state attributes present in the WooCommerce product meta; if a field is missing, say so explicitly without speculation.
-
 ### 4. 🟠 High — Inconsistent shipping information
 - Asked "How long does shipping take?" → "Typically 3 to 7 business days."
 - But product cards openly contradict this: "Ships in 1 month" (Red Shoes), "Ships in 2 weeks", "Ships in 1 week", "Ships overnight", etc.
