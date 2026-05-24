@@ -33,11 +33,6 @@ I tested the chatbot as a normal shopper would — asking for gifts, searching f
 
 ## ❌ What Needs Improvement (Priority-Ordered)
 
-### 6. 🟠 High — No direct checkout action
-When the user says "I want to checkout now," the bot responds with prose ("To proceed with checkout, please follow the prompts in your shopping cart…") but doesn't provide a clickable Checkout link/button. Adding a CTA button here would be a meaningful conversion boost.
-
-Fix: We need a new tool call  for this to return the correct button for the CART and style it.
-
 ### 7. 🟡 Medium — Markdown link rendering is inconsistent
 At one point a product line was rendered as raw markdown:
 > "Tropical Earring - $19.84 ( http://wp-ai-chatbot.local/product/tropical-ear "

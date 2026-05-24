@@ -117,13 +117,14 @@ class WPAIC_ChatTest extends TestCase {
 
 		$tools = $method->invoke( $chat );
 
-		$this->assertCount( 9, $tools );
+		$this->assertCount( 10, $tools );
 
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertContains( 'search_products', $tool_names );
 		$this->assertContains( 'get_product_details', $tool_names );
 		$this->assertContains( 'get_categories', $tool_names );
 		$this->assertContains( 'get_cart_contents', $tool_names );
+		$this->assertContains( 'get_checkout_action', $tool_names );
 		$this->assertContains( 'compare_products', $tool_names );
 		$this->assertContains( 'get_order_status', $tool_names );
 		$this->assertContains( 'get_shipping_info', $tool_names );
@@ -186,6 +187,55 @@ class WPAIC_ChatTest extends TestCase {
 
 		$this->assertSame( 'object', $cart_tool['function']['parameters']['type'] );
 		$this->assertInstanceOf( stdClass::class, $cart_tool['function']['parameters']['properties'] );
+	}
+
+	public function test_get_checkout_action_tool_uses_empty_object_properties_schema(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_tool_definitions' );
+		$method->setAccessible( true );
+
+		$tools         = $method->invoke( $chat );
+		$checkout_tool = array_values( array_filter( $tools, fn( $t ) => $t['function']['name'] === 'get_checkout_action' ) )[0];
+
+		$this->assertSame( 'object', $checkout_tool['function']['parameters']['type'] );
+		$this->assertInstanceOf( stdClass::class, $checkout_tool['function']['parameters']['properties'] );
+	}
+
+	public function test_execute_tool_get_checkout_action(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-4o-mini',
+			)
+		);
+
+		global $mock_wc;
+		$this->create_mock_product( 11, 'Hat', '5.00' );
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 11, 2 );
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'execute_tool' );
+		$method->setAccessible( true );
+
+		$result = $method->invoke( $chat, 'get_checkout_action', array() );
+
+		$this->assertIsArray( $result );
+		$this->assertSame( 'http://example.com/checkout/', $result['checkout_url'] );
+		$this->assertTrue( $result['has_cart'] );
+		$this->assertSame( 2, $result['item_count'] );
 	}
 
 	public function test_execute_tool_search_products(): void {

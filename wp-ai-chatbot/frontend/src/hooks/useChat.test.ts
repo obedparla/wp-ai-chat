@@ -803,6 +803,80 @@ describe('useChat', () => {
     expect(result.current.messages[0].products).toBeUndefined()
   })
 
+  it('extracts checkout action from get_checkout_action tool output', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Taking you to checkout.' },
+            {
+              type: 'dynamic-tool',
+              toolName: 'get_checkout_action',
+              toolCallId: 'co-1',
+              state: 'output-available',
+              output: {
+                checkout_url: 'https://shop.test/checkout/',
+                cart_url: 'https://shop.test/cart/',
+                has_cart: true,
+                item_count: 2,
+              },
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].checkoutAction).toEqual({
+      checkout_url: 'https://shop.test/checkout/',
+      cart_url: 'https://shop.test/cart/',
+      has_cart: true,
+      item_count: 2,
+    })
+  })
+
+  it('omits checkout action when both URLs are empty', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'get_checkout_action',
+              toolCallId: 'co-2',
+              state: 'output-available',
+              output: {
+                checkout_url: '',
+                cart_url: '',
+                has_cart: false,
+                item_count: 0,
+              },
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].checkoutAction).toBeUndefined()
+  })
+
   it('does not add products to user messages', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [

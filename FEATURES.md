@@ -105,3 +105,8 @@
 - Live updates from form inputs: name, role, logo, theme color
 - Sample conversation with greeting, customer message, and product carousel
 - Inert links/buttons but scrollable message list and carousel
+
+## Checkout CTA
+- get_checkout_action tool returns real WooCommerce checkout + cart URLs
+- LLM calls it on checkout intent ("checkout", "pay now", "go to cart")
+- Frontend renders a styled CHECKOUT button (with cart-link fallback) inside the chat

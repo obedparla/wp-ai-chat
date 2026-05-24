@@ -431,6 +431,29 @@ class WPAIC_Tools {
 	}
 
 	/**
+	 * Get checkout/cart URLs and current cart state so the frontend can render a CTA button.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function get_checkout_action(): array {
+		$checkout_url = function_exists( 'wc_get_checkout_url' ) ? (string) wc_get_checkout_url() : '';
+		$cart_url     = function_exists( 'wc_get_cart_url' ) ? (string) wc_get_cart_url() : '';
+
+		$item_count = 0;
+		$cart       = $this->get_initialized_cart();
+		if ( null !== $cart && method_exists( $cart, 'get_cart_contents_count' ) ) {
+			$item_count = (int) $cart->get_cart_contents_count();
+		}
+
+		return array(
+			'checkout_url' => $checkout_url,
+			'cart_url'     => $cart_url,
+			'has_cart'     => $item_count > 0,
+			'item_count'   => $item_count,
+		);
+	}
+
+	/**
 	 * Format product for comparison view.
 	 *
 	 * @param WP_Post $post Product post.

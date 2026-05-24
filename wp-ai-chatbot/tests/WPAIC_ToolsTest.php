@@ -413,6 +413,29 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertSame( 'Cart unavailable', $result['error'] );
 	}
 
+	public function test_get_checkout_action_returns_urls_when_cart_empty(): void {
+		$result = $this->tools->get_checkout_action();
+
+		$this->assertSame( 'http://example.com/checkout/', $result['checkout_url'] );
+		$this->assertNotSame( '', $result['cart_url'] );
+		$this->assertFalse( $result['has_cart'] );
+		$this->assertSame( 0, $result['item_count'] );
+	}
+
+	public function test_get_checkout_action_reports_cart_state(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 1, 'Shoes', '20.00' );
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 3 );
+
+		$result = $this->tools->get_checkout_action();
+
+		$this->assertTrue( $result['has_cart'] );
+		$this->assertSame( 3, $result['item_count'] );
+		$this->assertSame( 'http://example.com/checkout/', $result['checkout_url'] );
+	}
+
 	public function test_compare_products_returns_empty_when_no_ids(): void {
 		$result = $this->tools->compare_products( array() );
 

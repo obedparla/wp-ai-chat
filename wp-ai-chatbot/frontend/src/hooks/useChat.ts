@@ -4,6 +4,7 @@ import { DefaultChatTransport, UIMessage } from 'ai'
 
 import { Product } from '../components/ProductCard'
 import { ComparisonData, ComparisonProduct } from '../components/ComparisonTable'
+import { CheckoutAction } from '../components/CheckoutButton'
 
 export interface Message {
   role: 'user' | 'assistant'
@@ -12,6 +13,7 @@ export interface Message {
   id?: string
   products?: Product[]
   comparison?: ComparisonData
+  checkoutAction?: CheckoutAction
   createdAt?: number
 }
 
@@ -189,6 +191,28 @@ function isProduct(obj: unknown): obj is Product {
 
 function isComparisonProduct(obj: unknown): obj is ComparisonProduct {
   return typeof obj === 'object' && obj !== null && 'id' in obj && 'name' in obj && 'url' in obj
+}
+
+function extractCheckoutActionFromMessage(uiMessage: UIMessage): CheckoutAction | undefined {
+  for (const part of uiMessage.parts) {
+    if (part.type !== 'dynamic-tool') continue
+    const toolPart = part as DynamicToolPart
+    if (toolPart.state !== 'output-available' || toolPart.toolName !== 'get_checkout_action') {
+      continue
+    }
+    const output = toolPart.output as Partial<CheckoutAction> | undefined
+    if (!output || typeof output !== 'object') continue
+    const checkoutUrl = typeof output.checkout_url === 'string' ? output.checkout_url : ''
+    const cartUrl = typeof output.cart_url === 'string' ? output.cart_url : ''
+    if (!checkoutUrl && !cartUrl) continue
+    return {
+      checkout_url: checkoutUrl,
+      cart_url: cartUrl,
+      has_cart: Boolean(output.has_cart),
+      item_count: typeof output.item_count === 'number' ? output.item_count : 0,
+    }
+  }
+  return undefined
 }
 
 function extractComparisonFromMessage(uiMessage: UIMessage): ComparisonData | undefined {
@@ -396,6 +420,7 @@ export function useChat() {
     return uiMessages.map((msg) => {
       const products = msg.role === 'assistant' ? extractProductsFromMessage(msg) : undefined
       const comparison = msg.role === 'assistant' ? extractComparisonFromMessage(msg) : undefined
+      const checkoutAction = msg.role === 'assistant' ? extractCheckoutActionFromMessage(msg) : undefined
       return {
         role: msg.role as 'user' | 'assistant',
         content: extractTextContent(msg),
@@ -403,6 +428,7 @@ export function useChat() {
         id: msg.id,
         products: products && products.length > 0 ? products : undefined,
         comparison,
+        checkoutAction,
         createdAt: msg.id ? timestamps[msg.id] : undefined,
       }
     })
