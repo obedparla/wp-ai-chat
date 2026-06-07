@@ -105,6 +105,24 @@ class WPAIC_LogsTest extends TestCase {
 		$this->assertEquals( 3, $conversations[0]->message_count );
 	}
 
+	public function test_get_conversations_includes_total_chars(): void {
+		$conv_id = $this->logs->create_conversation( 'chars-session' );
+		$this->logs->log_message( $conv_id, 'user', 'Hello' );      // 5 chars
+		$this->logs->log_message( $conv_id, 'assistant', 'Hi!' );    // 3 chars
+
+		$conversations = $this->logs->get_conversations();
+
+		$this->assertEquals( 8, $conversations[0]->total_chars );
+	}
+
+	public function test_get_conversations_total_chars_zero_without_messages(): void {
+		$this->logs->create_conversation( 'empty-session' );
+
+		$conversations = $this->logs->get_conversations();
+
+		$this->assertEquals( 0, $conversations[0]->total_chars );
+	}
+
 	public function test_get_conversation_count_returns_total(): void {
 		$this->logs->create_conversation( 'count-1' );
 		$this->logs->create_conversation( 'count-2' );

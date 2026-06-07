@@ -101,7 +101,7 @@ class WPAIC_Logs {
 	/**
 	 * @param int $limit
 	 * @param int $offset
-	 * @return array<int, object{id: int, session_id: string, user_id: int|null, user_ip: string|null, created_at: string, updated_at: string, message_count: int}>
+	 * @return array<int, object{id: int, session_id: string, user_id: int|null, user_ip: string|null, created_at: string, updated_at: string, message_count: int, total_chars: int}>
 	 */
 	public function get_conversations( int $limit = 20, int $offset = 0 ): array {
 		global $wpdb;
@@ -112,7 +112,7 @@ class WPAIC_Logs {
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table names cannot use placeholders.
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT c.*, COUNT(m.id) as message_count
+				"SELECT c.*, COUNT(m.id) as message_count, COALESCE(SUM(CHAR_LENGTH(m.content)), 0) as total_chars
 				FROM $conversations_table c
 				LEFT JOIN $messages_table m ON c.id = m.conversation_id
 				GROUP BY c.id

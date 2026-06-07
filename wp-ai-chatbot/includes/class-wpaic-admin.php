@@ -1583,6 +1583,7 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 							<thead>
 								<tr class="border-b border-line-2 bg-surface-2">
 									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Messages', 'wp-ai-chatbot' ); ?></th>
+									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Total Text', 'wp-ai-chatbot' ); ?></th>
 									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Started', 'wp-ai-chatbot' ); ?></th>
 									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Last Activity', 'wp-ai-chatbot' ); ?></th>
 									<th scope="col" class="px-5 py-3 text-left text-[11px] font-semibold text-muted uppercase tracking-wider"><?php esc_html_e( 'Actions', 'wp-ai-chatbot' ); ?></th>
@@ -1594,6 +1595,7 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 										<td class="px-5 py-3.5 text-[13px]">
 											<span class="wpaic-tag wpaic-tag-neutral"><?php echo esc_html( (string) $conv->message_count ); ?></span>
 										</td>
+										<td class="px-5 py-3.5 text-[13px] text-ink"><?php echo esc_html( number_format_i18n( (int) $conv->total_chars ) ); ?></td>
 										<td class="px-5 py-3.5 text-[13px] text-ink"><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $conv->created_at ) ) ); ?></td>
 										<td class="px-5 py-3.5 text-[13px] text-muted"><?php echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $conv->updated_at ) ) ); ?></td>
 										<td class="px-5 py-3.5 text-sm">

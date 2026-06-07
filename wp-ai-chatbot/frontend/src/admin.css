@@ -240,7 +240,8 @@
   }
   .wpaic-tag-neutral {
     background: var(--color-canvas);
-    color: var(--color-muted);
+    /* Literal value: the widget stylesheet loaded on admin pages overrides --color-muted to near-white. */
+    color: #6b6e77;
   }
   .wpaic-tag-warn {
     background: var(--color-warn-soft);

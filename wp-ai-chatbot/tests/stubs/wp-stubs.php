@@ -1016,12 +1016,15 @@ class MockWpdb {
 				$obj = (object) $row;
 
 				$message_count = 0;
+				$total_chars   = 0;
 				foreach ( $this->tables['wp_wpaic_messages'] as $msg ) {
 					if ( $msg['conversation_id'] == $row['id'] ) {
 						++$message_count;
+						$total_chars += mb_strlen( (string) ( $msg['content'] ?? '' ) );
 					}
 				}
 				$obj->message_count = $message_count;
+				$obj->total_chars   = $total_chars;
 				$results[]          = $obj;
 			}
 			return $results;
