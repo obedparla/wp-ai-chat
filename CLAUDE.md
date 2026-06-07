@@ -9,7 +9,7 @@ This is a brand new product. DO NOT worry about migrations, old code, or existin
 - After comitting, mark your task as Done: true, if it came from a file (todo, feature, prd, etc).
 - Run tests at the end, and add tests for new features or update tests
 - When a new feature is completed, add a very short description of it in `./FEATURES.md`
--
+- We're committing directly to `master` branch, unless otherwise specified
 
 ## Sub-projects
 
