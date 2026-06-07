@@ -87,7 +87,7 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertEquals( 'gpt-4o', $settings['model'] );
 	}
 
-	public function test_chat_defaults_to_gpt4o_mini(): void {
+	public function test_chat_defaults_to_gpt_5_5(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
@@ -96,8 +96,8 @@ class WPAIC_ChatTest extends TestCase {
 		);
 
 		$settings = get_option( 'wpaic_settings' );
-		$model    = $settings['model'] ?? 'gpt-4o-mini';
-		$this->assertEquals( 'gpt-4o-mini', $model );
+		$model    = $settings['model'] ?? 'gpt-5.5';
+		$this->assertEquals( 'gpt-5.5', $model );
 	}
 
 	public function test_tool_definitions_structure(): void {

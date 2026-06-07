@@ -161,17 +161,17 @@ class WPAIP_AdminTest extends TestCase {
 
 	// PRD: model is validated on save
 	public function test_sanitize_settings_validates_model(): void {
-		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-4o', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5.4', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertSame( 'gpt-4o', $sanitized['model'] );
+		$this->assertSame( 'gpt-5.4', $sanitized['model'] );
 	}
 
 	public function test_sanitize_settings_rejects_invalid_model(): void {
 		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'invalid-model', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertSame( 'gpt-4o-mini', $sanitized['model'] );
+		$this->assertSame( 'gpt-5.5', $sanitized['model'] );
 	}
 
 	// PRD: default model is displayed and editable
@@ -182,15 +182,14 @@ class WPAIP_AdminTest extends TestCase {
 
 		$this->assertStringContainsString( '<select', $output );
 		$this->assertStringContainsString( 'wpaip_settings[model]', $output );
-		$this->assertStringContainsString( 'gpt-4o-mini', $output );
-		$this->assertStringContainsString( 'gpt-4o', $output );
-		$this->assertStringContainsString( 'gpt-5', $output );
+		$this->assertStringContainsString( 'gpt-5.5', $output );
+		$this->assertStringContainsString( 'gpt-5.4', $output );
 	}
 
 	public function test_model_field_selects_current_value(): void {
 		update_option( 'wpaip_settings', array(
 			'openai_api_key'      => '',
-			'model'               => 'gpt-4o',
+			'model'               => 'gpt-5.4',
 			'freemius_product_id' => 1234,
 			'freemius_api_token'  => 'fs-token',
 		) );
@@ -199,7 +198,7 @@ class WPAIP_AdminTest extends TestCase {
 		$this->admin->render_model_field();
 		$output = ob_get_clean();
 
-		$this->assertMatchesRegularExpression( '/value="gpt-4o"[^>]*selected/', $output );
+		$this->assertMatchesRegularExpression( '/value="gpt-5\.4"[^>]*selected/', $output );
 	}
 
 	public function test_render_settings_page_displays_validated_installs(): void {
@@ -247,15 +246,14 @@ class WPAIP_AdminTest extends TestCase {
 		$input     = array( 'openai_api_key' => 'sk-test', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertSame( 'gpt-4o-mini', $sanitized['model'] );
+		$this->assertSame( 'gpt-5.5', $sanitized['model'] );
 	}
 
 	public function test_get_available_models_returns_expected(): void {
 		$models = $this->admin->get_available_models();
 
-		$this->assertArrayHasKey( 'gpt-4o-mini', $models );
-		$this->assertArrayHasKey( 'gpt-4o', $models );
-		$this->assertArrayHasKey( 'gpt-5', $models );
+		$this->assertArrayHasKey( 'gpt-5.5', $models );
+		$this->assertArrayHasKey( 'gpt-5.4', $models );
 	}
 
 	public function test_render_settings_page_requires_manage_options(): void {

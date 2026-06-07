@@ -44,6 +44,18 @@ class WPAIC_Chat {
 	}
 
 	/**
+	 * Reasoning effort for a model. Returns null for models that don't support it,
+	 * so the param is omitted rather than sent to a model that would reject it.
+	 * Low effort keeps chat latency and cost down while preserving tool use quality.
+	 */
+	private function reasoning_effort_for_model( string $model ): ?string {
+		return match ( $model ) {
+			'gpt-5.5' => 'low',
+			default   => null,
+		};
+	}
+
+	/**
 	 * @param array<int, array<string, mixed>> $messages
 	 * @return array<string, mixed>|WP_Error
 	 */
@@ -56,9 +68,9 @@ class WPAIC_Chat {
 			return $this->send_via_provider( $messages );
 		}
 
-		$model = $this->settings['model'] ?? 'gpt-4o-mini';
+		$model = $this->settings['model'] ?? 'gpt-5.5';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-4o-mini';
+			$model = 'gpt-5.5';
 		}
 
 		try {
@@ -70,6 +82,11 @@ class WPAIC_Chat {
 			$tools = $this->get_tool_definitions();
 			if ( ! empty( $tools ) ) {
 				$params['tools'] = $tools;
+			}
+
+			$effort = $this->reasoning_effort_for_model( $model );
+			if ( null !== $effort ) {
+				$params['reasoning_effort'] = $effort;
 			}
 
 			$response = $this->client->chat()->create( $params );
@@ -132,9 +149,9 @@ class WPAIC_Chat {
 			return;
 		}
 
-		$model = $this->settings['model'] ?? 'gpt-4o-mini';
+		$model = $this->settings['model'] ?? 'gpt-5.5';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-4o-mini';
+			$model = 'gpt-5.5';
 		}
 
 		try {
@@ -146,6 +163,11 @@ class WPAIC_Chat {
 			$tools = $this->get_tool_definitions();
 			if ( ! empty( $tools ) ) {
 				$params['tools'] = $tools;
+			}
+
+			$effort = $this->reasoning_effort_for_model( $model );
+			if ( null !== $effort ) {
+				$params['reasoning_effort'] = $effort;
 			}
 
 			$stream = $this->client->chat()->createStreamed( $params );
@@ -226,9 +248,9 @@ class WPAIC_Chat {
 	private function send_stream_via_provider( array $messages, callable $on_chunk ): void {
 		$formatted_messages = $this->format_messages( $messages );
 		$tools              = $this->get_tool_definitions();
-		$model              = $this->settings['model'] ?? 'gpt-4o-mini';
+		$model              = $this->settings['model'] ?? 'gpt-5.5';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-4o-mini';
+			$model = 'gpt-5.5';
 		}
 
 		$this->provider_completion_loop( $formatted_messages, $tools, $model, $on_chunk );
@@ -260,6 +282,11 @@ class WPAIC_Chat {
 		);
 		if ( ! empty( $tools ) ) {
 			$body['tools'] = $tools;
+		}
+
+		$effort = $this->reasoning_effort_for_model( $model );
+		if ( null !== $effort ) {
+			$body['reasoning_effort'] = $effort;
 		}
 
 		$provider_headers = $this->license_manager->get_provider_request_headers( $body );
@@ -1082,9 +1109,9 @@ class WPAIC_Chat {
 			return new WP_Error( 'no_api_key', 'OpenAI API key not configured', array( 'status' => 500 ) );
 		}
 
-		$model = $this->settings['model'] ?? 'gpt-4o-mini';
+		$model = $this->settings['model'] ?? 'gpt-5.5';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-4o-mini';
+			$model = 'gpt-5.5';
 		}
 
 		try {
@@ -1161,9 +1188,9 @@ class WPAIC_Chat {
 			return;
 		}
 
-		$model = $this->settings['model'] ?? 'gpt-4o-mini';
+		$model = $this->settings['model'] ?? 'gpt-5.5';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-4o-mini';
+			$model = 'gpt-5.5';
 		}
 
 		try {
