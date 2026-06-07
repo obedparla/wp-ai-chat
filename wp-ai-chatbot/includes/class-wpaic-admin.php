@@ -27,19 +27,6 @@ class WPAIC_Admin {
 		add_action( 'wp_ajax_wpaic_save_faqs', array( $this, 'ajax_save_faqs' ) );
 	}
 
-	/**
-	 * Get available OpenAI models.
-	 *
-	 * @return array<string, string> Model IDs and labels.
-	 */
-	public function get_available_models(): array {
-		return array(
-			'gpt-4o-mini' => __( 'GPT-4o Mini (Recommended - Fast & Cheap)', 'wp-ai-chatbot' ),
-			'gpt-4o'      => __( 'GPT-4o (Balanced)', 'wp-ai-chatbot' ),
-			'gpt-5'       => __( 'GPT-5 (Best - Expensive)', 'wp-ai-chatbot' ),
-		);
-	}
-
 	public function enqueue_admin_scripts( string $hook ): void {
 		$allowed_hooks = array(
 			'toplevel_page_wp-ai-chatbot',
@@ -314,7 +301,7 @@ class WPAIC_Admin {
 
 		$tab_fields = array(
 			'general'    => array( 'enabled', 'greeting_message', 'language', 'tone_of_voice', 'system_prompt' ),
-			'api'        => array( 'openai_api_key', 'model', 'provider_url_override' ),
+			'api'        => array( 'openai_api_key', 'provider_url_override' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'chatbot_role', 'theme_color' ),
 			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages', 'conversation_starters' ),
 			'search'     => array( 'product_index_enabled', 'content_index_post_types' ),
@@ -332,7 +319,7 @@ class WPAIC_Admin {
 
 		$sanitized                     = array();
 		$sanitized['openai_api_key']   = sanitize_text_field( $merged['openai_api_key'] ?? '' );
-		$sanitized['model']            = sanitize_text_field( $merged['model'] ?? 'gpt-4o-mini' );
+		$sanitized['model']            = 'gpt-5.5';
 		$sanitized['greeting_message'] = sanitize_textarea_field( $merged['greeting_message'] ?? '' );
 		$sanitized['enabled']          = ! empty( $merged['enabled'] );
 		$sanitized['system_prompt']    = sanitize_textarea_field( $merged['system_prompt'] ?? '' );
@@ -381,15 +368,8 @@ class WPAIC_Admin {
 	}
 
 	public function render_model_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['model'] ?? 'gpt-4o-mini' ) : 'gpt-4o-mini';
-		$models   = $this->get_available_models();
-		echo '<select name="wpaic_settings[model]">';
-		foreach ( $models as $model_id => $label ) {
-			echo '<option value="' . esc_attr( $model_id ) . '" ' . selected( $value, $model_id, false ) . '>' . esc_html( $label ) . '</option>';
-		}
-		echo '</select>';
-		echo '<p class="description">' . esc_html__( 'Select the AI model. GPT-4o Mini offers the best balance of speed, cost, and quality.', 'wp-ai-chatbot' ) . '</p>';
+		echo '<p><strong>GPT-5.5</strong> ' . esc_html__( '(latest and best ChatGPT model)', 'wp-ai-chatbot' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'The model is managed for you — always the most capable ChatGPT model.', 'wp-ai-chatbot' ) . '</p>';
 	}
 
 	public function render_greeting_field(): void {

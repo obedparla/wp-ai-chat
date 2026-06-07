@@ -16,9 +16,10 @@ class WPAIP_Admin {
 	 */
 	public function get_available_models(): array {
 		return array(
-			'gpt-4o-mini' => 'GPT-4o Mini (Fast & Cheap)',
-			'gpt-4o'      => 'GPT-4o (Balanced)',
-			'gpt-5'       => 'GPT-5 (Best - Expensive)',
+			'gpt-5.5'      => 'GPT-5.5 (Recommended - Latest & Best)',
+			'gpt-5.4-nano' => 'GPT-5.4 Nano (Fastest & Cheapest)',
+			'gpt-5.4-mini' => 'GPT-5.4 Mini (Balanced)',
+			'gpt-5.4'      => 'GPT-5.4 (Most Capable)',
 		);
 	}
 
@@ -104,9 +105,9 @@ class WPAIP_Admin {
 		$sanitized['freemius_api_token']  = sanitize_text_field( trim( $input['freemius_api_token'] ?? ( $existing['freemius_api_token'] ?? '' ) ) );
 		$sanitized['openai_api_key']      = sanitize_text_field( trim( $input['openai_api_key'] ?? '' ) );
 
-		$model           = sanitize_text_field( $input['model'] ?? 'gpt-4o-mini' );
+		$model           = sanitize_text_field( $input['model'] ?? 'gpt-5.5' );
 		$valid_models    = array_keys( $this->get_available_models() );
-		$sanitized['model'] = in_array( $model, $valid_models, true ) ? $model : 'gpt-4o-mini';
+		$sanitized['model'] = in_array( $model, $valid_models, true ) ? $model : 'gpt-5.5';
 
 		return $sanitized;
 	}
@@ -134,7 +135,7 @@ class WPAIP_Admin {
 
 	public function render_model_field(): void {
 		$settings = get_option( 'wpaip_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['model'] ?? 'gpt-4o-mini' ) : 'gpt-4o-mini';
+		$value    = is_array( $settings ) ? ( $settings['model'] ?? 'gpt-5.5' ) : 'gpt-5.5';
 		$models   = $this->get_available_models();
 		echo '<select name="wpaip_settings[model]">';
 		foreach ( $models as $model_id => $label ) {

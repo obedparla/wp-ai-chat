@@ -121,10 +121,10 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertEquals( 'sk-test-key-12345', $sanitized['openai_api_key'] );
 	}
 
-	public function test_sanitize_settings_sanitizes_model(): void {
+	public function test_sanitize_settings_forces_model_ignoring_input(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => '  gpt-4o  ',
+			'model'            => 'gpt-4o',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'system_prompt'    => '',
@@ -132,10 +132,10 @@ class WPAIC_AdminTest extends TestCase {
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertEquals( 'gpt-4o', $sanitized['model'] );
+		$this->assertEquals( 'gpt-5.5', $sanitized['model'] );
 	}
 
-	public function test_sanitize_settings_defaults_model_when_empty(): void {
+	public function test_sanitize_settings_sets_model_when_missing(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
 			'greeting_message' => 'Hello',
@@ -144,7 +144,7 @@ class WPAIC_AdminTest extends TestCase {
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertEquals( 'gpt-4o-mini', $sanitized['model'] );
+		$this->assertEquals( 'gpt-5.5', $sanitized['model'] );
 	}
 
 	public function test_sanitize_settings_sanitizes_greeting_message(): void {
@@ -313,62 +313,16 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertStringContainsString( 'value=""', $output );
 	}
 
-	public function test_render_model_field_outputs_select(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'model' => 'gpt-4o',
-			)
-		);
-
+	public function test_render_model_field_outputs_static_text(): void {
 		$this->admin = new WPAIC_Admin();
 
 		ob_start();
 		$this->admin->render_model_field();
 		$output = ob_get_clean();
 
-		$this->assertStringContainsString( '<select', $output );
-		$this->assertStringContainsString( 'name="wpaic_settings[model]"', $output );
-		$this->assertStringContainsString( 'gpt-4o-mini', $output );
-		$this->assertStringContainsString( 'gpt-4o', $output );
-		$this->assertStringContainsString( 'gpt-5', $output );
-		$this->assertStringContainsString( 'Recommended - Fast &amp; Cheap', $output );
-		$this->assertStringContainsString( 'Balanced', $output );
-		$this->assertStringContainsString( 'Best - Expensive', $output );
-		$this->assertStringContainsString( 'class="description"', $output );
-		$this->assertStringNotContainsString( 'gpt-3.5-turbo', $output );
-		$this->assertStringNotContainsString( 'gpt-4-turbo', $output );
-		$this->assertStringNotContainsString( 'o1', $output );
-		$this->assertStringNotContainsString( 'o3-mini', $output );
-	}
-
-	public function test_render_model_field_selects_current_model(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'model' => 'gpt-5',
-			)
-		);
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_model_field();
-		$output = ob_get_clean();
-
-		$this->assertMatchesRegularExpression( '/gpt-5.*selected="selected"/', $output );
-	}
-
-	public function test_render_model_field_defaults_to_gpt4o_mini(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_model_field();
-		$output = ob_get_clean();
-
-		$this->assertMatchesRegularExpression( '/gpt-4o-mini.*selected="selected"/', $output );
+		$this->assertStringNotContainsString( '<select', $output );
+		$this->assertStringContainsString( 'GPT-5.5', $output );
+		$this->assertStringContainsString( 'latest and best ChatGPT model', $output );
 	}
 
 	public function test_render_greeting_field_outputs_textarea(): void {
@@ -543,7 +497,7 @@ class WPAIC_AdminTest extends TestCase {
 		$retrieved = get_option( 'wpaic_settings' );
 
 		$this->assertEquals( 'sk-test-persist', $retrieved['openai_api_key'] );
-		$this->assertEquals( 'gpt-4o', $retrieved['model'] );
+		$this->assertEquals( 'gpt-5.5', $retrieved['model'] );
 		$this->assertEquals( 'Hello, welcome!', $retrieved['greeting_message'] );
 		$this->assertTrue( $retrieved['enabled'] );
 		$this->assertEquals( 'You are helpful.', $retrieved['system_prompt'] );
@@ -673,10 +627,6 @@ class WPAIC_AdminTest extends TestCase {
 		$api_output = ob_get_clean();
 
 		ob_start();
-		$this->admin->render_model_field();
-		$model_output = ob_get_clean();
-
-		ob_start();
 		$this->admin->render_greeting_field();
 		$greeting_output = ob_get_clean();
 
@@ -689,7 +639,6 @@ class WPAIC_AdminTest extends TestCase {
 		$prompt_output = ob_get_clean();
 
 		$this->assertStringContainsString( 'wpaic_settings[openai_api_key]', $api_output );
-		$this->assertStringContainsString( 'wpaic_settings[model]', $model_output );
 		$this->assertStringContainsString( 'wpaic_settings[greeting_message]', $greeting_output );
 		$this->assertStringContainsString( 'wpaic_settings[enabled]', $enabled_output );
 		$this->assertStringContainsString( 'wpaic_settings[system_prompt]', $prompt_output );
@@ -836,20 +785,6 @@ class WPAIC_AdminTest extends TestCase {
 		unset( $_GET['tab'] );
 	}
 
-	public function test_get_available_models_returns_jan_2026_models(): void {
-		$this->admin = new WPAIC_Admin();
-		$models      = $this->admin->get_available_models();
-
-		$this->assertCount( 3, $models );
-		$this->assertArrayHasKey( 'gpt-4o-mini', $models );
-		$this->assertArrayHasKey( 'gpt-4o', $models );
-		$this->assertArrayHasKey( 'gpt-5', $models );
-		$this->assertArrayNotHasKey( 'gpt-3.5-turbo', $models );
-		$this->assertArrayNotHasKey( 'gpt-4-turbo', $models );
-		$this->assertArrayNotHasKey( 'o1', $models );
-		$this->assertArrayNotHasKey( 'o3-mini', $models );
-	}
-
 	public function test_ajax_upload_csv_returns_error_when_no_file_selected(): void {
 		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
 
@@ -898,13 +833,12 @@ class WPAIC_AdminTest extends TestCase {
 		$input = array(
 			'active_tab'     => 'api',
 			'openai_api_key' => 'new-key-123',
-			'model'          => 'gpt-4o',
 		);
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
 		$this->assertEquals( 'new-key-123', $sanitized['openai_api_key'] );
-		$this->assertEquals( 'gpt-4o', $sanitized['model'] );
+		$this->assertEquals( 'gpt-5.5', $sanitized['model'] );
 		$this->assertTrue( $sanitized['enabled'] );
 		$this->assertEquals( 'Hi there!', $sanitized['greeting_message'] );
 		$this->assertEquals( 'es', $sanitized['language'] );
@@ -932,7 +866,7 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertEquals( 'fr', $sanitized['language'] );
 		$this->assertEquals( 'friendly', $sanitized['tone_of_voice'] );
 		$this->assertEquals( 'sk-existing-key', $sanitized['openai_api_key'] );
-		$this->assertEquals( 'gpt-4o', $sanitized['model'] );
+		$this->assertEquals( 'gpt-5.5', $sanitized['model'] );
 	}
 
 	public function test_sanitize_settings_engagement_tab_preserves_appearance(): void {

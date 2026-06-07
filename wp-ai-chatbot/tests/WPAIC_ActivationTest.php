@@ -41,7 +41,7 @@ class WPAIC_ActivationTest extends TestCase {
 		$settings = get_option( 'wpaic_settings' );
 
 		$this->assertArrayHasKey( 'model', $settings );
-		$this->assertEquals( 'gpt-4o-mini', $settings['model'] );
+		$this->assertEquals( 'gpt-5.5', $settings['model'] );
 	}
 
 	public function test_activation_sets_greeting_message(): void {

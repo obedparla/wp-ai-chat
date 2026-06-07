@@ -118,6 +118,15 @@ class WPAIP_API {
 			);
 		}
 
+		$reasoning_effort = $request->get_param( 'reasoning_effort' );
+		if ( null !== $reasoning_effort && ! is_string( $reasoning_effort ) ) {
+			return new WP_Error(
+				'invalid_request',
+				'reasoning_effort must be a string when provided',
+				array( 'status' => 400 )
+			);
+		}
+
 		return null;
 	}
 
@@ -142,12 +151,13 @@ class WPAIP_API {
 			);
 		}
 
-		$messages = $request->get_param( 'messages' );
-		$tools    = $request->get_param( 'tools' );
-		$model    = $request->get_param( 'model' );
+		$messages         = $request->get_param( 'messages' );
+		$tools            = $request->get_param( 'tools' );
+		$model            = $request->get_param( 'model' );
+		$reasoning_effort = $request->get_param( 'reasoning_effort' );
 
 		$settings       = get_option( 'wpaip_settings', array() );
-		$default_model  = is_array( $settings ) ? ( $settings['model'] ?? 'gpt-4o-mini' ) : 'gpt-4o-mini';
+		$default_model  = is_array( $settings ) ? ( $settings['model'] ?? 'gpt-5.5' ) : 'gpt-5.5';
 
 		$params = array(
 			'model'    => is_string( $model ) ? $model : $default_model,
@@ -156,6 +166,10 @@ class WPAIP_API {
 
 		if ( is_array( $tools ) && ! empty( $tools ) ) {
 			$params['tools'] = $this->fix_tool_schemas( $tools );
+		}
+
+		if ( is_string( $reasoning_effort ) && '' !== $reasoning_effort ) {
+			$params['reasoning_effort'] = $reasoning_effort;
 		}
 
 		// @codeCoverageIgnoreStart
