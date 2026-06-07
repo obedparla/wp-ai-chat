@@ -1,113 +1,154 @@
-# WP AI Chatbot Features
+# WP AI – Features
 
-## Chat Widget
-- Floating chat widget on frontend
-- Real-time streaming responses (SSE)
-- Debounced multi-message sending with persistent input focus
-- Markdown support with prose styling
-- Product cards display search results
-- Carousel for 3+ products
+AI shopping assistant for WordPress/WooCommerce. A floating chat widget that helps shoppers
+find products, answer questions, and check out — powered by a fully managed AI backend (no
+OpenAI key required).
+
+---
+
+## Core Features (Marketing)
+
+The headline capabilities we lead with.
+
+- **AI shopping assistant for WooCommerce** — conversational product discovery, recommendations, and guided shopping that turns questions into purchases.
+- **Fully managed AI, no API key** — we host the model on our provider server. Customers install the plugin, start a trial, and go. No OpenAI account, no per-token billing to manage.
+- **Beautiful real-time chat widget** — polished floating widget with streaming responses, product cards, and carousels. Mobile-ready.
+- **Smart product recommendations** — search, compare, and add to cart directly inside the chat. Rich product cards with images, prices, sale badges, and variations.
+- **Cart & checkout assistance** — the bot knows what's in the cart and surfaces a one-tap checkout button when the shopper is ready to buy.
+- **Order tracking** — shoppers look up order status and tracking from chat, verified by email.
+- **Grounded & accurate** — answers only from your real store data. Never invents specs, materials, or shipping times.
+- **Train your bot** — feed it FAQs, CSV data, and your site's pages/posts so it answers in your store's voice with your facts.
+- **Human handoff** — escalates to your team when needed, capturing the customer's details and conversation.
+- **Fully branded & customizable** — custom name, logo, role, theme color, tone of voice, and system prompt.
+- **Multilingual** — auto-detects the shopper's language or locks to one of 12 supported languages.
+- **Proactive engagement** — timed popups invite shoppers to chat, with page targeting.
+- **Conversation insights** — full chat logs and transcripts in the admin.
+
+---
+
+## Supported Features (Detailed)
+
+Everything currently implemented.
+
+### Chat Widget (frontend)
+- Floating chat button (bottom-right), animated pulse until first open, hides on mobile while open
+- Real-time streaming responses over SSE
+- Header with circular avatar (logo or initials), green online dot, name + role subtitle
+- Flat gray assistant bubbles / themed user bubbles, 85% max width
+- Markdown rendering (tables, lists, links, bold/italic, code) with links opening in new tabs
+- Cluster-based time separators (TODAY / YESTERDAY / day name · HH:MM) on >5min gaps
+- Pill input with auto-growing textarea and internal circular up-arrow send button
+- Enter to send, Shift+Enter for newline; input auto-focus on open and after send
 - Jump-to-latest pill appears when scrolled up in long conversations
+- Conversation starter pills on empty chat (custom or auto-generated)
+- New conversation button (with confirm), close (X), and Escape-to-close
+- Email transcript: send the full conversation to an email address from the widget
+- Debounced multi-message sending (batches rapid messages before sending)
+- Session persistence in sessionStorage across page reloads
 
-## Admin Configuration
-- Provider connection and licensing status
-- Greeting message customization
-- System prompt customization
-- Theme color picker
-- Language selection (auto-detect or fixed)
-- Enable/disable toggle
+### Product Display
+- Product cards: image, name, short description, category caption, price, SALE badge with strikethrough
+- 2-column grid for 1–2 products; carousel for 3+ ("N PICKS" header, hover-revealed desktop arrows, swipe hint on touch)
+- Add-to-cart button with state machine (ADD → loading → ADDED, error fallback, SOLD OUT disabled)
+- Variable products: inline attribute dropdowns; live price/image/stock updates; PICK → ADD
+- Product-type-aware cards:
+  - External products → affiliate link with custom button text ("BUY PRODUCT")
+  - Grouped/bundle → product page link ("VIEW OPTIONS")
+  - Out-of-stock simple → disabled "Sold out"
+  - Subscriptions → render as simple/variable
+  - Unknown types → "View product" fallback
+- Comparison table: side-by-side of 2–4 products with per-product add-to-cart
+- Checkout CTA button (themed CHECKOUT, with "view cart" fallback) rendered inline on checkout intent
 
-## Licensing & Billing
+### AI Tools (function calls the model can invoke)
+WooCommerce:
+- `search_products` — fuzzy search by keyword, category, price range
+- `get_product_details` — full detail for one product
+- `get_categories` — category list with product counts
+- `compare_products` — side-by-side comparison of 2–4 products
+- `get_cart_contents` — current cart items + totals
+- `get_checkout_action` — real checkout/cart URLs for the CTA button
+- `get_order_status` — order lookup by number + email, with tracking link if available
+- `get_shipping_info` — real shipping zones, methods, and costs from store config
+
+Content & knowledge:
+- `search_site_content` — full-text search across pages/posts
+- `get_page_content` — fetch full text of a page/post (e.g. refund policy)
+- `query_custom_data` — query merchant-uploaded CSV data sources (only when sources exist)
+
+Support:
+- `create_handoff_request` — escalate to a human (only when handoff enabled)
+
+### Conversation Intelligence
+- Multi-turn tool-calling loop (executes tools, feeds results back, up to 10 iterations)
+- Guided shopping flow: offers top categories + one clarifying question for broad queries
+- Pairs gift/category suggestions with actual product picks
+- Grounding rules: states only facts present in tool output; no invented specs/materials/shipping times
+- Off-topic nudge-back: ends non-shopping answers with a natural shopping follow-up
+- Current-page context injection: bot knows the page type (product/cart/category/etc.) and IDs
+- Cart awareness: knows items and totals
+- Configurable tone of voice: Neutral, Friendly, Professional, Enthusiastic
+- Language: auto-detect or fixed (EN, ES, FR, DE, IT, PT, NL, RU, ZH, JA, KO, AR)
+
+### Search Indexing
+- TNTSearch fuzzy index for products (title, description, SKU, categories, variation attributes) with WP_Query fallback
+- TNTSearch content index for configurable post types (pages, posts) with WP_Query fallback
+- Admin re-index controls, freshness/status indicator, and indexed-item counts
+
+### Admin Configuration
+General tab:
+- Enable/disable chatbot toggle
+- Greeting message
+- Response language (auto-detect or 12 fixed languages)
+- Tone of voice (Neutral / Friendly / Professional / Enthusiastic)
+- Custom system prompt (advanced override)
+
+Appearance tab:
+- Chatbot name, role/subtitle
+- Logo upload (media library) with letter fallback
+- Theme color picker (10 presets + custom hex), default Indigo (#2545B8)
+- Live chat preview: renders the real ChatWidget UI, updating live from form inputs with a sample conversation
+
+Engagement tab:
+- Conversation starters (up to 5; auto-generated if blank)
+- Human handoff settings (enable; choose which optional fields to collect — phone, company, order number, message; name + email always collected)
+- Proactive popup (enable, delay 1–300s, message, page targeting: all / shop / product / homepage)
+
+Knowledge tab:
+- CSV data sources: upload (name, label, description, file ≤5MB), row counts, trained badge, delete/replace
+- FAQ pairs: Q/A textarea injected into the system prompt, answered naturally
+- Site content indexing: choose products + post types, re-index all, status display
+
+Licensing tab:
+- Trial / license status badge and active indicator
+- Activate license, manage billing, see plans (Freemius flow)
+- Provider endpoint display (connected / placeholder) and optional staging override
+
+### Admin Pages
+- Chat Logs: paginated conversation list with per-conversation message count and total text (character) count, expandable/viewable transcripts, delete individual conversations
+- Support Requests: paginated handoff list, inline status (New / Contacted / Resolved), transcript + collected fields view, email shortcut
+
+### Licensing & Billing
 - Freemius-powered trials, licensing, billing, and premium updates
-- Signed provider validation hides chat when the trial or license is inactive
-- Licensing tab includes a direct activation link into the default Freemius flow
-- Local `.local` and `.test` installs work against the provider in local development
+- Chat hidden on the frontend until a trial or license is active
+- Signed requests to the provider (HMAC-SHA256, Freemius install ID + public key, 5-min signature TTL)
+- `.local` / `.test` / staging installs work against the provider in local development
 - Provider rejections surface the exact reason in the chat stream
 
-## Chatbot Branding
-- Custom chatbot name
-- Custom logo URL (circular avatar with online indicator)
-- Custom role/subtitle text (e.g. "Personal stylist")
-- Configurable header display
+### WP-CLI
+- `wp wpaic import-dummyjson` — import demo WooCommerce products from dummyjson.com (`--limit`, `--skip`, `--purge`, `--dry-run`); maps images, categories, brand, SKU, dimensions, prices, stock, ratings
 
-## Widget Redesign (2026-04)
-- Refreshed header: circular avatar, green online dot, role subtitle
-- White message area with flat gray assistant bubbles
-- Cluster-based time separators (TODAY · HH:MM) on >5min gaps
-- Pill input with internal circular up-arrow send button
-- Inline-wrap outlined conversation starter pills
-- Product cards: SALE badge, uppercase category caption, compact + ADD pill
-- Product carousel: "N PICKS" header, hover-revealed desktop arrows
-- Floating open button hides while widget is open, reclaiming vertical space
-- Indigo (#2545B8) as new default theme color
+---
 
-## Proactive Engagement
-- Timed popup message
-- Configurable delay and message
-- Page targeting (all/specific pages)
+## Provider (our server only)
 
-## WooCommerce Integration
-- Product search tool (keyword, category, price)
-- Product details tool
-- Categories listing tool
-- Guided shopping flow for broad queries (top categories first + one clarifying question)
-- Product cards with images, prices, descriptions
-- Product type-aware cards: external products link to affiliate URL with custom button text, grouped/bundle link to product page with "View options", out-of-stock simple products show disabled "Sold out" button, subscriptions render as simple/variable, unknown types fall back to "View product" link
+The middleman plugin that holds the OpenAI key so customers don't need one. Internal infrastructure,
+not customer-installed.
 
-## Handoff to Human Support
-- Toggle to enable/disable handoff feature
-- Bot collects customer name and email
-- Creates support request in database
-- Sends email notification to admin
-- Support admin page lists all requests
-- Status tracking (new/contacted/resolved)
-- View full conversation transcript
-
-## Train Bot - CSV Data
-- Upload CSV files as data sources
-- Define name, label, description per source
-- Bot queries custom data via tool calling
-- Supports multiple data sources
-- Delete/replace existing sources
-
-## Train Bot - FAQ Responses
-- Enter Q&A pairs in textarea
-- Format: "Q: question" / "A: answer"
-- Separate pairs with blank line
-- FAQ knowledge injected into system prompt
-- Bot answers using FAQ content naturally
-- Partial matches supported
-
-## Chat Logs
-- View all conversations
-- Expandable message history
-- Delete individual conversations
-
-## Get page content tool
-- Get any page when the user asks about relevant info
-- E.g "refund policy" it gets the refunds page
-
-## Current page context
-- The bot knows which page we're on
-
-## Cart awareness tool
-- Knows about products in the cart and total
-
-## Shipping info tool
-- Reads WooCommerce shipping zones, methods, and costs from the actual store config
-- Bot grounded to only state shipping info present in tool output (no made-up "3 to 7 business days")
-
-## Conversation starters
-- Customizable options that show up at the start of a conversation
-- Shows sensible defaults
-
-## Admin Live Chat Preview
-- Appearance tab renders real ChatWidget UI (reuses production component)
-- Live updates from form inputs: name, role, logo, theme color
-- Sample conversation with greeting, customer message, and product carousel
-- Inert links/buttons but scrollable message list and carousel
-
-## Checkout CTA
-- get_checkout_action tool returns real WooCommerce checkout + cart URLs
-- LLM calls it on checkout intent ("checkout", "pay now", "go to cart")
-- Frontend renders a styled CHECKOUT button (with cart-link fallback) inside the chat
+- Transparent OpenAI proxy: receives chat requests, forwards to OpenAI, streams SSE back; stateless (never interprets tool calls)
+- Signed-request authentication (HMAC-SHA256 over install ID, public key, timestamp, body hash; `hash_equals` comparison; 5-min TTL)
+- Freemius license/trial validation per request, with 5-minute API caching and a 24-hour grace period when Freemius is unavailable
+- Local-dev bypass for localhost/`.local`/`.test`/staging origins
+- Install registry tracking validated sites (status, license, last seen, usage bucket key for future rate limiting)
+- Tool schema normalization: restores empty object schemas (`{}`) that PHP turns into `[]` before forwarding to OpenAI
+- Admin settings: OpenAI API key, default model (gpt-5-mini default / gpt-5-nano / gpt-5), Freemius product ID + API token; dashboard of recently validated installs
