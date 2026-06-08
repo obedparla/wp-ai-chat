@@ -41,7 +41,7 @@ class WPAIC_ActivationTest extends TestCase {
 		$settings = get_option( 'wpaic_settings' );
 
 		$this->assertArrayHasKey( 'model', $settings );
-		$this->assertEquals( 'gpt-5.5', $settings['model'] );
+		$this->assertEquals( 'gpt-5-mini', $settings['model'] );
 	}
 
 	public function test_activation_sets_greeting_message(): void {
@@ -80,7 +80,7 @@ class WPAIC_ActivationTest extends TestCase {
 		// Set custom settings before activation
 		$custom_settings = array(
 			'openai_api_key'   => 'my-custom-key',
-			'model'            => 'gpt-4o',
+			'model'            => 'gpt-5',
 			'greeting_message' => 'Welcome!',
 			'enabled'          => false,
 			'system_prompt'    => 'Custom prompt',
@@ -93,7 +93,7 @@ class WPAIC_ActivationTest extends TestCase {
 		// Verify settings not overwritten
 		$settings = get_option( 'wpaic_settings' );
 		$this->assertEquals( 'my-custom-key', $settings['openai_api_key'] );
-		$this->assertEquals( 'gpt-4o', $settings['model'] );
+		$this->assertEquals( 'gpt-5', $settings['model'] );
 		$this->assertEquals( 'Welcome!', $settings['greeting_message'] );
 		$this->assertFalse( $settings['enabled'] );
 		$this->assertEquals( 'Custom prompt', $settings['system_prompt'] );

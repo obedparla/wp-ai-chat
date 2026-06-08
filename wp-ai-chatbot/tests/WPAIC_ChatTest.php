@@ -39,7 +39,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -55,7 +55,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -79,15 +79,15 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => 'test-key',
-				'model'          => 'gpt-4o',
+				'model'          => 'gpt-5',
 			)
 		);
 
 		$settings = get_option( 'wpaic_settings' );
-		$this->assertEquals( 'gpt-4o', $settings['model'] );
+		$this->assertEquals( 'gpt-5', $settings['model'] );
 	}
 
-	public function test_chat_defaults_to_gpt_5_5(): void {
+	public function test_chat_defaults_to_gpt_5_mini(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
@@ -96,8 +96,8 @@ class WPAIC_ChatTest extends TestCase {
 		);
 
 		$settings = get_option( 'wpaic_settings' );
-		$model    = $settings['model'] ?? 'gpt-5.5';
-		$this->assertEquals( 'gpt-5.5', $model );
+		$model    = $settings['model'] ?? 'gpt-5-mini';
+		$this->assertEquals( 'gpt-5-mini', $model );
 	}
 
 	public function test_tool_definitions_structure(): void {
@@ -105,7 +105,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -145,7 +145,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -172,7 +172,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -194,7 +194,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -216,7 +216,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -243,7 +243,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -266,7 +266,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -289,7 +289,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -319,7 +319,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -348,7 +348,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -373,7 +373,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -394,7 +394,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -415,7 +415,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -435,7 +435,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -455,7 +455,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -474,7 +474,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -501,7 +501,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'system_prompt'  => 'You are a custom bot for my store.',
 			)
 		);
@@ -522,7 +522,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'system_prompt'  => '',
 			)
 		);
@@ -542,7 +542,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -562,7 +562,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -592,7 +592,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -620,7 +620,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -650,7 +650,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -679,7 +679,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'system_prompt'  => '   ',
 			)
 		);
@@ -699,7 +699,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key'  => '',
-				'model'           => 'gpt-4o-mini',
+				'model'           => 'gpt-5-mini',
 				'tone_of_voice'   => 'neutral',
 				'system_prompt'   => '',
 			)
@@ -720,7 +720,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'tone_of_voice'  => 'friendly',
 			)
 		);
@@ -740,7 +740,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'system_prompt'  => 'You are a custom bot for my store.',
 				'tone_of_voice'  => 'professional',
 			)
@@ -769,7 +769,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'tone_of_voice'  => 'enthusiastic',
 			)
 		);
@@ -789,7 +789,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -838,7 +838,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -864,7 +864,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -886,7 +886,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'system_prompt'  => '',
 			)
 		);
@@ -907,7 +907,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -931,7 +931,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -954,7 +954,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -976,7 +976,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -998,7 +998,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1022,7 +1022,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'system_prompt'  => '',
 			)
 		);
@@ -1047,7 +1047,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'system_prompt'  => 'You are a custom assistant for this website.',
 			)
 		);
@@ -1069,7 +1069,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1115,7 +1115,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1163,7 +1163,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1264,7 +1264,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'language'       => 'auto',
 			)
 		);
@@ -1284,7 +1284,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 				'language'       => 'es',
 			)
 		);
@@ -1304,7 +1304,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1323,7 +1323,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1353,7 +1353,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1372,7 +1372,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1409,7 +1409,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1445,7 +1445,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key' => '',
-				'model'          => 'gpt-4o-mini',
+				'model'          => 'gpt-5-mini',
 			)
 		);
 
@@ -1549,9 +1549,10 @@ class WPAIC_ChatTest extends TestCase {
 		$method     = $reflection->getMethod( 'stream_from_provider' );
 		$method->setAccessible( true );
 
-		// Create a temporary SSE stream file
-		$sse_content  = "data: " . json_encode( array( 'choices' => array( array( 'delta' => array( 'content' => 'Hello' ), 'finish_reason' => null ) ) ) ) . "\n\n";
-		$sse_content .= "data: " . json_encode( array( 'choices' => array( array( 'delta' => array( 'content' => ' world' ), 'finish_reason' => 'stop' ) ) ) ) . "\n\n";
+		// Create a temporary SSE stream file (Responses API events).
+		$sse_content  = "data: " . json_encode( array( 'event' => 'response.output_text.delta', 'data' => array( 'delta' => 'Hello' ) ) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array( 'event' => 'response.output_text.delta', 'data' => array( 'delta' => ' world' ) ) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array( 'event' => 'response.completed', 'data' => array() ) ) . "\n\n";
 		$sse_content .= "data: [DONE]\n\n";
 
 		$temp_file = tempnam( sys_get_temp_dir(), 'sse_test_' );
@@ -1562,7 +1563,7 @@ class WPAIC_ChatTest extends TestCase {
 			$chat,
 			'file://' . $temp_file,
 			'test-key',
-			array( 'messages' => array() ),
+			array( 'input' => array() ),
 			function ( $data ) use ( &$chunks ) {
 				$chunks[] = $data;
 			}
@@ -1590,8 +1591,9 @@ class WPAIC_ChatTest extends TestCase {
 		$method     = $reflection->getMethod( 'stream_from_provider' );
 		$method->setAccessible( true );
 
-		$sse_content  = "data: " . json_encode( array( 'choices' => array( array( 'delta' => array( 'content' => 'Founded in 201' ), 'finish_reason' => null ) ) ) ) . "\n\n";
-		$sse_content .= "data: " . json_encode( array( 'choices' => array( array( 'delta' => array( 'content' => '0' ), 'finish_reason' => 'stop' ) ) ) ) . "\n\n";
+		$sse_content  = "data: " . json_encode( array( 'event' => 'response.output_text.delta', 'data' => array( 'delta' => 'Founded in 201' ) ) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array( 'event' => 'response.output_text.delta', 'data' => array( 'delta' => '0' ) ) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array( 'event' => 'response.completed', 'data' => array() ) ) . "\n\n";
 		$sse_content .= "data: [DONE]\n\n";
 
 		$temp_file = tempnam( sys_get_temp_dir(), 'sse_test_' );
@@ -1602,7 +1604,7 @@ class WPAIC_ChatTest extends TestCase {
 			$chat,
 			'file://' . $temp_file,
 			'test-key',
-			array( 'messages' => array() ),
+			array( 'input' => array() ),
 			function ( $data ) use ( &$chunks ) {
 				$chunks[] = $data;
 			}
@@ -1614,6 +1616,69 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertEquals( array( 'content' => 'Founded in 201' ), $chunks[0] );
 		$this->assertEquals( array( 'content' => '0' ), $chunks[1] );
 		$this->assertEmpty( $result );
+	}
+
+	public function test_to_responses_tools_flattens_function_shape(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_responses_tools' );
+		$method->setAccessible( true );
+
+		$nested = array(
+			array(
+				'type'     => 'function',
+				'function' => array(
+					'name'        => 'search_products',
+					'description' => 'Search products',
+					'parameters'  => array(
+						'type'       => 'object',
+						'properties' => array( 'search' => array( 'type' => 'string' ) ),
+					),
+				),
+			),
+			array(
+				'type'     => 'function',
+				'function' => array(
+					'name'        => 'get_categories',
+					'description' => 'Get all product categories',
+					'parameters'  => array(
+						'type'       => 'object',
+						'properties' => new \stdClass(),
+					),
+				),
+			),
+		);
+
+		$flat = $method->invoke( $chat, $nested );
+
+		$this->assertSame( 'function', $flat[0]['type'] );
+		$this->assertSame( 'search_products', $flat[0]['name'] );
+		$this->assertSame( 'Search products', $flat[0]['description'] );
+		$this->assertArrayHasKey( 'parameters', $flat[0] );
+		$this->assertArrayNotHasKey( 'function', $flat[0] );
+		$this->assertFalse( $flat[0]['strict'] );
+		// No-arg tool keeps its empty stdClass properties (so it serializes to {}).
+		$this->assertInstanceOf( \stdClass::class, $flat[1]['parameters']['properties'] );
+	}
+
+	public function test_build_responses_input_maps_roles_and_content(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'build_responses_input' );
+		$method->setAccessible( true );
+
+		$input = $method->invoke(
+			$chat,
+			array(
+				array( 'role' => 'user', 'content' => 'Hi' ),
+				array( 'role' => 'assistant', 'content' => 'Hello!' ),
+				array( 'role' => 'weird', 'content' => 'coerced' ),
+			)
+		);
+
+		$this->assertSame( array( 'role' => 'user', 'content' => 'Hi' ), $input[0] );
+		$this->assertSame( array( 'role' => 'assistant', 'content' => 'Hello!' ), $input[1] );
+		$this->assertSame( 'user', $input[2]['role'] );
 	}
 
 	public function test_should_emit_stream_content_keeps_zero_string(): void {
@@ -1643,34 +1708,33 @@ class WPAIC_ChatTest extends TestCase {
 		$method->setAccessible( true );
 
 		$sse_content  = "data: " . json_encode( array(
-			'choices' => array( array(
-				'delta' => array(
-					'tool_calls' => array( array(
-						'index'    => 0,
-						'id'       => 'call_abc123',
-						'function' => array( 'name' => 'search_products', 'arguments' => '' ),
-					) ),
+			'event' => 'response.output_item.added',
+			'data'  => array(
+				'output_index' => 0,
+				'item'         => array(
+					'type'      => 'function_call',
+					'id'        => 'fc_item_1',
+					'call_id'   => 'call_abc123',
+					'name'      => 'search_products',
+					'arguments' => '',
 				),
-				'finish_reason' => null,
-			) ),
+			),
 		) ) . "\n\n";
 		$sse_content .= "data: " . json_encode( array(
-			'choices' => array( array(
-				'delta' => array(
-					'tool_calls' => array( array(
-						'index'    => 0,
-						'function' => array( 'arguments' => '{"search":"shoes"}' ),
-					) ),
-				),
-				'finish_reason' => null,
-			) ),
+			'event' => 'response.function_call_arguments.delta',
+			'data'  => array(
+				'item_id' => 'fc_item_1',
+				'delta'   => '{"search":"shoes"}',
+			),
 		) ) . "\n\n";
 		$sse_content .= "data: " . json_encode( array(
-			'choices' => array( array(
-				'delta'         => new \stdClass(),
-				'finish_reason' => 'tool_calls',
-			) ),
+			'event' => 'response.function_call_arguments.done',
+			'data'  => array(
+				'item_id'   => 'fc_item_1',
+				'arguments' => '{"search":"shoes"}',
+			),
 		) ) . "\n\n";
+		$sse_content .= "data: " . json_encode( array( 'event' => 'response.completed', 'data' => array() ) ) . "\n\n";
 		$sse_content .= "data: [DONE]\n\n";
 
 		$temp_file = tempnam( sys_get_temp_dir(), 'sse_test_' );
@@ -1681,7 +1745,7 @@ class WPAIC_ChatTest extends TestCase {
 			$chat,
 			'file://' . $temp_file,
 			'test-key',
-			array( 'messages' => array() ),
+			array( 'input' => array() ),
 			function ( $data ) use ( &$chunks ) {
 				$chunks[] = $data;
 			}
@@ -1691,9 +1755,9 @@ class WPAIC_ChatTest extends TestCase {
 
 		$this->assertArrayHasKey( 'tool_calls', $result );
 		$this->assertCount( 1, $result['tool_calls'] );
-		$this->assertEquals( 'call_abc123', $result['tool_calls'][0]['id'] );
-		$this->assertEquals( 'search_products', $result['tool_calls'][0]['function']['name'] );
-		$this->assertEquals( '{"search":"shoes"}', $result['tool_calls'][0]['function']['arguments'] );
+		$this->assertEquals( 'call_abc123', $result['tool_calls'][0]['call_id'] );
+		$this->assertEquals( 'search_products', $result['tool_calls'][0]['name'] );
+		$this->assertEquals( '{"search":"shoes"}', $result['tool_calls'][0]['arguments'] );
 
 		// Verify tool_input_start and tool_input_delta chunks were emitted
 		$chunk_types = array_keys( array_merge( ...$chunks ) );
@@ -1810,7 +1874,7 @@ class WPAIC_ChatTest extends TestCase {
 		};
 
 		// Call with iteration = max to trigger the guard immediately
-		$method->invoke( $chat, array(), array(), 'gpt-4o-mini', $callback, $max_value );
+		$method->invoke( $chat, array(), array(), 'gpt-5-mini', $callback, $max_value );
 
 		$this->assertCount( 1, $collected_events );
 		$this->assertArrayHasKey( 'error', $collected_events[0] );
@@ -1842,7 +1906,7 @@ class WPAIC_ChatTest extends TestCase {
 			$collected_events[] = $data;
 		};
 
-		$method->invoke( $chat, array(), array(), 'gpt-4o-mini', $callback, 0 );
+		$method->invoke( $chat, array(), array(), 'gpt-5-mini', $callback, 0 );
 
 		// Should get a connection error (not max iterations error)
 		$has_max_iterations_error = false;
@@ -1864,6 +1928,55 @@ class WPAIC_ChatTest extends TestCase {
 
 		// In provider mode, the OpenAI client should NOT be initialized
 		$this->assertNull( $property->getValue( $chat ) );
+	}
+
+	public function test_provider_request_body_omits_model_and_reasoning_effort(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$license_manager = new class extends WPAIC_License_Manager {
+			/** @var array<string, mixed>|null */
+			public ?array $captured_body = null;
+
+			public function __construct() {}
+
+			public function is_provider_url_configured(): bool {
+				return true;
+			}
+
+			public function has_provider_auth(): bool {
+				return true;
+			}
+
+			public function get_provider_url(): string {
+				return 'https://provider.example.invalid/wp-json/wpaip/v1/chat';
+			}
+
+			public function get_provider_request_headers( array $body ): array {
+				$this->captured_body = $body;
+				return array( 'X-WPAIC-Test' => '1' );
+			}
+		};
+
+		$chat = new WPAIC_Chat( array(), $license_manager );
+		$chat->send_stream(
+			array( array( 'role' => 'user', 'content' => 'Hello' ) ),
+			function () {}
+		);
+
+		$this->assertIsArray( $license_manager->captured_body );
+		$this->assertArrayHasKey( 'input', $license_manager->captured_body );
+		$this->assertArrayHasKey( 'instructions', $license_manager->captured_body );
+		$this->assertSame( 'user', $license_manager->captured_body['input'][0]['role'] );
+		$this->assertSame( 'Hello', $license_manager->captured_body['input'][0]['content'] );
+		$this->assertArrayNotHasKey( 'messages', $license_manager->captured_body );
+		$this->assertArrayNotHasKey( 'model', $license_manager->captured_body );
+		$this->assertArrayNotHasKey( 'reasoning_effort', $license_manager->captured_body );
 	}
 
 	private function create_provider_license_manager( string $provider_url = 'https://provider.example.com/wp-json/wpaip/v1/chat', bool $has_auth = true ): WPAIC_License_Manager {
@@ -1903,7 +2016,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key'  => '',
-				'model'           => 'gpt-4o-mini',
+				'model'           => 'gpt-5-mini',
 				'handoff_enabled' => true,
 				'handoff_fields'  => array( 'phone_number', 'company' ),
 			)
@@ -1942,7 +2055,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key'  => '',
-				'model'           => 'gpt-4o-mini',
+				'model'           => 'gpt-5-mini',
 				'handoff_enabled' => true,
 				'handoff_fields'  => array(),
 			)
@@ -1978,7 +2091,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key'  => '',
-				'model'           => 'gpt-4o-mini',
+				'model'           => 'gpt-5-mini',
 				'handoff_enabled' => true,
 				'handoff_fields'  => array( 'phone_number', 'request_message' ),
 			)
@@ -2002,7 +2115,7 @@ class WPAIC_ChatTest extends TestCase {
 			'wpaic_settings',
 			array(
 				'openai_api_key'  => '',
-				'model'           => 'gpt-4o-mini',
+				'model'           => 'gpt-5-mini',
 				'handoff_enabled' => true,
 				'handoff_fields'  => array(),
 			)

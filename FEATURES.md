@@ -151,4 +151,5 @@ not customer-installed.
 - Local-dev bypass for localhost/`.local`/`.test`/staging origins
 - Install registry tracking validated sites (status, license, last seen, usage bucket key for future rate limiting)
 - Tool schema normalization: restores empty object schemas (`{}`) that PHP turns into `[]` before forwarding to OpenAI
-- Admin settings: OpenAI API key, default model (gpt-5-mini default / gpt-5-nano / gpt-5), Freemius product ID + API token; dashboard of recently validated installs
+- Provider-decided model: the provider picks the model + reasoning effort per request and ignores whatever the chatbot sends, so models can be upgraded or throttled centrally without shipping a chatbot update (usage-bucket seam left for per-install rules)
+- Admin settings: OpenAI API key, model (GPT-5 Mini default / GPT-5.4 Mini / GPT-5.4 Nano) and reasoning effort (None / Low / Medium default / High) as independent selectors, Freemius product ID + API token; dashboard of recently validated installs

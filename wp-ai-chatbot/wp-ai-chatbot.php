@@ -188,7 +188,7 @@ function wpaic_activate(): void {
 		'wpaic_settings',
 		array(
 			'openai_api_key'        => '',
-			'model'                 => 'gpt-5.5',
+			'model'                 => 'gpt-5-mini',
 			'greeting_message'      => 'Hello! How can I help you today?',
 			'enabled'               => true,
 			'system_prompt'         => '',

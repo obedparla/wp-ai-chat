@@ -100,6 +100,13 @@ class WPAIP_AdminTest extends TestCase {
 		$this->assertArrayHasKey( 'model', $fields );
 	}
 
+	public function test_register_settings_adds_reasoning_effort_field(): void {
+		$this->admin->register_settings();
+
+		$fields = $GLOBALS['wp_settings_fields']['wp-ai-provider']['wpaip_main_section'];
+		$this->assertArrayHasKey( 'reasoning_effort', $fields );
+	}
+
 	public function test_freemius_product_id_field_renders_number_input(): void {
 		ob_start();
 		$this->admin->render_freemius_product_id_field();
@@ -123,7 +130,7 @@ class WPAIP_AdminTest extends TestCase {
 			'freemius_product_id' => 4321,
 			'freemius_api_token'  => 'fs-token',
 			'openai_api_key'      => '',
-			'model'               => 'gpt-4o-mini',
+			'model'               => 'gpt-5-mini',
 		) );
 
 		ob_start();
@@ -145,7 +152,7 @@ class WPAIP_AdminTest extends TestCase {
 
 	// PRD: save API key persists after reload
 	public function test_sanitize_settings_saves_api_key(): void {
-		$input     = array( 'openai_api_key' => 'sk-test-key-12345', 'model' => 'gpt-4o-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$input     = array( 'openai_api_key' => 'sk-test-key-12345', 'model' => 'gpt-5-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
 		$this->assertSame( 'sk-test-key-12345', $sanitized['openai_api_key'] );
@@ -153,43 +160,59 @@ class WPAIP_AdminTest extends TestCase {
 
 	// PRD: API key is trimmed on save
 	public function test_sanitize_settings_trims_api_key(): void {
-		$input     = array( 'openai_api_key' => '  sk-test-key-12345  ', 'model' => 'gpt-4o-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$input     = array( 'openai_api_key' => '  sk-test-key-12345  ', 'model' => 'gpt-5-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
 		$this->assertSame( 'sk-test-key-12345', $sanitized['openai_api_key'] );
 	}
 
-	// PRD: model is validated on save
+	// Model is validated on save against the allowed list.
 	public function test_sanitize_settings_validates_model(): void {
-		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5.4', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5.4-nano', 'reasoning_effort' => 'medium', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertSame( 'gpt-5.4', $sanitized['model'] );
+		$this->assertSame( 'gpt-5.4-nano', $sanitized['model'] );
 	}
 
 	public function test_sanitize_settings_rejects_invalid_model(): void {
-		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'invalid-model', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-9', 'reasoning_effort' => 'medium', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertSame( 'gpt-5.5', $sanitized['model'] );
+		$this->assertSame( 'gpt-5-mini', $sanitized['model'] );
 	}
 
-	// PRD: default model is displayed and editable
-	public function test_model_field_renders_select(): void {
+	// Reasoning effort is stored separately from the model and validated on save.
+	public function test_sanitize_settings_validates_reasoning_effort(): void {
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5-mini', 'reasoning_effort' => 'high', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 'high', $sanitized['reasoning_effort'] );
+	}
+
+	public function test_sanitize_settings_rejects_invalid_reasoning_effort(): void {
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5-mini', 'reasoning_effort' => 'turbo', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 'medium', $sanitized['reasoning_effort'] );
+	}
+
+	public function test_model_field_renders_select_with_all_models(): void {
 		ob_start();
 		$this->admin->render_model_field();
 		$output = ob_get_clean();
 
 		$this->assertStringContainsString( '<select', $output );
 		$this->assertStringContainsString( 'wpaip_settings[model]', $output );
-		$this->assertStringContainsString( 'gpt-5.5', $output );
-		$this->assertStringContainsString( 'gpt-5.4', $output );
+		$this->assertStringContainsString( 'gpt-5-mini', $output );
+		$this->assertStringContainsString( 'gpt-5.4-mini', $output );
+		$this->assertStringContainsString( 'gpt-5.4-nano', $output );
 	}
 
 	public function test_model_field_selects_current_value(): void {
 		update_option( 'wpaip_settings', array(
 			'openai_api_key'      => '',
-			'model'               => 'gpt-5.4',
+			'model'               => 'gpt-5.4-nano',
+			'reasoning_effort'    => 'medium',
 			'freemius_product_id' => 1234,
 			'freemius_api_token'  => 'fs-token',
 		) );
@@ -198,7 +221,36 @@ class WPAIP_AdminTest extends TestCase {
 		$this->admin->render_model_field();
 		$output = ob_get_clean();
 
-		$this->assertMatchesRegularExpression( '/value="gpt-5\.4"[^>]*selected/', $output );
+		$this->assertMatchesRegularExpression( '/value="gpt-5\.4-nano"[^>]*selected/', $output );
+	}
+
+	public function test_reasoning_effort_field_renders_select(): void {
+		ob_start();
+		$this->admin->render_reasoning_effort_field();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '<select', $output );
+		$this->assertStringContainsString( 'wpaip_settings[reasoning_effort]', $output );
+		$this->assertStringContainsString( 'none', $output );
+		$this->assertStringContainsString( 'low', $output );
+		$this->assertStringContainsString( 'medium', $output );
+		$this->assertStringContainsString( 'high', $output );
+	}
+
+	public function test_reasoning_effort_field_selects_current_value(): void {
+		update_option( 'wpaip_settings', array(
+			'openai_api_key'      => '',
+			'model'               => 'gpt-5-mini',
+			'reasoning_effort'    => 'high',
+			'freemius_product_id' => 1234,
+			'freemius_api_token'  => 'fs-token',
+		) );
+
+		ob_start();
+		$this->admin->render_reasoning_effort_field();
+		$output = ob_get_clean();
+
+		$this->assertMatchesRegularExpression( '/value="high"[^>]*selected/', $output );
 	}
 
 	public function test_render_settings_page_displays_validated_installs(): void {
@@ -228,7 +280,7 @@ class WPAIP_AdminTest extends TestCase {
 	}
 
 	public function test_sanitize_settings_saves_freemius_fields(): void {
-		$input     = array( 'openai_api_key' => 'sk-new', 'model' => 'gpt-4o-mini', 'freemius_product_id' => 5678, 'freemius_api_token' => 'token-xyz' );
+		$input     = array( 'openai_api_key' => 'sk-new', 'model' => 'gpt-5-mini', 'freemius_product_id' => 5678, 'freemius_api_token' => 'token-xyz' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
 		$this->assertSame( 5678, $sanitized['freemius_product_id'] );
@@ -236,7 +288,7 @@ class WPAIP_AdminTest extends TestCase {
 	}
 
 	public function test_sanitize_settings_strips_html_from_api_key(): void {
-		$input     = array( 'openai_api_key' => '<script>alert("xss")</script>sk-test', 'model' => 'gpt-4o-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$input     = array( 'openai_api_key' => '<script>alert("xss")</script>sk-test', 'model' => 'gpt-5-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
 		$this->assertStringNotContainsString( '<script>', $sanitized['openai_api_key'] );
@@ -246,14 +298,28 @@ class WPAIP_AdminTest extends TestCase {
 		$input     = array( 'openai_api_key' => 'sk-test', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertSame( 'gpt-5.5', $sanitized['model'] );
+		$this->assertSame( 'gpt-5-mini', $sanitized['model'] );
+	}
+
+	public function test_sanitize_settings_defaults_reasoning_effort_when_missing(): void {
+		$input     = array( 'openai_api_key' => 'sk-test', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 'medium', $sanitized['reasoning_effort'] );
 	}
 
 	public function test_get_available_models_returns_expected(): void {
-		$models = $this->admin->get_available_models();
+		$models = WPAIP_Admin::get_available_models();
 
-		$this->assertArrayHasKey( 'gpt-5.5', $models );
-		$this->assertArrayHasKey( 'gpt-5.4', $models );
+		$this->assertArrayHasKey( 'gpt-5-mini', $models );
+		$this->assertArrayHasKey( 'gpt-5.4-mini', $models );
+		$this->assertArrayHasKey( 'gpt-5.4-nano', $models );
+	}
+
+	public function test_get_available_reasoning_efforts_returns_expected(): void {
+		$efforts = WPAIP_Admin::get_available_reasoning_efforts();
+
+		$this->assertSame( array( 'none', 'low', 'medium', 'high' ), array_keys( $efforts ) );
 	}
 
 	public function test_render_settings_page_requires_manage_options(): void {

@@ -13,7 +13,8 @@ class WPAIP_APITest extends TestCase {
 
 		update_option( 'wpaip_settings', array(
 			'openai_api_key'      => 'sk-test',
-			'model'               => 'gpt-4o-mini',
+			'model'               => 'gpt-5-mini',
+			'reasoning_effort'    => 'medium',
 			'freemius_product_id' => 1234,
 			'freemius_api_token'  => 'fs-api-token',
 		) );
@@ -80,7 +81,7 @@ class WPAIP_APITest extends TestCase {
 
 	// --- Validation tests (via validate_chat_request) ---
 
-	public function test_validate_rejects_missing_messages(): void {
+	public function test_validate_rejects_missing_input(): void {
 		$request = new WP_REST_Request();
 
 		$result = $this->api->validate_chat_request( $request );
@@ -90,9 +91,9 @@ class WPAIP_APITest extends TestCase {
 		$this->assertSame( 400, $result->get_error_data()['status'] );
 	}
 
-	public function test_validate_rejects_empty_messages(): void {
+	public function test_validate_rejects_empty_input(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array() );
+		$request->set_param( 'input', array() );
 
 		$result = $this->api->validate_chat_request( $request );
 
@@ -100,9 +101,9 @@ class WPAIP_APITest extends TestCase {
 		$this->assertSame( 'invalid_request', $result->get_error_code() );
 	}
 
-	public function test_validate_rejects_non_array_messages(): void {
+	public function test_validate_rejects_non_array_input(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', 'not an array' );
+		$request->set_param( 'input', 'not an array' );
 
 		$result = $this->api->validate_chat_request( $request );
 
@@ -110,9 +111,9 @@ class WPAIP_APITest extends TestCase {
 		$this->assertSame( 'invalid_request', $result->get_error_code() );
 	}
 
-	public function test_validate_rejects_malformed_messages(): void {
+	public function test_validate_rejects_malformed_input(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
+		$request->set_param( 'input', array(
 			array( 'role' => 'user' ), // missing content
 		) );
 
@@ -122,26 +123,26 @@ class WPAIP_APITest extends TestCase {
 		$this->assertSame( 'invalid_request', $result->get_error_code() );
 	}
 
-	public function test_validate_accepts_valid_messages(): void {
+	public function test_validate_accepts_valid_input(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
-			array( 'role' => 'system', 'content' => 'You are helpful.' ),
+		$request->set_param( 'input', array(
 			array( 'role' => 'user', 'content' => 'Hello' ),
 		) );
+		$request->set_param( 'instructions', 'You are helpful.' );
 
 		$result = $this->api->validate_chat_request( $request );
 
 		$this->assertNull( $result );
 	}
 
-	public function test_validate_accepts_tool_role_messages(): void {
+	public function test_validate_accepts_function_call_output_items(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
+		$request->set_param( 'input', array(
 			array( 'role' => 'user', 'content' => 'Search products' ),
 			array(
-				'role'         => 'tool',
-				'tool_call_id' => 'call_123',
-				'content'      => '{"results": []}',
+				'type'    => 'function_call_output',
+				'call_id' => 'call_123',
+				'output'  => '{"results": []}',
 			),
 		) );
 
@@ -150,20 +151,15 @@ class WPAIP_APITest extends TestCase {
 		$this->assertNull( $result );
 	}
 
-	public function test_validate_accepts_assistant_tool_calls_messages(): void {
+	public function test_validate_accepts_function_call_items(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
+		$request->set_param( 'input', array(
 			array( 'role' => 'user', 'content' => 'Search products' ),
 			array(
-				'role'       => 'assistant',
-				'content'    => null,
-				'tool_calls' => array(
-					array(
-						'id'       => 'call_123',
-						'type'     => 'function',
-						'function' => array( 'name' => 'search_products', 'arguments' => '{}' ),
-					),
-				),
+				'type'      => 'function_call',
+				'call_id'   => 'call_123',
+				'name'      => 'search_products',
+				'arguments' => '{}',
 			),
 		) );
 
@@ -174,7 +170,7 @@ class WPAIP_APITest extends TestCase {
 
 	public function test_validate_rejects_non_array_tools(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
+		$request->set_param( 'input', array(
 			array( 'role' => 'user', 'content' => 'Hello' ),
 		) );
 		$request->set_param( 'tools', 'not an array' );
@@ -187,7 +183,7 @@ class WPAIP_APITest extends TestCase {
 
 	public function test_validate_rejects_non_string_model(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
+		$request->set_param( 'input', array(
 			array( 'role' => 'user', 'content' => 'Hello' ),
 		) );
 		$request->set_param( 'model', 123 );
@@ -198,15 +194,28 @@ class WPAIP_APITest extends TestCase {
 		$this->assertSame( 'invalid_request', $result->get_error_code() );
 	}
 
+	public function test_validate_rejects_non_string_instructions(): void {
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+		$request->set_param( 'instructions', array( 'not', 'a', 'string' ) );
+
+		$result = $this->api->validate_chat_request( $request );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'invalid_request', $result->get_error_code() );
+	}
+
 	public function test_validate_accepts_valid_tools_and_model(): void {
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
+		$request->set_param( 'input', array(
 			array( 'role' => 'user', 'content' => 'Hello' ),
 		) );
 		$request->set_param( 'tools', array(
-			array( 'type' => 'function', 'function' => array( 'name' => 'test' ) ),
+			array( 'type' => 'function', 'name' => 'test', 'parameters' => array( 'type' => 'object', 'properties' => new \stdClass() ) ),
 		) );
-		$request->set_param( 'model', 'gpt-4o' );
+		$request->set_param( 'model', 'gpt-5' );
 
 		$result = $this->api->validate_chat_request( $request );
 
@@ -218,7 +227,7 @@ class WPAIP_APITest extends TestCase {
 	public function test_handle_chat_returns_error_when_no_api_key(): void {
 		update_option( 'wpaip_settings', array(
 			'openai_api_key'      => '',
-			'model'               => 'gpt-4o-mini',
+			'model'               => 'gpt-5-mini',
 			'freemius_product_id' => 1234,
 			'freemius_api_token'  => 'fs-api-token',
 		) );
@@ -227,7 +236,7 @@ class WPAIP_APITest extends TestCase {
 		$this->api->set_streamer( $streamer );
 
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
+		$request->set_param( 'input', array(
 			array( 'role' => 'user', 'content' => 'Hello' ),
 		) );
 
@@ -248,8 +257,129 @@ class WPAIP_APITest extends TestCase {
 	}
 
 	public function test_handle_chat_builds_correct_params_with_tools(): void {
-		$captured_params = null;
-		$mock_streamer   = new class extends WPAIP_Streamer {
+		$mock_streamer = $this->make_capturing_streamer();
+
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+		$request->set_param( 'instructions', 'You are helpful.' );
+		$request->set_param( 'tools', array(
+			array( 'type' => 'function', 'name' => 'search', 'parameters' => array( 'type' => 'object', 'properties' => array( 'q' => array( 'type' => 'string' ) ) ) ),
+		) );
+
+		// handle_chat calls exit after streaming — catch it
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit throws in some test configurations
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( 'gpt-5-mini', $mock_streamer->captured_params['model'] );
+		$this->assertSame( array( 'effort' => 'medium' ), $mock_streamer->captured_params['reasoning'] );
+		$this->assertSame(
+			array( array( 'role' => 'user', 'content' => 'Hello' ) ),
+			$mock_streamer->captured_params['input']
+		);
+		$this->assertSame( 'You are helpful.', $mock_streamer->captured_params['instructions'] );
+		$this->assertSame( 'search', $mock_streamer->captured_params['tools'][0]['name'] );
+		$this->assertSame( 'function', $mock_streamer->captured_params['tools'][0]['type'] );
+	}
+
+	public function test_handle_chat_uses_provider_selected_model_and_effort(): void {
+		update_option( 'wpaip_settings', array(
+			'openai_api_key'      => 'sk-test',
+			'model'               => 'gpt-5.4-nano',
+			'reasoning_effort'    => 'high',
+			'freemius_product_id' => 1234,
+			'freemius_api_token'  => 'fs-api-token',
+		) );
+
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( 'gpt-5.4-nano', $mock_streamer->captured_params['model'] );
+		$this->assertSame( array( 'effort' => 'high' ), $mock_streamer->captured_params['reasoning'] );
+	}
+
+	// Backwards compat: older chatbots still send model/reasoning_effort. The
+	// provider must accept them (validation passes) but ignore their values.
+	public function test_handle_chat_ignores_request_model_and_reasoning_effort(): void {
+		update_option( 'wpaip_settings', array(
+			'openai_api_key'      => 'sk-test',
+			'model'               => 'gpt-5.4-mini',
+			'reasoning_effort'    => 'low',
+			'freemius_product_id' => 1234,
+			'freemius_api_token'  => 'fs-api-token',
+		) );
+
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+		$request->set_param( 'model', 'gpt-5' );
+		$request->set_param( 'reasoning_effort', 'high' );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( 'gpt-5.4-mini', $mock_streamer->captured_params['model'] );
+		$this->assertSame( array( 'effort' => 'low' ), $mock_streamer->captured_params['reasoning'] );
+	}
+
+	public function test_handle_chat_falls_back_to_defaults_when_settings_invalid(): void {
+		update_option( 'wpaip_settings', array(
+			'openai_api_key'      => 'sk-test',
+			'model'               => 'bogus-model',
+			'reasoning_effort'    => 'turbo',
+			'freemius_product_id' => 1234,
+			'freemius_api_token'  => 'fs-api-token',
+		) );
+
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( 'gpt-5-mini', $mock_streamer->captured_params['model'] );
+		$this->assertSame( array( 'effort' => 'medium' ), $mock_streamer->captured_params['reasoning'] );
+		$this->assertArrayNotHasKey( 'tools', $mock_streamer->captured_params );
+	}
+
+	private function make_capturing_streamer(): WPAIP_Streamer {
+		return new class extends WPAIP_Streamer {
 			/** @var array<string, mixed>|null */
 			public ?array $captured_params = null;
 
@@ -265,68 +395,6 @@ class WPAIP_APITest extends TestCase {
 				$this->captured_params = $params;
 			}
 		};
-
-		$this->api->set_streamer( $mock_streamer );
-
-		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
-			array( 'role' => 'user', 'content' => 'Hello' ),
-		) );
-		$request->set_param( 'tools', array(
-			array( 'type' => 'function', 'function' => array( 'name' => 'search' ) ),
-		) );
-		$request->set_param( 'model', 'gpt-4o' );
-
-		// handle_chat calls exit after streaming — catch it
-		try {
-			$this->api->handle_chat( $request );
-		} catch ( \Throwable $e ) {
-			// exit throws in some test configurations
-		}
-
-		$this->assertNotNull( $mock_streamer->captured_params );
-		$this->assertSame( 'gpt-4o', $mock_streamer->captured_params['model'] );
-		$this->assertSame(
-			array( array( 'role' => 'user', 'content' => 'Hello' ) ),
-			$mock_streamer->captured_params['messages']
-		);
-		$this->assertSame(
-			array( array( 'type' => 'function', 'function' => array( 'name' => 'search' ) ) ),
-			$mock_streamer->captured_params['tools']
-		);
-	}
-
-	public function test_handle_chat_uses_default_model_when_not_provided(): void {
-		$mock_streamer = new class extends WPAIP_Streamer {
-			public ?array $captured_params = null;
-
-			public function __construct() {}
-
-			public function has_client(): bool {
-				return true;
-			}
-
-			public function stream( array $params ): void {
-				$this->captured_params = $params;
-			}
-		};
-
-		$this->api->set_streamer( $mock_streamer );
-
-		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
-			array( 'role' => 'user', 'content' => 'Hello' ),
-		) );
-
-		try {
-			$this->api->handle_chat( $request );
-		} catch ( \Throwable $e ) {
-			// exit throws in some test configurations
-		}
-
-		$this->assertNotNull( $mock_streamer->captured_params );
-		$this->assertSame( 'gpt-4o-mini', $mock_streamer->captured_params['model'] );
-		$this->assertArrayNotHasKey( 'tools', $mock_streamer->captured_params );
 	}
 
 	public function test_handle_chat_omits_empty_tools(): void {
@@ -347,7 +415,7 @@ class WPAIP_APITest extends TestCase {
 		$this->api->set_streamer( $mock_streamer );
 
 		$request = new WP_REST_Request();
-		$request->set_param( 'messages', array(
+		$request->set_param( 'input', array(
 			array( 'role' => 'user', 'content' => 'Hello' ),
 		) );
 		$request->set_param( 'tools', array() );

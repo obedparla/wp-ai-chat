@@ -74,29 +74,35 @@ class WPAIP_API {
 	 * @return WP_Error|null Null when valid, WP_Error otherwise.
 	 */
 	public function validate_chat_request( WP_REST_Request $request ): ?WP_Error {
-		$messages = $request->get_param( 'messages' );
-		$tools    = $request->get_param( 'tools' );
-		$model    = $request->get_param( 'model' );
+		$input        = $request->get_param( 'input' );
+		$tools        = $request->get_param( 'tools' );
+		$model        = $request->get_param( 'model' );
+		$instructions = $request->get_param( 'instructions' );
 
-		if ( empty( $messages ) || ! is_array( $messages ) ) {
+		if ( empty( $input ) || ! is_array( $input ) ) {
 			return new WP_Error(
 				'invalid_request',
-				'messages field is required and must be an array',
+				'input field is required and must be an array',
 				array( 'status' => 400 )
 			);
 		}
 
-		foreach ( $messages as $message ) {
-			if ( ! is_array( $message ) || ! isset( $message['role'] ) || ! isset( $message['content'] ) ) {
-				if ( is_array( $message ) && 'tool' === ( $message['role'] ?? '' ) && isset( $message['tool_call_id'] ) ) {
-					continue;
-				}
-				if ( is_array( $message ) && 'assistant' === ( $message['role'] ?? '' ) && isset( $message['tool_calls'] ) ) {
-					continue;
-				}
+		foreach ( $input as $item ) {
+			if ( ! is_array( $item ) ) {
 				return new WP_Error(
 					'invalid_request',
-					'Each message must have role and content fields',
+					'Each input item must be an object',
+					array( 'status' => 400 )
+				);
+			}
+			// Function call / output items are typed; message items carry role + content.
+			if ( isset( $item['type'] ) ) {
+				continue;
+			}
+			if ( ! isset( $item['role'] ) || ! isset( $item['content'] ) ) {
+				return new WP_Error(
+					'invalid_request',
+					'Each input message must have role and content fields',
 					array( 'status' => 400 )
 				);
 			}
@@ -106,6 +112,14 @@ class WPAIP_API {
 			return new WP_Error(
 				'invalid_request',
 				'tools must be an array when provided',
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( null !== $instructions && ! is_string( $instructions ) ) {
+			return new WP_Error(
+				'invalid_request',
+				'instructions must be a string when provided',
 				array( 'status' => 400 )
 			);
 		}
@@ -151,25 +165,33 @@ class WPAIP_API {
 			);
 		}
 
-		$messages         = $request->get_param( 'messages' );
-		$tools            = $request->get_param( 'tools' );
-		$model            = $request->get_param( 'model' );
-		$reasoning_effort = $request->get_param( 'reasoning_effort' );
+		$input        = $request->get_param( 'input' );
+		$tools        = $request->get_param( 'tools' );
+		$instructions = $request->get_param( 'instructions' );
 
-		$settings       = get_option( 'wpaip_settings', array() );
-		$default_model  = is_array( $settings ) ? ( $settings['model'] ?? 'gpt-5.5' ) : 'gpt-5.5';
+		// The provider — not the chatbot — decides model and reasoning effort.
+		// Any model/reasoning_effort the request carries is validated (see
+		// validate_chat_request) but deliberately ignored here, so older
+		// chatbot versions that still send them keep working.
+		$resolved = $this->resolve_model_for_request();
 
 		$params = array(
-			'model'    => is_string( $model ) ? $model : $default_model,
-			'messages' => $messages,
+			'model' => $resolved['model'],
+			'input' => $input,
 		);
+
+		if ( is_string( $instructions ) && '' !== $instructions ) {
+			$params['instructions'] = $instructions;
+		}
 
 		if ( is_array( $tools ) && ! empty( $tools ) ) {
 			$params['tools'] = $this->fix_tool_schemas( $tools );
 		}
 
-		if ( is_string( $reasoning_effort ) && '' !== $reasoning_effort ) {
-			$params['reasoning_effort'] = $reasoning_effort;
+		// Responses API takes reasoning effort nested under `reasoning`. 'none'
+		// is not a valid Responses effort, so we omit it and let the model default.
+		if ( '' !== $resolved['reasoning_effort'] && 'none' !== $resolved['reasoning_effort'] ) {
+			$params['reasoning'] = array( 'effort' => $resolved['reasoning_effort'] );
 		}
 
 		// @codeCoverageIgnoreStart
@@ -196,6 +218,42 @@ class WPAIP_API {
 	}
 
 	/**
+	 * Decide the model + reasoning effort for this request, server-side.
+	 *
+	 * The provider is the sole authority: it picks the admin-selected option
+	 * and ignores whatever the chatbot sent. The per-request context in
+	 * $this->request_context (install ID, license ID, usage_bucket) is the
+	 * seam for future per-install throttling/abuse downgrades.
+	 *
+	 * @return array{model: string, reasoning_effort: string}
+	 */
+	private function resolve_model_for_request(): array {
+		$settings = get_option( 'wpaip_settings', array() );
+		$settings = is_array( $settings ) ? $settings : array();
+
+		$model            = $settings['model'] ?? '';
+		$reasoning_effort = $settings['reasoning_effort'] ?? '';
+
+		$valid_models = WPAIP_Admin::get_available_models();
+		if ( ! is_string( $model ) || ! isset( $valid_models[ $model ] ) ) {
+			$model = WPAIP_Admin::DEFAULT_MODEL;
+		}
+
+		$valid_efforts = WPAIP_Admin::get_available_reasoning_efforts();
+		if ( ! is_string( $reasoning_effort ) || ! isset( $valid_efforts[ $reasoning_effort ] ) ) {
+			$reasoning_effort = WPAIP_Admin::DEFAULT_REASONING_EFFORT;
+		}
+
+		// TODO: per-install throttling/abuse rules keyed off
+		// $this->request_context['usage_bucket'] can override model/effort here.
+
+		return array(
+			'model'            => $model,
+			'reasoning_effort' => $reasoning_effort,
+		);
+	}
+
+	/**
 	 * Fix empty arrays that should be JSON objects in tool schemas.
 	 *
 	 * PHP's json_decode turns {} into [] (empty array). When re-encoded,
@@ -206,10 +264,10 @@ class WPAIP_API {
 	 */
 	private function fix_tool_schemas( array $tools ): array {
 		foreach ( $tools as &$tool ) {
-			if ( ! isset( $tool['function']['parameters'] ) ) {
+			if ( ! isset( $tool['parameters'] ) ) {
 				continue;
 			}
-			$tool['function']['parameters'] = $this->fix_empty_objects( $tool['function']['parameters'] );
+			$tool['parameters'] = $this->fix_empty_objects( $tool['parameters'] );
 		}
 		return $tools;
 	}

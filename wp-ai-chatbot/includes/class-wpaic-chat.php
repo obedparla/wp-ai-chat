@@ -46,12 +46,12 @@ class WPAIC_Chat {
 	/**
 	 * Reasoning effort for a model. Returns null for models that don't support it,
 	 * so the param is omitted rather than sent to a model that would reject it.
-	 * Low effort keeps chat latency and cost down while preserving tool use quality.
+	 * Medium effort balances chat latency and cost against tool use quality.
 	 */
 	private function reasoning_effort_for_model( string $model ): ?string {
 		return match ( $model ) {
-			'gpt-5.5' => 'low',
-			default   => null,
+			'gpt-5-mini' => 'medium',
+			default      => null,
 		};
 	}
 
@@ -68,9 +68,9 @@ class WPAIC_Chat {
 			return $this->send_via_provider( $messages );
 		}
 
-		$model = $this->settings['model'] ?? 'gpt-5.5';
+		$model = $this->settings['model'] ?? 'gpt-5-mini';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5.5';
+			$model = 'gpt-5-mini';
 		}
 
 		try {
@@ -149,9 +149,9 @@ class WPAIC_Chat {
 			return;
 		}
 
-		$model = $this->settings['model'] ?? 'gpt-5.5';
+		$model = $this->settings['model'] ?? 'gpt-5-mini';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5.5';
+			$model = 'gpt-5-mini';
 		}
 
 		try {
@@ -246,14 +246,60 @@ class WPAIC_Chat {
 	 * @param callable(array<string, mixed>): void $on_chunk
 	 */
 	private function send_stream_via_provider( array $messages, callable $on_chunk ): void {
-		$formatted_messages = $this->format_messages( $messages );
-		$tools              = $this->get_tool_definitions();
-		$model              = $this->settings['model'] ?? 'gpt-5.5';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5.5';
-		}
+		$input        = $this->build_responses_input( $messages );
+		$instructions = $this->get_system_prompt();
+		$tools        = $this->to_responses_tools( $this->get_tool_definitions() );
 
-		$this->provider_completion_loop( $formatted_messages, $tools, $model, $on_chunk );
+		$this->provider_completion_loop( $input, $tools, $instructions, $on_chunk );
+	}
+
+	/**
+	 * Convert conversation history into Responses API `input` items. The system
+	 * prompt is sent separately as `instructions`, so it is not included here.
+	 *
+	 * @param array<int, array<string, mixed>> $messages
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function build_responses_input( array $messages ): array {
+		$input = array();
+		foreach ( $messages as $msg ) {
+			$role = isset( $msg['role'] ) && is_string( $msg['role'] ) ? $msg['role'] : 'user';
+			if ( 'assistant' !== $role ) {
+				$role = 'user';
+			}
+			$input[] = array(
+				'role'    => $role,
+				'content' => (string) ( $msg['content'] ?? '' ),
+			);
+		}
+		return $input;
+	}
+
+	/**
+	 * Flatten Chat-Completions tool definitions into the Responses API tool shape
+	 * ({type, name, description, parameters} instead of nesting under `function`).
+	 * strict=false preserves the existing loose-schema behavior.
+	 *
+	 * @param array<int, array<string, mixed>> $tools
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function to_responses_tools( array $tools ): array {
+		$converted = array();
+		foreach ( $tools as $tool ) {
+			if ( isset( $tool['function'] ) && is_array( $tool['function'] ) ) {
+				$function    = $tool['function'];
+				$converted[] = array(
+					'type'        => 'function',
+					'name'        => $function['name'] ?? '',
+					'description' => $function['description'] ?? '',
+					'parameters'  => $function['parameters'] ?? new \stdClass(),
+					'strict'      => false,
+				);
+			} else {
+				$converted[] = $tool;
+			}
+		}
+		return $converted;
 	}
 
 	private const MAX_PROVIDER_ITERATIONS = 10;
@@ -261,13 +307,13 @@ class WPAIC_Chat {
 	/**
 	 * Provider completion loop: sends to provider, parses SSE, handles tool calls, recurses.
 	 *
-	 * @param array<int, array<string, mixed>> $formatted_messages Already-formatted messages with system prompt.
-	 * @param array<int, array<string, mixed>> $tools Tool definitions.
-	 * @param string $model Model name.
+	 * @param array<int, array<string, mixed>> $input Responses API input items.
+	 * @param array<int, array<string, mixed>> $tools Tool definitions (Responses shape).
+	 * @param string $instructions System prompt, sent as the Responses `instructions` field.
 	 * @param callable(array<string, mixed>): void $on_chunk Frontend chunk callback.
 	 * @param int $iteration Current iteration count (guards against infinite recursion).
 	 */
-	private function provider_completion_loop( array $formatted_messages, array $tools, string $model, callable $on_chunk, int $iteration = 0 ): void {
+	private function provider_completion_loop( array $input, array $tools, string $instructions, callable $on_chunk, int $iteration = 0 ): void {
 		if ( $iteration >= self::MAX_PROVIDER_ITERATIONS ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log( '[WPAIC] Provider completion loop exceeded max iterations (' . self::MAX_PROVIDER_ITERATIONS . ')' );
@@ -276,17 +322,14 @@ class WPAIC_Chat {
 		}
 		$provider_url = $this->license_manager->get_provider_url();
 
+		// Model and reasoning effort are decided by the provider, not the
+		// chatbot. We deliberately omit them from the request body.
 		$body = array(
-			'messages' => $formatted_messages,
-			'model'    => $model,
+			'input'        => $input,
+			'instructions' => $instructions,
 		);
 		if ( ! empty( $tools ) ) {
 			$body['tools'] = $tools;
-		}
-
-		$effort = $this->reasoning_effort_for_model( $model );
-		if ( null !== $effort ) {
-			$body['reasoning_effort'] = $effort;
 		}
 
 		$provider_headers = $this->license_manager->get_provider_request_headers( $body );
@@ -303,56 +346,47 @@ class WPAIC_Chat {
 		}
 
 		if ( ! empty( $result['tool_calls'] ) ) {
-			$tool_calls_for_messages = array_map(
-				function ( $tc ) {
-					return array(
-						'id'       => $tc['id'],
-						'type'     => $tc['type'],
-						'function' => $tc['function'],
-					);
-				},
-				array_values( $result['tool_calls'] )
-			);
-
-			$formatted_messages[] = array(
-				'role'       => 'assistant',
-				'content'    => null,
-				'tool_calls' => $tool_calls_for_messages,
-			);
-
 			foreach ( $result['tool_calls'] as $tc ) {
-				$args        = json_decode( $tc['function']['arguments'], true );
+				// Echo the model's function call back into the conversation.
+				$input[] = array(
+					'type'      => 'function_call',
+					'call_id'   => $tc['call_id'],
+					'name'      => $tc['name'],
+					'arguments' => $tc['arguments'],
+				);
+
+				$args        = json_decode( $tc['arguments'], true );
 				$parsed_args = is_array( $args ) ? $args : array();
 
 				$on_chunk(
 					array(
 						'tool_input_available' => array(
-							'toolCallId' => $tc['id'] ?? '',
-							'toolName'   => $tc['function']['name'],
+							'toolCallId' => $tc['call_id'],
+							'toolName'   => $tc['name'],
 							'input'      => $parsed_args,
 						),
 					)
 				);
 
-				$tool_result = $this->execute_tool( $tc['function']['name'], $parsed_args );
+				$tool_result = $this->execute_tool( $tc['name'], $parsed_args );
 
 				$on_chunk(
 					array(
 						'tool_output_available' => array(
-							'toolCallId' => $tc['id'] ?? '',
+							'toolCallId' => $tc['call_id'],
 							'output'     => $tool_result,
 						),
 					)
 				);
 
-				$formatted_messages[] = array(
-					'role'         => 'tool',
-					'tool_call_id' => $tc['id'] ?? '',
-					'content'      => (string) wp_json_encode( $tool_result ),
+				$input[] = array(
+					'type'    => 'function_call_output',
+					'call_id' => $tc['call_id'],
+					'output'  => (string) wp_json_encode( $tool_result ),
 				);
 			}
 
-			$this->provider_completion_loop( $formatted_messages, $tools, $model, $on_chunk, $iteration + 1 );
+			$this->provider_completion_loop( $input, $tools, $instructions, $on_chunk, $iteration + 1 );
 			return;
 		}
 
@@ -429,11 +463,10 @@ class WPAIC_Chat {
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 		error_log( "[WPAIC] Provider stream opened, HTTP {$http_status}. Reading..." );
 
-		/** @var array<int, array{id: string|null, type: string, function: array{name: string, arguments: string}, started: bool}> $tool_calls */
-		$tool_calls    = array();
-		$finish_reason = '';
-		$buffer        = '';
-		$total_bytes   = 0;
+		/** @var array<string, array{call_id: string, name: string, arguments: string}> $tool_calls Keyed by Responses output item id. */
+		$tool_calls  = array();
+		$buffer      = '';
+		$total_bytes = 0;
 
 		while ( ! feof( $stream ) ) {
 			$chunk = fread( $stream, 8192 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
@@ -472,68 +505,75 @@ class WPAIC_Chat {
 					continue;
 				}
 
+				// Provider-level error (the provider emits { "error": { "message": ... } } on failure).
 				if ( isset( $data['error'] ) ) {
 					fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 					$error_message = is_array( $data['error'] ) ? ( $data['error']['message'] ?? 'Provider error' ) : (string) $data['error'];
 					return array( 'error' => $error_message );
 				}
 
-				$choices = $data['choices'] ?? array();
-				if ( empty( $choices ) ) {
-					continue;
-				}
+				// Responses API events are forwarded as { "event": ..., "data": {...} }.
+				$event   = isset( $data['event'] ) ? (string) $data['event'] : '';
+				$payload = isset( $data['data'] ) && is_array( $data['data'] ) ? $data['data'] : array();
 
-				$choice = $choices[0];
-				$delta  = $choice['delta'] ?? array();
+				switch ( $event ) {
+					case 'response.output_text.delta':
+						$text = $payload['delta'] ?? null;
+						if ( $this->should_emit_stream_content( $text ) ) {
+							$on_chunk( array( 'content' => $text ) );
+						}
+						break;
 
-				if ( $this->should_emit_stream_content( $delta['content'] ?? null ) ) {
-					$on_chunk( array( 'content' => $delta['content'] ) );
-				}
-
-				if ( ! empty( $delta['tool_calls'] ) ) {
-					foreach ( $delta['tool_calls'] as $tc_delta ) {
-						$index = $tc_delta['index'] ?? 0;
-						if ( ! isset( $tool_calls[ $index ] ) ) {
-							$tool_calls[ $index ] = array(
-								'id'       => $tc_delta['id'] ?? null,
-								'type'     => 'function',
-								'function' => array(
-									'name'      => '',
-									'arguments' => '',
-								),
-								'started'  => false,
+					case 'response.output_item.added':
+						$item = isset( $payload['item'] ) && is_array( $payload['item'] ) ? $payload['item'] : array();
+						if ( 'function_call' === ( $item['type'] ?? '' ) ) {
+							$item_id                = (string) ( $item['id'] ?? '' );
+							$call_id                = (string) ( $item['call_id'] ?? '' );
+							$name                   = (string) ( $item['name'] ?? '' );
+							$tool_calls[ $item_id ] = array(
+								'call_id'   => $call_id,
+								'name'      => $name,
+								'arguments' => (string) ( $item['arguments'] ?? '' ),
 							);
-						}
-						if ( ! empty( $tc_delta['function']['name'] ) ) {
-							$tool_calls[ $index ]['function']['name'] = $tc_delta['function']['name'];
-							if ( ! $tool_calls[ $index ]['started'] ) {
-								$tool_calls[ $index ]['started'] = true;
-								$on_chunk(
-									array(
-										'tool_input_start' => array(
-											'toolCallId' => $tool_calls[ $index ]['id'],
-											'toolName'   => $tc_delta['function']['name'],
-										),
-									)
-								);
-							}
-						}
-						if ( ! empty( $tc_delta['function']['arguments'] ) ) {
-							$tool_calls[ $index ]['function']['arguments'] .= $tc_delta['function']['arguments'];
 							$on_chunk(
 								array(
-									'tool_input_delta' => array(
-										'toolCallId'     => $tool_calls[ $index ]['id'],
-										'inputTextDelta' => $tc_delta['function']['arguments'],
+									'tool_input_start' => array(
+										'toolCallId' => $call_id,
+										'toolName'   => $name,
 									),
 								)
 							);
 						}
-					}
-				}
+						break;
 
-				if ( ! empty( $choice['finish_reason'] ) ) {
-					$finish_reason = $choice['finish_reason'];
+					case 'response.function_call_arguments.delta':
+						$item_id = (string) ( $payload['item_id'] ?? '' );
+						if ( isset( $tool_calls[ $item_id ] ) ) {
+							$delta                                = (string) ( $payload['delta'] ?? '' );
+							$tool_calls[ $item_id ]['arguments'] .= $delta;
+							$on_chunk(
+								array(
+									'tool_input_delta' => array(
+										'toolCallId'     => $tool_calls[ $item_id ]['call_id'],
+										'inputTextDelta' => $delta,
+									),
+								)
+							);
+						}
+						break;
+
+					case 'response.function_call_arguments.done':
+						$item_id = (string) ( $payload['item_id'] ?? '' );
+						if ( isset( $tool_calls[ $item_id ] ) && isset( $payload['arguments'] ) && is_string( $payload['arguments'] ) ) {
+							// The done event carries the authoritative complete arguments string.
+							$tool_calls[ $item_id ]['arguments'] = $payload['arguments'];
+						}
+						break;
+
+					case 'error':
+						fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+						$msg = $payload['message'] ?? 'Provider error';
+						return array( 'error' => is_string( $msg ) ? $msg : 'Provider error' );
 				}
 			}
 		}
@@ -541,10 +581,10 @@ class WPAIC_Chat {
 		fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-		error_log( "[WPAIC] Stream finished. Total bytes read: {$total_bytes}, finish_reason: {$finish_reason}, remaining buffer: " . substr( $buffer, 0, 200 ) );
+		error_log( "[WPAIC] Stream finished. Total bytes read: {$total_bytes}, tool_calls: " . count( $tool_calls ) . ', remaining buffer: ' . substr( $buffer, 0, 200 ) );
 
-		if ( 'tool_calls' === $finish_reason && ! empty( $tool_calls ) ) {
-			return array( 'tool_calls' => $tool_calls );
+		if ( ! empty( $tool_calls ) ) {
+			return array( 'tool_calls' => array_values( $tool_calls ) );
 		}
 
 		return array();
@@ -1109,9 +1149,9 @@ class WPAIC_Chat {
 			return new WP_Error( 'no_api_key', 'OpenAI API key not configured', array( 'status' => 500 ) );
 		}
 
-		$model = $this->settings['model'] ?? 'gpt-5.5';
+		$model = $this->settings['model'] ?? 'gpt-5-mini';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5.5';
+			$model = 'gpt-5-mini';
 		}
 
 		try {
@@ -1188,9 +1228,9 @@ class WPAIC_Chat {
 			return;
 		}
 
-		$model = $this->settings['model'] ?? 'gpt-5.5';
+		$model = $this->settings['model'] ?? 'gpt-5-mini';
 		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5.5';
+			$model = 'gpt-5-mini';
 		}
 
 		try {

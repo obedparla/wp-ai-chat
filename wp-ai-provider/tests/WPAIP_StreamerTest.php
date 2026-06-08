@@ -35,7 +35,7 @@ class WPAIP_StreamerTest extends TestCase {
 
 		$streamer = new TestableStreamer();
 
-		$streamer->stream( array( 'model' => 'gpt-4o-mini', 'messages' => array() ) );
+		$streamer->stream( array( 'model' => 'gpt-5-mini', 'input' => array() ) );
 
 		$this->assertCount( 2, $streamer->output );
 		$this->assertStringContainsString( '"error"', $streamer->output[0] );

@@ -265,8 +265,8 @@ class WPAIP_License_Validator {
 	 */
 	private function build_signed_body( WP_REST_Request $request ): array {
 		$body = array(
-			'messages' => $request->get_param( 'messages' ),
-			'model'    => $request->get_param( 'model' ),
+			'input'        => $request->get_param( 'input' ),
+			'instructions' => $request->get_param( 'instructions' ),
 		);
 
 		$tools = $request->get_param( 'tools' );

@@ -22,9 +22,12 @@ class WPAIP_Streamer {
 	}
 
 	/**
-	 * Stream a chat completion from OpenAI to the output buffer as SSE.
+	 * Stream a Responses API response from OpenAI to the output buffer as SSE.
 	 *
-	 * @param array<string, mixed> $params OpenAI chat completion params (messages, model, tools, etc.)
+	 * Each emitted SSE event is the SDK's typed streaming event serialized as
+	 * { "event": "response.output_text.delta", "data": { ... } }.
+	 *
+	 * @param array<string, mixed> $params OpenAI Responses params (input, model, tools, instructions, reasoning, etc.)
 	 */
 	public function stream( array $params ): void {
 		if ( null === $this->client ) {
@@ -34,7 +37,7 @@ class WPAIP_Streamer {
 		}
 
 		try {
-			$stream = $this->client->chat()->createStreamed( $params );
+			$stream = $this->client->responses()->createStreamed( $params );
 
 			foreach ( $stream as $response ) {
 				$this->emit_data( $response->toArray() );

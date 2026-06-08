@@ -319,7 +319,7 @@ class WPAIC_Admin {
 
 		$sanitized                     = array();
 		$sanitized['openai_api_key']   = sanitize_text_field( $merged['openai_api_key'] ?? '' );
-		$sanitized['model']            = 'gpt-5.5';
+		$sanitized['model']            = 'gpt-5-mini';
 		$sanitized['greeting_message'] = sanitize_textarea_field( $merged['greeting_message'] ?? '' );
 		$sanitized['enabled']          = ! empty( $merged['enabled'] );
 		$sanitized['system_prompt']    = sanitize_textarea_field( $merged['system_prompt'] ?? '' );
@@ -368,8 +368,8 @@ class WPAIC_Admin {
 	}
 
 	public function render_model_field(): void {
-		echo '<p><strong>GPT-5.5</strong> ' . esc_html__( '(latest and best ChatGPT model)', 'wp-ai-chatbot' ) . '</p>';
-		echo '<p class="description">' . esc_html__( 'The model is managed for you — always the most capable ChatGPT model.', 'wp-ai-chatbot' ) . '</p>';
+		echo '<p><strong>GPT-5 Mini</strong> ' . esc_html__( '(fast, capable ChatGPT model)', 'wp-ai-chatbot' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'The model is managed for you for the best balance of speed, cost, and quality.', 'wp-ai-chatbot' ) . '</p>';
 	}
 
 	public function render_greeting_field(): void {

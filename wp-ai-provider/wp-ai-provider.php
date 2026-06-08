@@ -67,7 +67,8 @@ function wpaip_activate(): void {
 		'wpaip_settings',
 		array(
 			'openai_api_key'      => '',
-			'model'               => 'gpt-5.5',
+			'model'               => 'gpt-5-mini',
+			'reasoning_effort'    => 'medium',
 			'freemius_product_id' => WPAIP_FREEMIUS_PRODUCT_ID,
 			'freemius_api_token'  => '',
 		)

@@ -110,7 +110,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_sanitizes_api_key(): void {
 		$input = array(
 			'openai_api_key'   => '  sk-test-key-12345  ',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'system_prompt'    => '',
@@ -124,7 +124,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_forces_model_ignoring_input(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o',
+			'model'            => 'gpt-5',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'system_prompt'    => '',
@@ -132,7 +132,7 @@ class WPAIC_AdminTest extends TestCase {
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertEquals( 'gpt-5.5', $sanitized['model'] );
+		$this->assertEquals( 'gpt-5-mini', $sanitized['model'] );
 	}
 
 	public function test_sanitize_settings_sets_model_when_missing(): void {
@@ -144,13 +144,13 @@ class WPAIC_AdminTest extends TestCase {
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertEquals( 'gpt-5.5', $sanitized['model'] );
+		$this->assertEquals( 'gpt-5-mini', $sanitized['model'] );
 	}
 
 	public function test_sanitize_settings_sanitizes_greeting_message(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => "  Hello!\nHow can I help?  ",
 			'enabled'          => '1',
 			'system_prompt'    => '',
@@ -164,7 +164,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_enabled_is_true_when_set(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'system_prompt'    => '',
@@ -178,7 +178,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_enabled_is_false_when_not_set(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'system_prompt'    => '',
 		);
@@ -191,7 +191,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_enabled_is_false_when_empty(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '',
 			'system_prompt'    => '',
@@ -205,7 +205,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_sanitizes_system_prompt(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'system_prompt'    => "  You are a helpful bot.\nBe nice.  ",
@@ -218,7 +218,7 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_handles_missing_api_key(): void {
 		$input = array(
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 		);
@@ -231,7 +231,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_sanitizes_theme_color(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'theme_color'      => '#ff5500',
@@ -245,7 +245,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_defaults_theme_color_when_invalid(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'theme_color'      => 'not-a-color',
@@ -259,7 +259,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_defaults_theme_color_when_missing(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 		);
@@ -272,7 +272,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_strips_html_from_api_key(): void {
 		$input = array(
 			'openai_api_key'   => '<script>alert("xss")</script>sk-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 		);
@@ -321,8 +321,8 @@ class WPAIC_AdminTest extends TestCase {
 		$output = ob_get_clean();
 
 		$this->assertStringNotContainsString( '<select', $output );
-		$this->assertStringContainsString( 'GPT-5.5', $output );
-		$this->assertStringContainsString( 'latest and best ChatGPT model', $output );
+		$this->assertStringContainsString( 'GPT-5 Mini', $output );
+		$this->assertStringContainsString( 'fast, capable ChatGPT model', $output );
 	}
 
 	public function test_render_greeting_field_outputs_textarea(): void {
@@ -485,7 +485,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_settings_persist_after_sanitization(): void {
 		$input = array(
 			'openai_api_key'   => 'sk-test-persist',
-			'model'            => 'gpt-4o',
+			'model'            => 'gpt-5',
 			'greeting_message' => 'Hello, welcome!',
 			'enabled'          => '1',
 			'system_prompt'    => 'You are helpful.',
@@ -497,7 +497,7 @@ class WPAIC_AdminTest extends TestCase {
 		$retrieved = get_option( 'wpaic_settings' );
 
 		$this->assertEquals( 'sk-test-persist', $retrieved['openai_api_key'] );
-		$this->assertEquals( 'gpt-5.5', $retrieved['model'] );
+		$this->assertEquals( 'gpt-5-mini', $retrieved['model'] );
 		$this->assertEquals( 'Hello, welcome!', $retrieved['greeting_message'] );
 		$this->assertTrue( $retrieved['enabled'] );
 		$this->assertEquals( 'You are helpful.', $retrieved['system_prompt'] );
@@ -647,7 +647,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_sanitizes_language(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'language'         => '  es  ',
@@ -661,7 +661,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_defaults_language_to_auto(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 		);
@@ -674,7 +674,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_sanitizes_tone_of_voice(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'tone_of_voice'    => '  professional  ',
@@ -688,7 +688,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_defaults_tone_of_voice_to_neutral(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 		);
@@ -701,7 +701,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_rejects_invalid_tone_of_voice(): void {
 		$input = array(
 			'openai_api_key'   => 'test-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 			'tone_of_voice'    => 'luxury',
@@ -827,7 +827,7 @@ class WPAIC_AdminTest extends TestCase {
 			'greeting_message' => 'Hi there!',
 			'language'         => 'es',
 			'openai_api_key'   => 'old-key',
-			'model'            => 'gpt-4o-mini',
+			'model'            => 'gpt-5-mini',
 		) );
 
 		$input = array(
@@ -838,7 +838,7 @@ class WPAIC_AdminTest extends TestCase {
 		$sanitized = $this->admin->sanitize_settings( $input );
 
 		$this->assertEquals( 'new-key-123', $sanitized['openai_api_key'] );
-		$this->assertEquals( 'gpt-5.5', $sanitized['model'] );
+		$this->assertEquals( 'gpt-5-mini', $sanitized['model'] );
 		$this->assertTrue( $sanitized['enabled'] );
 		$this->assertEquals( 'Hi there!', $sanitized['greeting_message'] );
 		$this->assertEquals( 'es', $sanitized['language'] );
@@ -847,7 +847,7 @@ class WPAIC_AdminTest extends TestCase {
 	public function test_sanitize_settings_general_tab_preserves_api_settings(): void {
 		WPAICTestHelper::set_option( 'wpaic_settings', array(
 			'openai_api_key' => 'sk-existing-key',
-			'model'          => 'gpt-4o',
+			'model'          => 'gpt-5',
 			'enabled'        => false,
 		) );
 
@@ -866,7 +866,7 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertEquals( 'fr', $sanitized['language'] );
 		$this->assertEquals( 'friendly', $sanitized['tone_of_voice'] );
 		$this->assertEquals( 'sk-existing-key', $sanitized['openai_api_key'] );
-		$this->assertEquals( 'gpt-5.5', $sanitized['model'] );
+		$this->assertEquals( 'gpt-5-mini', $sanitized['model'] );
 	}
 
 	public function test_sanitize_settings_engagement_tab_preserves_appearance(): void {
@@ -1165,7 +1165,7 @@ class WPAIC_AdminTest extends TestCase {
 		$result = $admin->sanitize_settings( array(
 			'active_tab'            => 'api',
 			'openai_api_key'        => '',
-			'model'                 => 'gpt-4o-mini',
+			'model'                 => 'gpt-5-mini',
 			'provider_url_override' => 'https://provider.example.com/wp-json/wpaip/v1/chat',
 		) );
 
@@ -1202,7 +1202,7 @@ class WPAIC_AdminTest extends TestCase {
 		$result = $admin->sanitize_settings( array(
 			'active_tab'            => 'api',
 			'openai_api_key'        => '',
-			'model'                 => 'gpt-4o-mini',
+			'model'                 => 'gpt-5-mini',
 			'provider_url_override' => 'https://valid-url.com/wp-json/wpaip/v1/chat',
 		) );
 

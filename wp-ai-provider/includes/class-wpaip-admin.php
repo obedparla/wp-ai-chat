@@ -5,6 +5,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class WPAIP_Admin {
+	public const DEFAULT_MODEL            = 'gpt-5-mini';
+	public const DEFAULT_REASONING_EFFORT = 'medium';
+
 	private WPAIP_Install_Registry $registry;
 
 	public function __construct( ?WPAIP_Install_Registry $registry = null ) {
@@ -12,14 +15,30 @@ class WPAIP_Admin {
 	}
 
 	/**
-	 * @return array<string, string>
+	 * Models the provider may send to OpenAI. The provider — not the chatbot —
+	 * picks one per request.
+	 *
+	 * @return array<string, string> Model ID => human label.
 	 */
-	public function get_available_models(): array {
+	public static function get_available_models(): array {
 		return array(
-			'gpt-5.5'      => 'GPT-5.5 (Recommended - Latest & Best)',
-			'gpt-5.4-nano' => 'GPT-5.4 Nano (Fastest & Cheapest)',
-			'gpt-5.4-mini' => 'GPT-5.4 Mini (Balanced)',
-			'gpt-5.4'      => 'GPT-5.4 (Most Capable)',
+			'gpt-5-mini'   => 'GPT-5 Mini',
+			'gpt-5.4-mini' => 'GPT-5.4 Mini',
+			'gpt-5.4-nano' => 'GPT-5.4 Nano',
+		);
+	}
+
+	/**
+	 * Reasoning-effort levels, chosen independently of the model.
+	 *
+	 * @return array<string, string> Effort value => human label.
+	 */
+	public static function get_available_reasoning_efforts(): array {
+		return array(
+			'none'   => 'None',
+			'low'    => 'Low',
+			'medium' => 'Medium',
+			'high'   => 'High',
 		);
 	}
 
@@ -82,8 +101,16 @@ class WPAIP_Admin {
 
 		add_settings_field(
 			'model',
-			__( 'Default Model', 'wp-ai-provider' ),
+			__( 'Model', 'wp-ai-provider' ),
 			array( $this, 'render_model_field' ),
+			'wp-ai-provider',
+			'wpaip_main_section'
+		);
+
+		add_settings_field(
+			'reasoning_effort',
+			__( 'Reasoning Effort', 'wp-ai-provider' ),
+			array( $this, 'render_reasoning_effort_field' ),
 			'wp-ai-provider',
 			'wpaip_main_section'
 		);
@@ -105,9 +132,13 @@ class WPAIP_Admin {
 		$sanitized['freemius_api_token']  = sanitize_text_field( trim( $input['freemius_api_token'] ?? ( $existing['freemius_api_token'] ?? '' ) ) );
 		$sanitized['openai_api_key']      = sanitize_text_field( trim( $input['openai_api_key'] ?? '' ) );
 
-		$model           = sanitize_text_field( $input['model'] ?? 'gpt-5.5' );
-		$valid_models    = array_keys( $this->get_available_models() );
-		$sanitized['model'] = in_array( $model, $valid_models, true ) ? $model : 'gpt-5.5';
+		$model           = sanitize_text_field( $input['model'] ?? self::DEFAULT_MODEL );
+		$valid_models    = array_keys( self::get_available_models() );
+		$sanitized['model'] = in_array( $model, $valid_models, true ) ? $model : self::DEFAULT_MODEL;
+
+		$reasoning_effort           = sanitize_text_field( $input['reasoning_effort'] ?? self::DEFAULT_REASONING_EFFORT );
+		$valid_efforts              = array_keys( self::get_available_reasoning_efforts() );
+		$sanitized['reasoning_effort'] = in_array( $reasoning_effort, $valid_efforts, true ) ? $reasoning_effort : self::DEFAULT_REASONING_EFFORT;
 
 		return $sanitized;
 	}
@@ -135,14 +166,28 @@ class WPAIP_Admin {
 
 	public function render_model_field(): void {
 		$settings = get_option( 'wpaip_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['model'] ?? 'gpt-5.5' ) : 'gpt-5.5';
-		$models   = $this->get_available_models();
+		$value    = is_array( $settings ) ? ( $settings['model'] ?? self::DEFAULT_MODEL ) : self::DEFAULT_MODEL;
+		$models   = self::get_available_models();
 		echo '<select name="wpaip_settings[model]">';
 		foreach ( $models as $model_id => $label ) {
 			$selected = ( $value === $model_id ) ? ' selected' : '';
 			echo '<option value="' . esc_attr( $model_id ) . '"' . $selected . '>' . esc_html( $label ) . '</option>';
 		}
 		echo '</select>';
+		echo '<p class="description">' . esc_html__( 'Model sent to OpenAI for every chatbot request. Decided here, not by chatbot installs.', 'wp-ai-provider' ) . '</p>';
+	}
+
+	public function render_reasoning_effort_field(): void {
+		$settings = get_option( 'wpaip_settings', array() );
+		$value    = is_array( $settings ) ? ( $settings['reasoning_effort'] ?? self::DEFAULT_REASONING_EFFORT ) : self::DEFAULT_REASONING_EFFORT;
+		$efforts  = self::get_available_reasoning_efforts();
+		echo '<select name="wpaip_settings[reasoning_effort]">';
+		foreach ( $efforts as $effort_value => $label ) {
+			$selected = ( $value === $effort_value ) ? ' selected' : '';
+			echo '<option value="' . esc_attr( $effort_value ) . '"' . $selected . '>' . esc_html( $label ) . '</option>';
+		}
+		echo '</select>';
+		echo '<p class="description">' . esc_html__( 'Reasoning effort sent to OpenAI, independent of the model.', 'wp-ai-provider' ) . '</p>';
 	}
 
 	public function render_settings_page(): void {

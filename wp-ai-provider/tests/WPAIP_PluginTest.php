@@ -36,18 +36,20 @@ class WPAIP_PluginTest extends TestCase {
 		$this->assertIsArray( $settings );
 		$this->assertArrayHasKey( 'openai_api_key', $settings );
 		$this->assertArrayHasKey( 'model', $settings );
+		$this->assertArrayHasKey( 'reasoning_effort', $settings );
 		$this->assertSame( '', $settings['openai_api_key'] );
-		$this->assertSame( 'gpt-5.5', $settings['model'] );
+		$this->assertSame( 'gpt-5-mini', $settings['model'] );
+		$this->assertSame( 'medium', $settings['reasoning_effort'] );
 	}
 
 	public function test_activate_does_not_overwrite_existing_settings(): void {
-		update_option( 'wpaip_settings', array( 'openai_api_key' => 'sk-existing', 'model' => 'gpt-4o' ) );
+		update_option( 'wpaip_settings', array( 'openai_api_key' => 'sk-existing', 'model' => 'gpt-5' ) );
 
 		wpaip_activate();
 
 		$settings = get_option( 'wpaip_settings' );
 		$this->assertSame( 'sk-existing', $settings['openai_api_key'] );
-		$this->assertSame( 'gpt-4o', $settings['model'] );
+		$this->assertSame( 'gpt-5', $settings['model'] );
 	}
 
 	public function test_deactivate_runs_without_error(): void {
