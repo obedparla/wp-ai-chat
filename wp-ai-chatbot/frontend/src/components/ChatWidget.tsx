@@ -26,6 +26,8 @@ function getToolProgressMessage(tool: ActiveTool): string {
   switch (tool.toolName) {
     case 'search_products':
       return 'Searching products...'
+    case 'get_popular_products':
+      return 'Loading best sellers...'
     case 'get_product_details':
       return 'Loading product details...'
     case 'get_categories':

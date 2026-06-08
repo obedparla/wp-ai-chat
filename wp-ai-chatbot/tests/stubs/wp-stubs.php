@@ -206,6 +206,9 @@ class WPAICTestHelper {
 	/** @var array<string, int> */
 	private static array $wc_page_ids = array();
 
+	/** @var array<string, mixed>|null */
+	private static ?array $last_query_vars = null;
+
 	public static function reset(): void {
 		self::$mock_posts      = array();
 		self::$mock_post_meta  = array();
@@ -217,6 +220,7 @@ class WPAICTestHelper {
 		self::$conditionals    = array();
 		self::$queried_object  = null;
 		self::$wc_page_ids     = array();
+		self::$last_query_vars = null;
 		unset( $_SERVER['REQUEST_URI'] );
 
 		if ( isset( $GLOBALS['wpdb'] ) && $GLOBALS['wpdb'] instanceof MockWpdb ) {
@@ -265,7 +269,8 @@ class WPAICTestHelper {
 	 * @return array<int, WP_Post>
 	 */
 	public static function get_mock_query_posts( array $query_args ): array {
-		$posts = array_values( self::$mock_posts );
+		self::$last_query_vars = $query_args;
+		$posts                 = array_values( self::$mock_posts );
 
 		if ( ! empty( $query_args['post_type'] ) ) {
 			$type = $query_args['post_type'];
@@ -364,6 +369,15 @@ class WPAICTestHelper {
 			return $posts;
 		}
 		return array_slice( $posts, 0, $limit );
+	}
+
+	/**
+	 * Returns the query vars from the most recent WP_Query / get_mock_query_posts() call.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	public static function get_last_query_vars(): ?array {
+		return self::$last_query_vars;
 	}
 
 	public static function set_post_meta( int $post_id, string $key, mixed $value ): void {
@@ -630,6 +644,12 @@ if ( ! function_exists( 'get_bloginfo' ) ) {
 			'url' => 'http://example.com',
 			default => '',
 		};
+	}
+}
+
+if ( ! function_exists( 'get_locale' ) ) {
+	function get_locale(): string {
+		return (string) WPAICTestHelper::get_option( 'test_locale', 'en_US' );
 	}
 }
 

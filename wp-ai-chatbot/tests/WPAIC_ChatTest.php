@@ -117,10 +117,11 @@ class WPAIC_ChatTest extends TestCase {
 
 		$tools = $method->invoke( $chat );
 
-		$this->assertCount( 10, $tools );
+		$this->assertCount( 11, $tools );
 
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertContains( 'search_products', $tool_names );
+		$this->assertContains( 'get_popular_products', $tool_names );
 		$this->assertContains( 'get_product_details', $tool_names );
 		$this->assertContains( 'get_categories', $tool_names );
 		$this->assertContains( 'get_cart_contents', $tool_names );
@@ -755,7 +756,7 @@ class WPAIC_ChatTest extends TestCase {
 
 		$custom_prompt_pos = strpos( $prompt, 'You are a custom bot for my store.' );
 		$tone_pos          = strpos( $prompt, 'Adjust only tone and wording.' );
-		$tools_pos         = strpos( $prompt, 'When presenting product search or comparison results' );
+		$tools_pos         = strpos( $prompt, 'When presenting product search, recommendation, or comparison results' );
 
 		$this->assertNotFalse( $custom_prompt_pos );
 		$this->assertNotFalse( $tone_pos );
@@ -918,11 +919,10 @@ class WPAIC_ChatTest extends TestCase {
 
 		$prompt = $method->invoke( $chat );
 
-		$this->assertStringContainsString( 'For broad shopping-discovery asks', $prompt );
+		$this->assertStringContainsString( 'BROAD DISCOVERY ONLY WHEN GENUINELY VAGUE', $prompt );
 		$this->assertStringContainsString( 'call get_categories first', $prompt );
-		$this->assertStringContainsString( 'top 3-5 categories sorted by highest count', $prompt );
-		$this->assertStringContainsString( 'ask one short clarifying question', $prompt );
-		$this->assertStringContainsString( 'Do not call search_products until the user gives direction', $prompt );
+		$this->assertStringContainsString( 'mention the top 3-5 categories by their highest count', $prompt );
+		$this->assertStringContainsString( 'Do NOT use this broad path when the message already names a concrete product', $prompt );
 	}
 
 	public function test_system_prompt_includes_off_topic_redirection_clause(): void {
@@ -943,9 +943,9 @@ class WPAIC_ChatTest extends TestCase {
 		$prompt = $method->invoke( $chat );
 
 		$this->assertStringContainsString( 'OFF-TOPIC REDIRECTION', $prompt );
-		$this->assertStringContainsString( 'After politely answering or declining any non-shopping question', $prompt );
-		$this->assertStringContainsString( 'ALWAYS end with a short, natural shopping-related follow-up', $prompt );
-		$this->assertStringContainsString( 'not pushy or templated', $prompt );
+		$this->assertStringContainsString( 'After politely answering or declining a non-shopping question', $prompt );
+		$this->assertStringContainsString( 'you MAY add one short, natural shopping-related follow-up', $prompt );
+		$this->assertStringContainsString( 'never pushy, templated, or forced', $prompt );
 	}
 
 	public function test_system_prompt_pairs_categories_with_products_for_gift_queries(): void {
@@ -967,7 +967,7 @@ class WPAIC_ChatTest extends TestCase {
 
 		$this->assertStringContainsString( 'GIFT AND RECOMMENDATION QUERIES', $prompt );
 		$this->assertStringContainsString( 'do not stop at category names', $prompt );
-		$this->assertStringContainsString( 'call search_products once per category', $prompt );
+		$this->assertStringContainsString( 'call search_products once per chosen category', $prompt );
 	}
 
 	public function test_system_prompt_includes_what_do_you_sell_context_rules(): void {
@@ -990,6 +990,216 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'call get_categories first', $prompt );
 		$this->assertStringContainsString( 'For "what do you sell?", after category guidance you may use search_site_content and get_page_content', $prompt );
 		$this->assertStringContainsString( 'If context is missing, say so and do not invent claims', $prompt );
+	}
+
+	public function test_system_prompt_routes_best_sellers_to_popular_products_tool(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'BEST SELLER AND POPULARITY QUERIES', $prompt );
+		$this->assertStringContainsString( 'call get_popular_products', $prompt );
+		$this->assertStringContainsString( 'Do NOT answer these with a category list', $prompt );
+		// Tie-breaker: popularity + concrete product type prefers get_popular_products with a
+		// category slug, but get_popular_products has no free-text keyword, so fall back to search.
+		$this->assertStringContainsString( 'TIE-BREAKER WHEN POPULARITY MEETS A PRODUCT TYPE', $prompt );
+		$this->assertStringContainsString( 'has NO free-text keyword', $prompt );
+		$this->assertStringContainsString( 'fall back to search_products with that product type as the search keyword', $prompt );
+	}
+
+	public function test_system_prompt_enforces_strict_category_grounding(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'STRICT CATEGORY GROUNDING', $prompt );
+		$this->assertStringContainsString( 'Only ever name categories that appear in the get_categories output', $prompt );
+		$this->assertStringContainsString( 'copying their names and slugs exactly as returned', $prompt );
+		$this->assertStringContainsString( 'do not claim a "clothing" category exists', $prompt );
+	}
+
+	public function test_system_prompt_maps_budget_to_price_filters(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'BUDGET AND PRICE FILTERS', $prompt );
+		$this->assertStringContainsString( 'pass it to search_products using min_price and/or max_price', $prompt );
+	}
+
+	public function test_system_prompt_searches_immediately_for_concrete_requests(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'SEARCH IMMEDIATELY FOR CONCRETE REQUESTS', $prompt );
+		$this->assertStringContainsString( 'call search_products right away with that as the search keyword', $prompt );
+	}
+
+	public function test_system_prompt_instructs_translating_search_keywords(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'SEARCH KEYWORD LANGUAGE', $prompt );
+		$this->assertStringContainsString( 'translate the search keyword', $prompt );
+		// Translate-before-search must be imperative and up-front, never translate brands,
+		// and carry the concrete Spanish running-shoes example.
+		$this->assertStringContainsString( 'on the FIRST search', $prompt );
+		$this->assertStringContainsString( 'NEVER translate brand names, model numbers, or SKUs', $prompt );
+		$this->assertStringContainsString( '"zapatos para correr" should search the keyword "running shoes"', $prompt );
+	}
+
+	public function test_system_prompt_includes_catalog_language_instruction(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option( 'test_locale', 'es_ES' );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( "The store's product catalog is written primarily in Spanish", $prompt );
+		$this->assertStringContainsString( 'follow the SEARCH KEYWORD LANGUAGE rule above', $prompt );
+		$this->assertStringContainsString( 'translate generic keywords into Spanish', $prompt );
+	}
+
+	public function test_system_prompt_branches_checkout_on_empty_cart(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'If has_cart is true (item_count is 1 or more)', $prompt );
+		$this->assertStringContainsString( 'If has_cart is false or item_count is 0, do NOT say checkout is ready', $prompt );
+		$this->assertStringContainsString( 'let the user know their cart is empty', $prompt );
+		$this->assertStringContainsString( 'offer to help them find something to add first', $prompt );
+	}
+
+	public function test_system_prompt_instructs_add_to_cart_via_card_button(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'ADD-TO-CART INTENT', $prompt );
+		$this->assertStringContainsString( 'do NOT say you are unable to add items', $prompt );
+		$this->assertStringContainsString( 'tap the ADD button on the product card', $prompt );
+		$this->assertStringContainsString( 'Do NOT type out any add-to-cart or cart URL', $prompt );
+	}
+
+	public function test_system_prompt_preserves_strict_shipping_grounding(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'STRICT SHIPPING GROUNDING', $prompt );
+		$this->assertStringContainsString( 'first call get_shipping_info for site-wide policy', $prompt );
+		$this->assertStringContainsString( 'NEVER invent delivery durations like "3 to 7 business days"', $prompt );
+		$this->assertStringContainsString( 'has_shipping_configured=false', $prompt );
 	}
 
 	public function test_system_prompt_enforces_strict_product_grounding(): void {

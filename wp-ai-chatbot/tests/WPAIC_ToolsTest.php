@@ -85,6 +85,39 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertSame( array(), $kept );
 	}
 
+	public function test_search_products_excludes_description_only_matches_when_strong_match_exists(): void {
+		$this->create_mock_product( 1, 'Water', '0.99' );
+		$this->create_mock_product(
+			2,
+			'Rolex Submariner Watch',
+			'13999.99',
+			'',
+			'',
+			'Known for its durability and water resistance, a symbol of luxury.'
+		);
+
+		$result = $this->tools->search_products( array( 'search' => 'water' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Water', $result[0]['name'] );
+	}
+
+	public function test_search_products_keeps_description_only_match_when_no_strong_match(): void {
+		$this->create_mock_product(
+			1,
+			'Trench Coat',
+			'120.00',
+			'',
+			'',
+			'fully waterproof outer shell'
+		);
+
+		$result = $this->tools->search_products( array( 'search' => 'waterproof' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Trench Coat', $result[0]['name'] );
+	}
+
 	public function test_search_products_respects_limit(): void {
 		$this->create_mock_product( 1, 'Product 1', '10' );
 		$this->create_mock_product( 2, 'Product 2', '20' );
@@ -203,6 +236,90 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertEquals( '19.99', $result[0]['price'] );
 		$this->assertEquals( '24.99', $result[0]['regular_price'] );
 		$this->assertEquals( '19.99', $result[0]['sale_price'] );
+	}
+
+	public function test_get_popular_products_returns_products_with_sales(): void {
+		$this->create_mock_product( 1, 'No Sales', '19.99' );
+		$this->create_mock_product( 2, 'Best Seller', '29.99' );
+		$this->create_mock_product( 3, 'Some Sales', '9.99' );
+
+		WPAICTestHelper::set_post_meta( 1, 'total_sales', '0' );
+		WPAICTestHelper::set_post_meta( 2, 'total_sales', '50' );
+		WPAICTestHelper::set_post_meta( 3, 'total_sales', '10' );
+
+		$result = $this->tools->get_popular_products( array() );
+
+		$this->assertCount( 2, $result );
+		foreach ( $result as $product ) {
+			$this->assertArrayHasKey( 'name', $product );
+			$this->assertArrayHasKey( 'price', $product );
+		}
+
+		// The popularity query must order by the named total_sales clause (the stub
+		// ignores orderby for results, so assert the query args the plugin built).
+		$query_vars = WPAICTestHelper::get_last_query_vars();
+		$this->assertNotNull( $query_vars );
+		$this->assertSame( array( 'sales_clause' => 'DESC' ), $query_vars['orderby'] );
+		$this->assertArrayHasKey( 'sales_clause', $query_vars['meta_query'] );
+		$this->assertSame( 'total_sales', $query_vars['meta_query']['sales_clause']['key'] );
+	}
+
+	public function test_get_popular_products_falls_back_to_rating_when_no_sales(): void {
+		$this->create_mock_product( 1, 'Rated Product', '19.99' );
+		$this->create_mock_product( 2, 'Another Rated', '29.99' );
+
+		WPAICTestHelper::set_post_meta( 1, '_wc_average_rating', '4.5' );
+		WPAICTestHelper::set_post_meta( 2, '_wc_average_rating', '3.0' );
+
+		$result = $this->tools->get_popular_products( array() );
+
+		$this->assertCount( 2, $result );
+
+		// Rating tier is the last query run, so it must build the named rating clause.
+		$query_vars = WPAICTestHelper::get_last_query_vars();
+		$this->assertNotNull( $query_vars );
+		$this->assertSame( array( 'rating_clause' => 'DESC' ), $query_vars['orderby'] );
+		$this->assertArrayHasKey( 'rating_clause', $query_vars['meta_query'] );
+		$this->assertSame( '_wc_average_rating', $query_vars['meta_query']['rating_clause']['key'] );
+	}
+
+	public function test_get_popular_products_falls_back_to_newest_when_no_signal(): void {
+		$this->create_mock_product( 1, 'Plain Product', '19.99' );
+		$this->create_mock_product( 2, 'Another Plain', '29.99' );
+
+		$result = $this->tools->get_popular_products( array() );
+
+		$this->assertCount( 2, $result );
+	}
+
+	public function test_get_popular_products_filters_by_category(): void {
+		$this->create_mock_product( 1, 'Shirt Seller', '19.99' );
+		$this->create_mock_product( 2, 'Pants Seller', '29.99' );
+
+		WPAICTestHelper::set_post_meta( 1, 'total_sales', '50' );
+		WPAICTestHelper::set_post_meta( 2, 'total_sales', '40' );
+
+		WPAICTestHelper::set_post_terms( 1, 'product_cat', array( 'shirts' ) );
+		WPAICTestHelper::set_post_terms( 2, 'product_cat', array( 'pants' ) );
+
+		$result = $this->tools->get_popular_products( array( 'category' => 'shirts' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Shirt Seller', $result[0]['name'] );
+	}
+
+	public function test_get_popular_products_clamps_limit(): void {
+		$this->create_mock_product( 1, 'Seller One', '19.99' );
+		$this->create_mock_product( 2, 'Seller Two', '29.99' );
+		$this->create_mock_product( 3, 'Seller Three', '9.99' );
+
+		WPAICTestHelper::set_post_meta( 1, 'total_sales', '50' );
+		WPAICTestHelper::set_post_meta( 2, 'total_sales', '40' );
+		WPAICTestHelper::set_post_meta( 3, 'total_sales', '30' );
+
+		$result = $this->tools->get_popular_products( array( 'limit' => 1 ) );
+
+		$this->assertCount( 1, $result );
 	}
 
 	public function test_get_product_details_returns_null_for_nonexistent_product(): void {

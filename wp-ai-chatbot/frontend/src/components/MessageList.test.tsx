@@ -84,3 +84,35 @@ describe('MessageList jump-to-latest button', () => {
     expect(scrollToArgs).toEqual({ top: 1000, behavior: 'smooth' })
   })
 })
+
+describe('MessageList checkout gating', () => {
+  function messageWithCheckout(hasCart: boolean): Message[] {
+    return [
+      {
+        role: 'assistant',
+        content: 'Here is your cart.',
+        id: 'm-checkout',
+        checkoutAction: {
+          checkout_url: 'https://shop.example/checkout',
+          cart_url: 'https://shop.example/cart',
+          has_cart: hasCart,
+          item_count: hasCart ? 2 : 0,
+        },
+      },
+    ]
+  }
+
+  it('does not render a checkout link when has_cart is false', () => {
+    render(<MessageList messages={messageWithCheckout(false)} />)
+    expect(screen.queryByText('CHECKOUT')).not.toBeInTheDocument()
+    expect(screen.queryByText('VIEW CART')).not.toBeInTheDocument()
+    expect(document.querySelector('a[href="https://shop.example/checkout"]')).toBeNull()
+    expect(document.querySelector('a[href="https://shop.example/cart"]')).toBeNull()
+  })
+
+  it('renders the checkout button when has_cart is true', () => {
+    render(<MessageList messages={messageWithCheckout(true)} />)
+    const checkoutLink = screen.getByText('CHECKOUT').closest('a')
+    expect(checkoutLink).toHaveAttribute('href', 'https://shop.example/checkout')
+  })
+})

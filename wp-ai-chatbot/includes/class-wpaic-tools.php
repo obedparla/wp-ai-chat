@@ -90,6 +90,112 @@ class WPAIC_Tools {
 	}
 
 	/**
+	 * Get the store's best-selling / most popular products.
+	 *
+	 * Returns best-sellers ordered by total_sales (WooCommerce-standard popularity
+	 * ordering). When no products carry a sales signal, falls back to top-rated by
+	 * average rating, then to the newest products so a request always yields cards.
+	 *
+	 * @param array<string, mixed> $args
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function get_popular_products( array $args ): array {
+		$limit = isset( $args['limit'] ) && is_numeric( $args['limit'] ) ? (int) $args['limit'] : 10;
+		$limit = max( 1, min( 24, $limit ) );
+
+		$base_args = array(
+			'post_type'      => 'product',
+			'post_status'    => 'publish',
+			'posts_per_page' => $limit,
+			'order'          => 'DESC',
+		);
+
+		if ( ! empty( $args['category'] ) && is_string( $args['category'] ) ) {
+			$base_args['tax_query'] = array(
+				array(
+					'taxonomy' => 'product_cat',
+					'field'    => 'slug',
+					'terms'    => $args['category'],
+				),
+			);
+		}
+
+		// Tier 1: real best-sellers by total sales.
+		$products = $this->query_popular_products(
+			array_merge(
+				$base_args,
+				array(
+					'meta_query' => array(
+						'sales_clause' => array(
+							'key'     => 'total_sales',
+							'value'   => 0,
+							'compare' => '>',
+							'type'    => 'NUMERIC',
+						),
+					),
+					'orderby'    => array( 'sales_clause' => 'DESC' ),
+				)
+			)
+		);
+		if ( ! empty( $products ) ) {
+			return $products;
+		}
+
+		// Tier 2: top-rated fallback when no sales signal exists.
+		$products = $this->query_popular_products(
+			array_merge(
+				$base_args,
+				array(
+					'meta_query' => array(
+						'rating_clause' => array(
+							'key'     => '_wc_average_rating',
+							'value'   => 0,
+							'compare' => '>',
+							'type'    => 'NUMERIC',
+						),
+					),
+					'orderby'    => array( 'rating_clause' => 'DESC' ),
+				)
+			)
+		);
+		if ( ! empty( $products ) ) {
+			return $products;
+		}
+
+		// Tier 3: newest products, always returns something.
+		return $this->query_popular_products(
+			array_merge(
+				$base_args,
+				array(
+					'orderby' => 'date',
+				)
+			)
+		);
+	}
+
+	/**
+	 * Run a product WP_Query and format the matching posts.
+	 *
+	 * @param array<string, mixed> $query_args
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function query_popular_products( array $query_args ): array {
+		$query    = new WP_Query( $query_args );
+		$products = array();
+
+		foreach ( $query->posts as $post ) {
+			if ( $post instanceof WP_Post ) {
+				$card = $this->format_product( $post );
+				if ( ! empty( $card ) ) {
+					$products[] = $card;
+				}
+			}
+		}
+
+		return $products;
+	}
+
+	/**
 	 * @param int $product_id
 	 * @return array<string, mixed>|null
 	 */
