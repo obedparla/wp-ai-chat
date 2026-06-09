@@ -6,7 +6,6 @@ describe('CheckoutButton', () => {
   const baseAction: CheckoutAction = {
     checkout_url: 'https://shop.example.com/checkout/',
     cart_url: 'https://shop.example.com/cart/',
-    has_cart: true,
     item_count: 2,
   }
 
@@ -40,7 +39,7 @@ describe('CheckoutButton', () => {
   it('renders nothing when no URLs are provided', () => {
     const { container } = render(
       <CheckoutButton
-        action={{ checkout_url: '', cart_url: '', has_cart: false, item_count: 0 }}
+        action={{ checkout_url: '', cart_url: '', item_count: 0 }}
       />
     )
 

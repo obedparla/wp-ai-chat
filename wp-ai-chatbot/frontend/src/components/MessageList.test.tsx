@@ -85,8 +85,8 @@ describe('MessageList jump-to-latest button', () => {
   })
 })
 
-describe('MessageList checkout gating', () => {
-  function messageWithCheckout(hasCart: boolean): Message[] {
+describe('MessageList checkout rendering', () => {
+  function messageWithCheckout(): Message[] {
     return [
       {
         role: 'assistant',
@@ -95,23 +95,25 @@ describe('MessageList checkout gating', () => {
         checkoutAction: {
           checkout_url: 'https://shop.example/checkout',
           cart_url: 'https://shop.example/cart',
-          has_cart: hasCart,
-          item_count: hasCart ? 2 : 0,
+          has_cart: true,
+          item_count: 2,
         },
       },
     ]
   }
 
-  it('does not render a checkout link when has_cart is false', () => {
-    render(<MessageList messages={messageWithCheckout(false)} />)
+  it('does not render a checkout link when there is no checkout action', () => {
+    render(
+      <MessageList
+        messages={[{ role: 'assistant', content: 'Here is your cart.', id: 'm-checkout' }]}
+      />
+    )
     expect(screen.queryByText('CHECKOUT')).not.toBeInTheDocument()
     expect(screen.queryByText('VIEW CART')).not.toBeInTheDocument()
-    expect(document.querySelector('a[href="https://shop.example/checkout"]')).toBeNull()
-    expect(document.querySelector('a[href="https://shop.example/cart"]')).toBeNull()
   })
 
-  it('renders the checkout button when has_cart is true', () => {
-    render(<MessageList messages={messageWithCheckout(true)} />)
+  it('renders the checkout button when a checkout action is present', () => {
+    render(<MessageList messages={messageWithCheckout()} />)
     const checkoutLink = screen.getByText('CHECKOUT').closest('a')
     expect(checkoutLink).toHaveAttribute('href', 'https://shop.example/checkout')
   })

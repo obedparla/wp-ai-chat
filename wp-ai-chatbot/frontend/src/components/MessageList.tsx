@@ -3,6 +3,7 @@ import { Message } from '../hooks/useChat'
 import ProductGrid from './ProductGrid'
 import ComparisonTable from './ComparisonTable'
 import CheckoutButton from './CheckoutButton'
+import AddToCartTrigger from './AddToCartTrigger'
 import MarkdownContent from './MarkdownContent'
 import { cn } from '@/lib/utils'
 
@@ -99,10 +100,12 @@ export default function MessageList({ messages, onRetry, children }: MessageList
         const products = msg.products ?? []
         const comparison = msg.comparison
         const checkoutAction = msg.checkoutAction
+        const addToCartIntents = msg.addToCartIntents ?? []
         const hasProducts = products.length > 0
         const hasComparison = comparison !== undefined
-        const hasCheckoutAction = checkoutAction !== undefined && checkoutAction.has_cart
-        const hasToolUI = hasProducts || hasComparison || hasCheckoutAction
+        const hasCheckoutAction = checkoutAction !== undefined
+        const hasAddToCart = addToCartIntents.length > 0
+        const hasToolUI = hasProducts || hasComparison || hasCheckoutAction || hasAddToCart
         const hasTextContent = msg.content && msg.content.trim().length > 0
         const showSeparator = shouldShowSeparator(msg, messages[i - 1])
 
@@ -173,7 +176,14 @@ export default function MessageList({ messages, onRetry, children }: MessageList
                 <ComparisonTable data={comparison} />
               </div>
             )}
-            {hasCheckoutAction && <CheckoutButton action={checkoutAction} />}
+            {checkoutAction && <CheckoutButton action={checkoutAction} />}
+            {hasAddToCart && (
+              <div className="flex w-full flex-col gap-1.5">
+                {addToCartIntents.map((intent) => (
+                  <AddToCartTrigger key={intent.toolCallId} intent={intent} />
+                ))}
+              </div>
+            )}
             {showRetry && hasToolUI && (
               <button
                 className="inline-flex items-center justify-center w-7 h-7 p-0 bg-red-50 border border-red-200 rounded-full text-red-600 text-sm cursor-pointer transition-all duration-200 self-start -mt-2 hover:bg-red-600 hover:border-red-600 hover:text-white hover:rotate-180"

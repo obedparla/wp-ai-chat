@@ -22,8 +22,10 @@ class WPAIC_Loader {
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-page-context.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-api.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-license-manager.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-system-prompt.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-chat.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-tools.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-product-tools.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-logs.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-cart.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-search-index.php';

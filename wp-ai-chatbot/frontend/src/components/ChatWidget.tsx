@@ -4,6 +4,7 @@ import ChatWidgetUI from './ChatWidgetUI'
 import SendTranscriptDialog from './SendTranscriptDialog'
 import ConfirmDialog from './ConfirmDialog'
 import ConversationStarters from './ConversationStarters'
+import { TOOL_PROGRESS_LABELS } from '../hooks/tools'
 
 interface ChatWidgetProps {
   onClose: () => void
@@ -23,18 +24,7 @@ interface ChatWidgetProps {
 }
 
 function getToolProgressMessage(tool: ActiveTool): string {
-  switch (tool.toolName) {
-    case 'search_products':
-      return 'Searching products...'
-    case 'get_popular_products':
-      return 'Loading best sellers...'
-    case 'get_product_details':
-      return 'Loading product details...'
-    case 'get_categories':
-      return 'Loading categories...'
-    default:
-      return `Running ${tool.toolName}...`
-  }
+  return TOOL_PROGRESS_LABELS[tool.toolName] ?? `Running ${tool.toolName}...`
 }
 
 export default function ChatWidget({

@@ -567,6 +567,77 @@ describe('useChat', () => {
     expect(result.current.activeTools).toEqual([])
   })
 
+  it('extracts add_to_cart intent from a successful tool output', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'add_to_cart',
+              toolCallId: 'tc-1',
+              state: 'output-available',
+              output: {
+                success: true,
+                action: 'add_to_cart',
+                product_id: 55,
+                variation_id: 99,
+                quantity: 2,
+                name: 'Cool Shirt',
+              },
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].addToCartIntents).toEqual([
+      { toolCallId: 'tc-1', productId: 55, variationId: 99, quantity: 2 },
+    ])
+  })
+
+  it('ignores add_to_cart tool output that did not succeed', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'add_to_cart',
+              toolCallId: 'tc-2',
+              state: 'output-available',
+              output: {
+                success: false,
+                needs_variation: true,
+                product_id: 55,
+              },
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].addToCartIntents).toBeUndefined()
+  })
+
   it('retry removes the failed assistant message and resubmits the conversation', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [
@@ -838,7 +909,6 @@ describe('useChat', () => {
     expect(result.current.messages[0].checkoutAction).toEqual({
       checkout_url: 'https://shop.test/checkout/',
       cart_url: 'https://shop.test/cart/',
-      has_cart: true,
       item_count: 2,
     })
   })
@@ -858,6 +928,40 @@ describe('useChat', () => {
               output: {
                 checkout_url: '',
                 cart_url: '',
+                has_cart: false,
+                item_count: 0,
+              },
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].checkoutAction).toBeUndefined()
+  })
+
+  it('omits checkout action when has_cart is false even with URLs present', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'get_checkout_action',
+              toolCallId: 'co-3',
+              state: 'output-available',
+              output: {
+                checkout_url: 'https://shop.test/checkout/',
+                cart_url: 'https://shop.test/cart/',
                 has_cart: false,
                 item_count: 0,
               },

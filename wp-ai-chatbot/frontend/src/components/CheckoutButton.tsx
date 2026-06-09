@@ -1,7 +1,6 @@
 export interface CheckoutAction {
   checkout_url: string
   cart_url: string
-  has_cart: boolean
   item_count: number
 }
 
