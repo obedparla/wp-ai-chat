@@ -175,8 +175,81 @@ class WPAIC_CartTest extends TestCase {
 		}
 	}
 
+	public function test_ajax_clear_cart_fails_when_woocommerce_not_active(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', false );
+
+		try {
+			$this->cart->ajax_clear_cart();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertFalse( $e->success );
+			$this->assertEquals( 'WooCommerce not active', $e->data['message'] );
+		}
+	}
+
+	public function test_ajax_clear_cart_empties_entire_cart_when_no_items(): void {
+		global $mock_wc, $mock_wc_products;
+		$mock_wc_products[1] = new MockWCProduct( 1, true, true );
+		$mock_wc_products[2] = new MockWCProduct( 2, true, true );
+		$mock_wc             = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 1 );
+		$mock_wc->get_persisted_cart()->add_to_cart( 2, 2 );
+
+		unset( $_REQUEST['items'] );
+
+		try {
+			$this->cart->ajax_clear_cart();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertTrue( $e->success );
+			$this->assertSame( 0, $e->data['cart_count'] );
+			$this->assertSame( array(), $mock_wc->get_persisted_cart()->get_cart() );
+		}
+	}
+
+	public function test_ajax_clear_cart_removes_only_requested_items(): void {
+		global $mock_wc, $mock_wc_products;
+		$mock_wc_products[1] = new MockWCProduct( 1, true, true );
+		$mock_wc_products[2] = new MockWCProduct( 2, true, true );
+		$mock_wc             = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 1 );
+		$mock_wc->get_persisted_cart()->add_to_cart( 2, 2 );
+
+		$_REQUEST['items'] = wp_json_encode( array( array( 'id' => 2, 'qty' => 2 ) ) );
+
+		try {
+			$this->cart->ajax_clear_cart();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertTrue( $e->success );
+			$cart_items = $mock_wc->get_persisted_cart()->get_cart();
+			$this->assertCount( 1, $cart_items );
+			$this->assertSame( 1, array_values( $cart_items )[0]['product_id'] );
+		}
+	}
+
+	public function test_ajax_clear_cart_reduces_quantity_for_partial_removal(): void {
+		global $mock_wc, $mock_wc_products;
+		$mock_wc_products[1] = new MockWCProduct( 1, true, true );
+		$mock_wc             = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 5 );
+
+		$_REQUEST['items'] = wp_json_encode( array( array( 'id' => 1, 'qty' => 2 ) ) );
+
+		try {
+			$this->cart->ajax_clear_cart();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertTrue( $e->success );
+			$cart_items = $mock_wc->get_persisted_cart()->get_cart();
+			$this->assertCount( 1, $cart_items );
+			$this->assertSame( 3, array_values( $cart_items )[0]['quantity'] );
+			$this->assertSame( 3, $e->data['cart_count'] );
+		}
+	}
+
 	protected function tearDown(): void {
 		parent::tearDown();
-		unset( $_REQUEST['product_id'], $_REQUEST['quantity'], $_REQUEST['variation_id'] );
+		unset( $_REQUEST['product_id'], $_REQUEST['quantity'], $_REQUEST['variation_id'], $_REQUEST['items'] );
 	}
 }

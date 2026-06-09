@@ -380,6 +380,131 @@ class WPAIC_Tools {
 	}
 
 	/**
+	 * Resolve which cart items (and how many units of each) to remove and return the
+	 * clear-cart intent for the frontend to execute via AJAX after the shopper
+	 * confirms. The cart is read but never mutated here (the streaming response has
+	 * already flushed headers, like add_to_cart). Pass `items` ([{product_id,
+	 * quantity}]) to remove specific items — quantity is how many units to remove,
+	 * omit it to remove all units of that product — or omit `items` to clear the whole
+	 * cart. Each returned item carries remove_quantity and remove_all so the UI can
+	 * describe exactly what will be removed and the AJAX call knows how much to take.
+	 *
+	 * @param array<string, mixed> $args
+	 * @return array<string, mixed>
+	 */
+	public function clear_cart( array $args ): array {
+		if ( ! wpaic_is_woocommerce_active() ) {
+			return array(
+				'success' => false,
+				'reason'  => 'woocommerce_inactive',
+				'message' => 'WooCommerce is not available.',
+			);
+		}
+
+		$cart = $this->get_initialized_cart();
+		if ( null === $cart ) {
+			return array(
+				'success' => false,
+				'reason'  => 'cart_unavailable',
+				'message' => 'Cart unavailable.',
+			);
+		}
+
+		$cart_items = method_exists( $cart, 'get_cart' ) ? $cart->get_cart() : array();
+		if ( ! is_array( $cart_items ) ) {
+			$cart_items = array();
+		}
+
+		if ( 0 === count( $cart_items ) ) {
+			return array(
+				'success' => false,
+				'reason'  => 'cart_empty',
+				'message' => 'The cart is already empty.',
+			);
+		}
+
+		// Map of requested product_id => units to remove (0 means "all units").
+		$requested = $this->parse_clear_cart_items( $args );
+		$clear_all = 0 === count( $requested );
+
+		// Aggregate current quantity and name per matching product across cart lines.
+		$current_quantity = array();
+		$names            = array();
+		foreach ( $cart_items as $cart_item ) {
+			if ( ! is_array( $cart_item ) ) {
+				continue;
+			}
+
+			$product_id = isset( $cart_item['product_id'] ) && is_numeric( $cart_item['product_id'] ) ? (int) $cart_item['product_id'] : 0;
+			if ( ! $clear_all && ! array_key_exists( $product_id, $requested ) ) {
+				continue;
+			}
+
+			$quantity                        = isset( $cart_item['quantity'] ) && is_numeric( $cart_item['quantity'] ) ? (int) $cart_item['quantity'] : 0;
+			$current_quantity[ $product_id ] = ( $current_quantity[ $product_id ] ?? 0 ) + $quantity;
+			if ( ! isset( $names[ $product_id ] ) ) {
+				$product            = $this->get_cart_item_product( $cart_item, $product_id );
+				$names[ $product_id ] = $this->get_cart_item_name( $cart_item, $product );
+			}
+		}
+
+		if ( ! $clear_all && 0 === count( $current_quantity ) ) {
+			return array(
+				'success' => false,
+				'reason'  => 'not_in_cart',
+				'message' => 'None of those items are in the cart.',
+			);
+		}
+
+		$items = array();
+		foreach ( $current_quantity as $product_id => $in_cart ) {
+			$wanted     = $clear_all ? 0 : ( $requested[ $product_id ] ?? 0 );
+			$remove_all = $wanted <= 0 || $wanted >= $in_cart;
+			$items[]    = array(
+				'product_id'      => $product_id,
+				'name'            => $names[ $product_id ] ?? '',
+				'remove_quantity' => $remove_all ? $in_cart : $wanted,
+				'remove_all'      => $remove_all,
+			);
+		}
+
+		return array(
+			'success'   => true,
+			'action'    => 'clear_cart',
+			'clear_all' => $clear_all,
+			'items'     => $items,
+		);
+	}
+
+	/**
+	 * Parse the clear_cart `items` argument into a map of product_id => units to
+	 * remove (0 means remove all units of that product). Last entry wins per product.
+	 *
+	 * @param array<string, mixed> $args
+	 * @return array<int, int>
+	 */
+	private function parse_clear_cart_items( array $args ): array {
+		$requested = array();
+		if ( ! isset( $args['items'] ) || ! is_array( $args['items'] ) ) {
+			return $requested;
+		}
+
+		foreach ( $args['items'] as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			$product_id = isset( $entry['product_id'] ) && is_numeric( $entry['product_id'] ) ? (int) $entry['product_id'] : 0;
+			if ( $product_id <= 0 ) {
+				continue;
+			}
+			$quantity                = isset( $entry['quantity'] ) && is_numeric( $entry['quantity'] ) ? (int) $entry['quantity'] : 0;
+			$requested[ $product_id ] = max( 0, $quantity );
+		}
+
+		return $requested;
+	}
+
+	/**
 	 * Create a handoff support request.
 	 *
 	 * @param array<string, mixed> $args Handoff data.

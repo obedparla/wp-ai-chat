@@ -829,6 +829,118 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertEquals( 'out_of_stock', $result['reason'] );
 	}
 
+	public function test_clear_cart_returns_clear_all_intent_with_items(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
+		$this->create_mock_product( 2, 'Blue Hat', '10.00' );
+
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 2 );
+		$mock_wc->get_persisted_cart()->add_to_cart( 2, 1 );
+
+		$result = $this->tools->clear_cart( array() );
+
+		$this->assertTrue( $result['success'] );
+		$this->assertEquals( 'clear_cart', $result['action'] );
+		$this->assertTrue( $result['clear_all'] );
+		$this->assertCount( 2, $result['items'] );
+		$this->assertSame( 1, $result['items'][0]['product_id'] );
+		$this->assertSame( 'Red Shirt', $result['items'][0]['name'] );
+		$this->assertSame( 2, $result['items'][0]['remove_quantity'] );
+		$this->assertTrue( $result['items'][0]['remove_all'] );
+	}
+
+	public function test_clear_cart_returns_only_requested_items(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
+		$this->create_mock_product( 2, 'Blue Hat', '10.00' );
+
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 2 );
+		$mock_wc->get_persisted_cart()->add_to_cart( 2, 1 );
+
+		$result = $this->tools->clear_cart( array( 'items' => array( array( 'product_id' => 2 ) ) ) );
+
+		$this->assertTrue( $result['success'] );
+		$this->assertFalse( $result['clear_all'] );
+		$this->assertCount( 1, $result['items'] );
+		$this->assertSame( 2, $result['items'][0]['product_id'] );
+		$this->assertSame( 'Blue Hat', $result['items'][0]['name'] );
+		$this->assertSame( 1, $result['items'][0]['remove_quantity'] );
+		$this->assertTrue( $result['items'][0]['remove_all'] );
+	}
+
+	public function test_clear_cart_partial_quantity_marks_remove_all_false(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 1, 'Bottled Water', '1.50' );
+
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 5 );
+
+		$result = $this->tools->clear_cart(
+			array( 'items' => array( array( 'product_id' => 1, 'quantity' => 2 ) ) )
+		);
+
+		$this->assertTrue( $result['success'] );
+		$this->assertFalse( $result['clear_all'] );
+		$this->assertCount( 1, $result['items'] );
+		$this->assertSame( 2, $result['items'][0]['remove_quantity'] );
+		$this->assertFalse( $result['items'][0]['remove_all'] );
+	}
+
+	public function test_clear_cart_quantity_at_or_above_stock_removes_all(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 1, 'Bottled Water', '1.50' );
+
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 3 );
+
+		$result = $this->tools->clear_cart(
+			array( 'items' => array( array( 'product_id' => 1, 'quantity' => 10 ) ) )
+		);
+
+		$this->assertTrue( $result['success'] );
+		$this->assertSame( 3, $result['items'][0]['remove_quantity'] );
+		$this->assertTrue( $result['items'][0]['remove_all'] );
+	}
+
+	public function test_clear_cart_fails_when_cart_empty(): void {
+		global $mock_wc;
+		$mock_wc = new MockWooCommerce();
+
+		$result = $this->tools->clear_cart( array() );
+
+		$this->assertFalse( $result['success'] );
+		$this->assertEquals( 'cart_empty', $result['reason'] );
+	}
+
+	public function test_clear_cart_fails_when_requested_items_not_in_cart(): void {
+		global $mock_wc;
+
+		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
+
+		$mock_wc = new MockWooCommerce();
+		$mock_wc->get_persisted_cart()->add_to_cart( 1, 1 );
+
+		$result = $this->tools->clear_cart( array( 'items' => array( array( 'product_id' => 999 ) ) ) );
+
+		$this->assertFalse( $result['success'] );
+		$this->assertEquals( 'not_in_cart', $result['reason'] );
+	}
+
+	public function test_clear_cart_fails_when_woocommerce_inactive(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', false );
+
+		$result = $this->tools->clear_cart( array() );
+
+		$this->assertFalse( $result['success'] );
+		$this->assertEquals( 'woocommerce_inactive', $result['reason'] );
+	}
+
 	/**
 	 * Creates a mock WooCommerce product with metadata.
 	 */

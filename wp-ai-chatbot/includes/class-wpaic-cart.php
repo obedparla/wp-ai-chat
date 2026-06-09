@@ -8,6 +8,8 @@ class WPAIC_Cart {
 	public function init(): void {
 		add_action( 'wp_ajax_woocommerce_ajax_add_to_cart', array( $this, 'ajax_add_to_cart' ) );
 		add_action( 'wp_ajax_nopriv_woocommerce_ajax_add_to_cart', array( $this, 'ajax_add_to_cart' ) );
+		add_action( 'wp_ajax_wpaic_clear_cart', array( $this, 'ajax_clear_cart' ) );
+		add_action( 'wp_ajax_nopriv_wpaic_clear_cart', array( $this, 'ajax_clear_cart' ) );
 	}
 
 	public function ajax_add_to_cart(): void {
@@ -60,6 +62,89 @@ class WPAIC_Cart {
 		} else {
 			wp_send_json_error( array( 'message' => 'Failed to add product to cart' ) );
 		}
+	}
+
+	/**
+	 * Remove items from the cart, or empty it entirely. Mirrors ajax_add_to_cart: the
+	 * actual cart mutation happens here (after the shopper confirmed in the chat UI),
+	 * then mini-cart fragments are returned so the page updates. Pass an `items` JSON
+	 * array of {id, qty} to remove qty units of each product (lines are reduced, only
+	 * fully removed when qty reaches the line total); omit `items` to clear everything.
+	 */
+	public function ajax_clear_cart(): void {
+		if ( ! wpaic_is_woocommerce_active() ) {
+			wp_send_json_error( array( 'message' => 'WooCommerce not active' ) );
+		}
+
+		$cart = WC()->cart;
+		if ( ! is_object( $cart ) ) {
+			wp_send_json_error( array( 'message' => 'Cart unavailable' ) );
+		}
+
+		$remaining = $this->get_request_clear_items();
+
+		if ( count( $remaining ) > 0 ) {
+			foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
+				$product_id = isset( $cart_item['product_id'] ) ? absint( $cart_item['product_id'] ) : 0;
+				if ( ! isset( $remaining[ $product_id ] ) || $remaining[ $product_id ] <= 0 ) {
+					continue;
+				}
+
+				$line_quantity = isset( $cart_item['quantity'] ) ? absint( $cart_item['quantity'] ) : 0;
+				if ( $remaining[ $product_id ] >= $line_quantity ) {
+					$cart->remove_cart_item( $cart_item_key );
+					$remaining[ $product_id ] -= $line_quantity;
+				} else {
+					$cart->set_quantity( $cart_item_key, $line_quantity - $remaining[ $product_id ] );
+					$remaining[ $product_id ] = 0;
+				}
+			}
+		} else {
+			$cart->empty_cart();
+		}
+
+		wp_send_json_success(
+			array(
+				'message'    => 'Cart updated',
+				'cart_count' => $cart->get_cart_contents_count(),
+				'cart_total' => $cart->get_cart_total(),
+				'cart_hash'  => method_exists( $cart, 'get_cart_hash' ) ? $cart->get_cart_hash() : '',
+				'fragments'  => $this->get_cart_fragments(),
+			)
+		);
+	}
+
+	/**
+	 * Parse the `items` request param (JSON array of {id, qty}) into a map of
+	 * product_id => units to remove. Empty means clear the whole cart.
+	 *
+	 * @return array<int, int>
+	 */
+	private function get_request_clear_items(): array {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public AJAX for the shopper's own session cart
+		$raw = isset( $_REQUEST['items'] ) ? wp_unslash( $_REQUEST['items'] ) : '';
+		if ( ! is_string( $raw ) || '' === $raw ) {
+			return array();
+		}
+
+		$decoded = json_decode( $raw, true );
+		if ( ! is_array( $decoded ) ) {
+			return array();
+		}
+
+		$items = array();
+		foreach ( $decoded as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			$product_id = isset( $entry['id'] ) ? absint( $entry['id'] ) : 0;
+			$quantity   = isset( $entry['qty'] ) ? absint( $entry['qty'] ) : 0;
+			if ( $product_id > 0 && $quantity > 0 ) {
+				$items[ $product_id ] = ( $items[ $product_id ] ?? 0 ) + $quantity;
+			}
+		}
+
+		return $items;
 	}
 
 	/**

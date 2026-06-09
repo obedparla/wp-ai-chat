@@ -106,6 +106,14 @@ if (!class_exists('WC_Cart')) {
         public function get_product_subtotal($product, int $quantity): string {
             return '';
         }
+        public function remove_cart_item(string $cart_item_key): bool {
+            return true;
+        }
+        public function set_quantity(string $cart_item_key, int $quantity = 1, bool $refresh_totals = true): bool {
+            return true;
+        }
+        public function empty_cart(bool $clear_persistent_cart = true): void {
+        }
     }
 }
 

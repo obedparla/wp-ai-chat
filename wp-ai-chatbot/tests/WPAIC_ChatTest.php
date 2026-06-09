@@ -119,11 +119,12 @@ class WPAIC_ChatTest extends TestCase {
 
 		$tools = $method->invoke( $chat );
 
-		$this->assertCount( 12, $tools );
+		$this->assertCount( 13, $tools );
 
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertContains( 'search_products', $tool_names );
 		$this->assertContains( 'add_to_cart', $tool_names );
+		$this->assertContains( 'clear_cart', $tool_names );
 		$this->assertContains( 'get_popular_products', $tool_names );
 		$this->assertContains( 'get_product_details', $tool_names );
 		$this->assertContains( 'get_categories', $tool_names );
@@ -1181,6 +1182,28 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'you MUST pass the chosen variation_id', $prompt );
 		$this->assertStringContainsString( 'do NOT guess and do NOT call add_to_cart', $prompt );
 		$this->assertStringContainsString( 'never type out any add-to-cart or cart URL', $prompt );
+	}
+
+	public function test_system_prompt_instructs_clear_cart_via_tool(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'CLEAR-CART AND REMOVE-ITEM INTENT', $prompt );
+		$this->assertStringContainsString( 'use the clear_cart tool', $prompt );
+		$this->assertStringContainsString( 'do NOT claim the cart was cleared', $prompt );
 	}
 
 	public function test_system_prompt_preserves_strict_shipping_grounding(): void {

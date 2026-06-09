@@ -638,6 +638,75 @@ describe('useChat', () => {
     expect(result.current.messages[0].addToCartIntents).toBeUndefined()
   })
 
+  it('extracts a clear_cart intent from a successful tool output', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'clear_cart',
+              toolCallId: 'cc-1',
+              state: 'output-available',
+              output: {
+                success: true,
+                action: 'clear_cart',
+                clear_all: false,
+                items: [{ product_id: 7, name: 'Water', remove_quantity: 2, remove_all: false }],
+              },
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].clearCartIntents).toEqual([
+      {
+        toolCallId: 'cc-1',
+        clearAll: false,
+        items: [{ productId: 7, name: 'Water', removeQuantity: 2, removeAll: false }],
+      },
+    ])
+  })
+
+  it('ignores clear_cart tool output that did not succeed', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'clear_cart',
+              toolCallId: 'cc-2',
+              state: 'output-available',
+              output: { success: false, reason: 'cart_empty' },
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].clearCartIntents).toBeUndefined()
+  })
+
   it('retry removes the failed assistant message and resubmits the conversation', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [

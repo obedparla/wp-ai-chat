@@ -42,6 +42,8 @@ Everything currently implemented.
 - Jump-to-latest pill appears when scrolled up in long conversations
 - Conversation starter pills on empty chat (custom or auto-generated)
 - New conversation button (with confirm), close (X), and Escape-to-close
+- Cart-mutating tools (add/clear/remove) confirm destructive actions via the same popup pattern as new-chat; clear/remove shows an inline result badge afterward
+- Human-readable tool progress labels for every tool ("Adding to cart…", "Updating your cart…", etc.) — never the raw tool name
 - Email transcript: send the full conversation to an email address from the widget
 - Debounced multi-message sending (batches rapid messages before sending)
 - Session persistence in sessionStorage across page reloads
@@ -69,6 +71,7 @@ WooCommerce:
 - `compare_products` — side-by-side comparison of 2–4 products
 - `get_cart_contents` — current cart items + totals
 - `add_to_cart` — add a product (or a specified variation) to the shopper's cart; validates stock/purchasability, asks for the variation when one is needed, and signals the widget to add it over WooCommerce AJAX
+- `clear_cart` — remove items from the cart or empty it entirely; per-item quantity support (remove 2 of 5 waters reduces the line, omit quantity to remove all of a product), validated against the live cart and executed by the widget over WooCommerce AJAX behind a confirmation popup
 - `get_checkout_action` — real checkout/cart URLs for the CTA button
 - `get_order_status` — order lookup by number + email, with tracking link if available
 - `get_shipping_info` — real shipping zones, methods, and costs from store config
@@ -89,6 +92,7 @@ Support:
 - Budget-aware: passes price filters to search when the shopper states a budget
 - Cross-language search: translates the shopper's product keywords into the store's catalog language for tool calls while replying in the shopper's language (brand names/model numbers/SKUs kept verbatim)
 - Add-to-cart intent → the bot adds the item to the cart via the `add_to_cart` tool; the widget fires it over WooCommerce AJAX and shows an "Added to cart" confirmation. For variable products it resolves the chosen variation from context or asks which option, never guessing
+- Clear-cart / remove-item intent → the bot calls `clear_cart` (resolving product IDs and quantities from `get_cart_contents`); the widget shows a confirmation popup (like the new-chat prompt) listing exactly what will be removed, then mutates the cart over WooCommerce AJAX on confirm. The bot never asks "are you sure?" in text or claims the cart changed before confirmation
 - Empty-cart checkout intent → tells the shopper their cart is empty and offers help instead of rendering a checkout button
 - Pairs gift/category suggestions with actual product picks
 - Grounding rules: states only facts present in tool output; no invented specs/materials/shipping times

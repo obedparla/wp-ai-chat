@@ -884,6 +884,36 @@ class WPAIC_Chat {
 			$tools[] = array(
 				'type'     => 'function',
 				'function' => array(
+					'name'        => 'clear_cart',
+					'description' => 'Remove items from the shopper\'s cart, or empty it entirely. Pass `items` to remove only those products; omit `items` to clear the whole cart. For each item, `quantity` is how many units to remove — omit quantity (or set it to the full amount) to remove all units of that product, or set a smaller quantity to remove just some (for example remove 2 of 5 waters). You MUST know each product_id: if you do not have it, call get_cart_contents first to resolve the product_id and current quantity from the item name. If you cannot tell which item the shopper means, ask them before calling. The UI shows a confirmation popup and updates the cart itself, so do NOT ask the shopper to confirm in text and do NOT claim the cart was changed — reply with at most one short sentence (for example: "Sure — just confirm below.").',
+					'parameters'  => array(
+						'type'       => 'object',
+						'properties' => array(
+							'items' => array(
+								'type'        => 'array',
+								'description' => 'Cart items to remove (resolve product_id from get_cart_contents). Omit or leave empty to clear the entire cart.',
+								'items'       => array(
+									'type'       => 'object',
+									'properties' => array(
+										'product_id' => array(
+											'type'        => 'integer',
+											'description' => 'The product ID to remove.',
+										),
+										'quantity'   => array(
+											'type'        => 'integer',
+											'description' => 'How many units to remove. Omit to remove all units of this product.',
+										),
+									),
+									'required'   => array( 'product_id' ),
+								),
+							),
+						),
+					),
+				),
+			);
+			$tools[] = array(
+				'type'     => 'function',
+				'function' => array(
 					'name'        => 'get_shipping_info',
 					'description' => 'Get site-wide shipping zones, methods, and costs configured in WooCommerce. Use when the customer asks about shipping cost, shipping options, where the store ships, or shipping times. Returns only what is actually configured — never invent delivery times or costs not in the response.',
 					'parameters'  => array(
@@ -1183,6 +1213,7 @@ class WPAIC_Chat {
 			'get_cart_contents' => $this->tools->get_cart_contents(),
 			'get_checkout_action' => $this->tools->get_checkout_action(),
 			'add_to_cart' => $this->tools->add_to_cart( $arguments ),
+			'clear_cart' => $this->tools->clear_cart( $arguments ),
 			'compare_products' => $this->product_tools->compare_products( isset( $arguments['product_ids'] ) && is_array( $arguments['product_ids'] ) ? $arguments['product_ids'] : array() ),
 			'get_order_status' => $this->tools->get_order_status( $arguments ),
 			'get_shipping_info' => $this->tools->get_shipping_info(),
