@@ -101,7 +101,7 @@ export default function MessageList({ messages, onRetry, children }: MessageList
         const checkoutAction = msg.checkoutAction
         const hasProducts = products.length > 0
         const hasComparison = comparison !== undefined
-        const hasCheckoutAction = checkoutAction !== undefined
+        const hasCheckoutAction = checkoutAction !== undefined && checkoutAction.has_cart
         const hasToolUI = hasProducts || hasComparison || hasCheckoutAction
         const hasTextContent = msg.content && msg.content.trim().length > 0
         const showSeparator = shouldShowSeparator(msg, messages[i - 1])
@@ -173,7 +173,7 @@ export default function MessageList({ messages, onRetry, children }: MessageList
                 <ComparisonTable data={comparison} />
               </div>
             )}
-            {checkoutAction && <CheckoutButton action={checkoutAction} />}
+            {hasCheckoutAction && <CheckoutButton action={checkoutAction} />}
             {showRetry && hasToolUI && (
               <button
                 className="inline-flex items-center justify-center w-7 h-7 p-0 bg-red-50 border border-red-200 rounded-full text-red-600 text-sm cursor-pointer transition-all duration-200 self-start -mt-2 hover:bg-red-600 hover:border-red-600 hover:text-white hover:rotate-180"

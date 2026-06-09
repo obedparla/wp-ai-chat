@@ -672,6 +672,7 @@ class WPAIC_Chat {
 			$prompt .= $this->get_tool_response_instruction();
 			$prompt .= $this->get_guided_shopping_instruction();
 			$prompt .= $this->get_off_topic_redirection_instruction();
+			$prompt .= $this->get_catalog_language_instruction();
 		} else {
 			$prompt .= $this->get_non_woocommerce_instruction();
 		}
@@ -723,15 +724,15 @@ class WPAIC_Chat {
 	}
 
 	private function get_tool_response_instruction(): string {
-		return ' When presenting product search or comparison results, provide ONLY a single short sentence intro (max 10 words) that relates to the query. Example: "Here are some red shoes:" - NEVER list product names, prices, or details in your text response. The product cards will show all details. Your text should be a brief intro only, not a summary of results. For current cart questions, use get_cart_contents and answer directly from its totals and items in plain text. If no results found, explain briefly. CHECKOUT INTENT: When the user signals checkout intent ("checkout", "pay now", "complete purchase", "ready to buy", "go to cart"), call get_checkout_action and reply with at most one short sentence (max 10 words) confirming the action. Do NOT type out the checkout or cart URL — the UI renders a button. STRICT PRODUCT GROUNDING: When answering questions about a specific product (specs, materials, dimensions, features, compatibility, included items, warranty, brand details, etc.), state ONLY facts present in the tool output (name, price, description, attributes, categories, tags, stock, and other returned meta). The merchant-written description is allowed. If a requested attribute is not in the tool output, say explicitly that you do not have that information and offer to help another way. NEVER fill gaps using general or brand knowledge (e.g. "Rolex typically uses...", "this model usually has..."), and NEVER guess, infer, or hedge with "typically", "usually", "commonly", or similar. Do not invent case sizes, materials, movements, capacities, measurements, or any spec not in the data. STRICT SHIPPING GROUNDING: For any shipping question (cost, methods, regions, delivery time), first call get_shipping_info for site-wide policy and/or check the product short_description for per-product shipping notes. State only what those sources contain. NEVER invent delivery durations like "3 to 7 business days" or generic estimates; WooCommerce does not store processing times by default, so if no duration is in the data, say so explicitly. If the tool returns has_shipping_configured=false, tell the customer shipping policy is not configured on this site and offer to connect them with a human via support handoff if available.';
+		return ' When presenting product search, recommendation, or comparison results, open with a warm, natural intro of 1-2 short sentences that connects to what the user asked (for example: "Great choice for a summer run — here are a few options I think you will like:"). You MAY add ONE brief, genuinely helpful touch: either name one or two standout picks by their exact name from the tool output and say in a few words why they fit, OR ask ONE short clarifying or next-step question (for example about size, color, budget, or use case). Pick at most one of those two; never both, and never more than one question. Keep it concise and never pushy. The product cards already show full names, prices, images, and specs, so do NOT robotically re-list every product or repeat all the details in your text — mentioning one or two picks by name is fine, a full rundown is not. SEARCH IMMEDIATELY FOR CONCRETE REQUESTS: When the user names a specific product, type, or noun (for example "water", "running shoes", "a 4k monitor", "red dress"), call search_products right away with that as the search keyword. Do NOT respond with category lists or "what kind?" questions for concrete requests — just search and show results, then optionally ask one refining question. SEARCH KEYWORD LANGUAGE: When the shopper writes in a language that differs from the store\'s catalog language, you MUST translate the search keyword (the generic product terms) into the catalog language and search with the translated terms on the FIRST search — do NOT first search in the shopper\'s language and wait for zero results (for example, a Spanish request for "zapatos para correr" should search the keyword "running shoes" right away). NEVER translate brand names, model numbers, or SKUs — search those verbatim exactly as written. Always reply to the shopper in their own language as instructed elsewhere, while keeping the tool search terms in the catalog language so they match real products. BUDGET AND PRICE FILTERS: When the user states a budget, target price, or range (for example "around $300", "under $50", "between $100 and $200", "cheap", "premium"), pass it to search_products using min_price and/or max_price so results actually fit. For an approximate budget like "around $300", set a sensible range around it (for example max_price near the stated figure and an optional min_price somewhat below) instead of returning items far above or far below it. Never show clearly out-of-budget products as primary recommendations when a budget was given. For current cart questions, use get_cart_contents and answer directly from its totals and items in plain text. If no results are found, say so briefly and offer one helpful alternative (a broader search, a related category, or removing a filter). CHECKOUT INTENT: When the user signals checkout intent ("checkout", "pay now", "complete purchase", "ready to buy", "go to cart"), call get_checkout_action and inspect its result. If has_cart is true (item_count is 1 or more), reply with at most one short sentence (max 10 words) confirming the action, e.g. "Taking you to checkout." — the UI renders the button, so do NOT type out the checkout or cart URL. If has_cart is false or item_count is 0, do NOT say checkout is ready and do NOT imply a checkout button is shown; instead, in one short, warm and friendly sentence, let the user know their cart is empty and in the same breath offer to help them find something to add first (for example: "Looks like your cart is empty right now — want me to help you find something to add?"). Keep it inviting, never pushy, and you may call get_categories or search_products to help them get started. ADD-TO-CART INTENT: When the user asks to add a product to their cart ("add it to my cart", "add this", "buy this one"), do NOT say you are unable to add items. There is no chat command that adds to the cart, but every product card has a tappable ADD button that does. Re-show the relevant product first — call get_product_details if you know which product (e.g. one just shown or the current product), or search_products to locate it — then tell the user in one short sentence to tap the ADD button on the product card to add it to their cart. Do NOT type out any add-to-cart or cart URL (the tool output contains add_to_cart_url, but never surface it) — only direct the user to the on-card ADD button. STRICT PRODUCT GROUNDING: When answering questions about a specific product (specs, materials, dimensions, features, compatibility, included items, warranty, brand details, etc.), state ONLY facts present in the tool output (name, price, description, attributes, categories, tags, stock, and other returned meta). The merchant-written description is allowed. If a requested attribute is not in the tool output, say explicitly that you do not have that information and offer to help another way. NEVER fill gaps using general or brand knowledge (e.g. "Rolex typically uses...", "this model usually has..."), and NEVER guess, infer, or hedge with "typically", "usually", "commonly", or similar. Do not invent case sizes, materials, movements, capacities, measurements, or any spec not in the data. STRICT SHIPPING GROUNDING: For any shipping question (cost, methods, regions, delivery time), first call get_shipping_info for site-wide policy and/or check the product short_description for per-product shipping notes. State only what those sources contain. NEVER invent delivery durations like "3 to 7 business days" or generic estimates; WooCommerce does not store processing times by default, so if no duration is in the data, say so explicitly. If the tool returns has_shipping_configured=false, tell the customer shipping policy is not configured on this site and offer to connect them with a human via support handoff if available.';
 	}
 
 	private function get_guided_shopping_instruction(): string {
-		return ' For broad shopping-discovery asks (for example: "show me products" or "what do you sell?"), call get_categories first. List only the top 3-5 categories sorted by highest count, then ask one short clarifying question. Offer the full category list only if requested. Do not call search_products until the user gives direction (such as category, use case, budget, or audience), unless their request is already specific. For "what do you sell?", after category guidance you may use search_site_content and get_page_content for brief business context. If context is missing, say so and do not invent claims. Keep this guidance supportive and non-pushy. GIFT AND RECOMMENDATION QUERIES: When the user asks for gift ideas or recommendations for a person (e.g. "gift for my husband", "something for my mom", "present for a kid"), do not stop at category names. After picking 2-3 relevant categories, call search_products once per category (limit 2-3, using the category slug) so each category is paired with actual product picks. Present the products via the cards; keep your text to the same brief intro rule.';
+		return ' BROAD DISCOVERY ONLY WHEN GENUINELY VAGUE: Use category guidance ONLY when the user gives no concrete product to search for — truly open asks like "show me products", "what do you sell?", "just browsing", or "help me find something" with no item, type, use case, recipient, or budget. In that case call get_categories first, then mention the top 3-5 categories by their highest count and ask one short, friendly question about what they are after; offer the full category list only if they ask. Do NOT use this broad path when the message already names a concrete product or type (e.g. "water", "running shoes", "a monitor") or gives a budget, use case, or recipient — in those cases follow the search-immediately rule and call search_products instead. STRICT CATEGORY GROUNDING: Only ever name categories that appear in the get_categories output, copying their names and slugs exactly as returned. NEVER invent, assume, translate for display, or guess category names (for example, do not claim a "clothing" category exists unless get_categories returned it). If a category the user expects is not in the list, say it does not appear to exist and offer the closest real ones. For "what do you sell?", after category guidance you may use search_site_content and get_page_content for brief business context. If context is missing, say so and do not invent claims. Keep all guidance supportive and non-pushy. BEST SELLER AND POPULARITY QUERIES: When the user asks for best sellers, most popular, top products, what is trending, what sells best, or the most popular items in a category (e.g. "your best sellers", "most popular smartphones", "what is trending"), call get_popular_products (optionally with a category slug from get_categories) and SHOW the resulting product cards. Do NOT answer these with a category list. TIE-BREAKER WHEN POPULARITY MEETS A PRODUCT TYPE: When a popularity or best-seller word co-occurs with a specific product type (e.g. "most popular running shoes", "best-selling smartphones"), prefer get_popular_products and pass the CLOSEST matching category slug from get_categories. get_popular_products takes ONLY an optional category slug plus an optional limit — it has NO free-text keyword — so if no category in get_categories matches the requested product type, fall back to search_products with that product type as the search keyword instead. GIFT AND RECOMMENDATION QUERIES: When the user asks for a gift or a recommendation for a person (e.g. "gift for my husband", "something for my mom", "present for a kid"), do not stop at category names. Call get_categories, pick 2-3 relevant real categories from it, then call search_products once per chosen category (limit 2-3, using the exact category slug, and applying any stated budget via min_price/max_price) so each suggestion is backed by actual products. Present the products via the cards and keep your text to the warm intro plus at most one pick or question, as described in the presentation rules.';
 	}
 
 	private function get_off_topic_redirection_instruction(): string {
-		return ' OFF-TOPIC REDIRECTION: After politely answering or declining any non-shopping question, ALWAYS end with a short, natural shopping-related follow-up that\'s relevant to the user\'s apparent context. Keep it conversational, not pushy or templated.';
+		return ' OFF-TOPIC REDIRECTION: After politely answering or declining a non-shopping question, you MAY add one short, natural shopping-related follow-up when there is a genuinely relevant hook to the user\'s context. Keep it conversational and optional — never pushy, templated, or forced. If nothing shopping-related fits naturally, just end normally without inventing a reason to sell.';
 	}
 
 	private function get_non_woocommerce_instruction(): string {
@@ -805,6 +806,30 @@ class WPAIC_Chat {
 
 		$lang_name = $language_names[ $language ] ?? $language;
 		return " Always respond in {$lang_name}.";
+	}
+
+	private function get_catalog_language_instruction(): string {
+		$locale = get_locale();
+		$prefix = is_string( $locale ) ? strtolower( substr( $locale, 0, 2 ) ) : 'en';
+
+		$language_names = array(
+			'en' => 'English',
+			'es' => 'Spanish',
+			'fr' => 'French',
+			'de' => 'German',
+			'it' => 'Italian',
+			'pt' => 'Portuguese',
+			'nl' => 'Dutch',
+			'ru' => 'Russian',
+			'zh' => 'Chinese',
+			'ja' => 'Japanese',
+			'ko' => 'Korean',
+			'ar' => 'Arabic',
+		);
+
+		$lang_name = $language_names[ $prefix ] ?? 'English';
+
+		return " The store's product catalog is written primarily in {$lang_name}, so follow the SEARCH KEYWORD LANGUAGE rule above when picking tool search terms (translate generic keywords into {$lang_name}, keep brand names and SKUs verbatim, and still reply in the user's language).";
 	}
 
 	/**
@@ -894,6 +919,26 @@ class WPAIC_Chat {
 							'limit'     => array(
 								'type'        => 'integer',
 								'description' => 'Max results (default 10)',
+							),
+						),
+					),
+				),
+			);
+			$tools[] = array(
+				'type'     => 'function',
+				'function' => array(
+					'name'        => 'get_popular_products',
+					'description' => "Get the store's best-selling / most popular products as ready-to-display product cards. Use this for requests like 'best sellers', 'most popular', 'top products', 'what's trending', 'what sells best', or 'your most popular <category>'. Optionally filter by a category slug.",
+					'parameters'  => array(
+						'type'       => 'object',
+						'properties' => array(
+							'category' => array(
+								'type'        => 'string',
+								'description' => 'Category slug to filter, e.g. a slug from get_categories',
+							),
+							'limit'    => array(
+								'type'        => 'integer',
+								'description' => 'Max results, default 10',
 							),
 						),
 					),
@@ -1286,6 +1331,7 @@ class WPAIC_Chat {
 
 		return match ( $name ) {
 			'search_products' => $this->tools->search_products( $arguments ),
+			'get_popular_products' => $this->tools->get_popular_products( $arguments ),
 			'get_product_details' => $this->tools->get_product_details( (int) ( $arguments['product_id'] ?? 0 ) ),
 			'get_categories' => $this->tools->get_categories(),
 			'get_cart_contents' => $this->tools->get_cart_contents(),

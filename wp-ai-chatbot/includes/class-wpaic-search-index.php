@@ -222,10 +222,14 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Drop candidates whose indexed text does not contain every significant
-	 * token from the query. Keeps the carousel and LLM text aligned with the
-	 * user's intent and prevents irrelevant fuzzy/LIKE matches from leaking
-	 * through.
+	 * Keep candidates that match the query, preferring field-aware relevance.
+	 * A token hit in title/sku/categories/attributes is STRONG; a hit found
+	 * only in the description is WEAK. When any candidate has a strong match,
+	 * description-only (weak) candidates are dropped so high-signal title/category
+	 * matches win (e.g. 'water' returns the 'Water' product, not a watch whose
+	 * description says 'water resistant'). When NO candidate has a strong match,
+	 * weak matches are returned so legitimately description-based queries still
+	 * resolve and we never empty results the fuzzy/LIKE pass produced.
 	 *
 	 * @param array<int> $product_ids
 	 * @return array<int>
@@ -240,38 +244,82 @@ class WPAIC_Search_Index {
 			return $product_ids;
 		}
 
-		$filtered = array();
+		$strong_matches = array();
+		$weak_matches   = array();
+
 		foreach ( $product_ids as $product_id ) {
 			$data = $this->get_product_data( (int) $product_id );
 			if ( null === $data ) {
 				continue;
 			}
 
-			$haystack_raw = strtolower(
-				(string) $data['title']
-				. ' ' . (string) $data['description']
-				. ' ' . (string) $data['sku']
-				. ' ' . (string) $data['categories']
-				. ' ' . (string) $data['attributes']
-			);
-			$haystack_normalized = preg_replace( '/[^a-z0-9]+/', ' ', $haystack_raw );
-			$haystack            = is_string( $haystack_normalized ) ? $haystack_normalized : $haystack_raw;
-			$haystack_tokens     = array_flip( preg_split( '/\s+/', trim( $haystack ) ) ?: array() );
+			$match = $this->classify_match_strength( $data, $tokens );
 
-			$matches_all = true;
-			foreach ( $tokens as $token ) {
-				if ( ! isset( $haystack_tokens[ $token ] ) ) {
-					$matches_all = false;
-					break;
-				}
+			// Preserve the original AND semantics: every significant token must
+			// appear somewhere on the product, otherwise it is not a match.
+			if ( $match['matched_any'] < count( $tokens ) ) {
+				continue;
 			}
 
-			if ( $matches_all ) {
-				$filtered[] = (int) $product_id;
+			if ( $match['matched_strong'] >= 1 ) {
+				$strong_matches[] = (int) $product_id;
+			} else {
+				$weak_matches[] = (int) $product_id;
 			}
 		}
 
-		return $filtered;
+		return ! empty( $strong_matches ) ? $strong_matches : $weak_matches;
+	}
+
+	/**
+	 * Classify how a product's already-fetched fields match the query tokens.
+	 * Title, SKU, categories and attributes are strong-signal fields; the
+	 * description is weak-signal. Tokenization mirrors significant_query_tokens()
+	 * so matching is consistent with the rest of the relevance path.
+	 *
+	 * @param array<string,mixed> $data   Product data from get_product_data().
+	 * @param array<string>       $tokens Significant query tokens.
+	 * @return array{matched_strong:int,matched_any:int}
+	 */
+	private function classify_match_strength( array $data, array $tokens ): array {
+		$strong_tokens = $this->tokenize_haystack(
+			(string) $data['title']
+			. ' ' . (string) $data['sku']
+			. ' ' . (string) $data['categories']
+			. ' ' . (string) $data['attributes']
+		);
+		$weak_tokens = $this->tokenize_haystack( (string) $data['description'] );
+
+		$matched_strong = 0;
+		$matched_any    = 0;
+		foreach ( $tokens as $token ) {
+			$in_strong = isset( $strong_tokens[ $token ] );
+			if ( $in_strong ) {
+				++$matched_strong;
+			}
+			if ( $in_strong || isset( $weak_tokens[ $token ] ) ) {
+				++$matched_any;
+			}
+		}
+
+		return array(
+			'matched_strong' => $matched_strong,
+			'matched_any'    => $matched_any,
+		);
+	}
+
+	/**
+	 * Normalize text to a set of lowercased alphanumeric tokens.
+	 * Mirrors the normalization used by significant_query_tokens().
+	 *
+	 * @return array<string,int> token => 1 map for O(1) lookups.
+	 */
+	private function tokenize_haystack( string $text ): array {
+		$normalized = preg_replace( '/[^a-z0-9]+/', ' ', strtolower( $text ) );
+		if ( ! is_string( $normalized ) ) {
+			return array();
+		}
+		return array_flip( preg_split( '/\s+/', trim( $normalized ) ) ?: array() );
 	}
 
 	/**

@@ -62,7 +62,8 @@ Everything currently implemented.
 
 ### AI Tools (function calls the model can invoke)
 WooCommerce:
-- `search_products` — fuzzy search by keyword, category, price range
+- `search_products` — fuzzy search by keyword, category, price range (title/category-weighted relevance)
+- `get_popular_products` — best sellers by total sales, with top-rated then newest fallback; optional category filter
 - `get_product_details` — full detail for one product
 - `get_categories` — category list with product counts
 - `compare_products` — side-by-side comparison of 2–4 products
@@ -81,10 +82,16 @@ Support:
 
 ### Conversation Intelligence
 - Multi-turn tool-calling loop (executes tools, feeds results back, up to 10 iterations)
-- Guided shopping flow: offers top categories + one clarifying question for broad queries
+- Proactive, interactive replies: warm 1–2 sentence intro plus at most one curation note (naming 1–2 standout picks) or follow-up question — never spec-dumps, since cards show the details
+- Immediate product search for concrete queries; broad top-categories guidance only for genuinely vague asks ("what do you sell?"), with category names grounded strictly on real `get_categories` output (no invented categories)
+- Best-seller intent ("most popular", "top products", "what sells best") → popular products shown as cards (not a category list)
+- Budget-aware: passes price filters to search when the shopper states a budget
+- Cross-language search: translates the shopper's product keywords into the store's catalog language for tool calls while replying in the shopper's language (brand names/model numbers/SKUs kept verbatim)
+- Add-to-cart intent → re-shows the product and directs the shopper to tap the on-card ADD button
+- Empty-cart checkout intent → tells the shopper their cart is empty and offers help instead of rendering a checkout button
 - Pairs gift/category suggestions with actual product picks
 - Grounding rules: states only facts present in tool output; no invented specs/materials/shipping times
-- Off-topic nudge-back: ends non-shopping answers with a natural shopping follow-up
+- Off-topic nudge-back: when natural, ends non-shopping answers with a relevant shopping follow-up (not forced)
 - Current-page context injection: bot knows the page type (product/cart/category/etc.) and IDs
 - Cart awareness: knows items and totals
 - Configurable tone of voice: Neutral, Friendly, Professional, Enthusiastic
@@ -92,6 +99,7 @@ Support:
 
 ### Search Indexing
 - TNTSearch fuzzy index for products (title, description, SKU, categories, variation attributes) with WP_Query fallback
+- Field-weighted relevance: title/category/SKU/attribute matches rank above description-only matches, with a description-only fallback when nothing stronger matches (prevents e.g. a "water-resistant" watch surfacing for "water")
 - TNTSearch content index for configurable post types (pages, posts) with WP_Query fallback
 - Admin re-index controls, freshness/status indicator, and indexed-item counts
 
@@ -137,6 +145,20 @@ Licensing tab:
 
 ### WP-CLI
 - `wp wpaic import-dummyjson` — import demo WooCommerce products from dummyjson.com (`--limit`, `--skip`, `--purge`, `--dry-run`); maps images, categories, brand, SKU, dimensions, prices, stock, ratings
+
+---
+
+## Ideas & Backlog (not yet implemented)
+
+Good ideas surfaced while improving conversational UX (2026-06-08), deferred to keep changes focused:
+
+- **Server-side add-to-cart tool** — let the bot add items conversationally (deferred: chat REST cart-session vs storefront cart sync, variable-product/variation selection, and frontend badge updates all need care).
+- **Keyword filter on `get_popular_products`** — support "most popular running shoes" by combining a search keyword with popularity ordering; today it takes only a category slug.
+- **In-stock-first best sellers** — optionally rank in-stock items ahead of sold-out top sellers.
+- **Multilingual search robustness** — auto-broaden / synonym-expand when a translated query returns nothing (e.g. "running shoes" → "shoes"/"sneakers"); and a configurable or data-detected catalog language instead of the `get_locale()` heuristic for multi-language stores.
+- **Deterministic budget parsing** — derive `min_price`/`max_price` in code from phrases like "around $300" rather than relying on the model to pick the band.
+- **Strip cart/checkout/add-to-cart URLs from tool output** — defense-in-depth so a prompt slip can never leak a URL into chat text (the frontend cards already hold them).
+- **Unit-test best-seller ordering** — teach the WP_Query test stub to honor `orderby` (incl. named meta-query clauses) so total_sales/rating/date ordering is verifiable; add upper-bound limit-clamp and default-limit cases.
 
 ---
 

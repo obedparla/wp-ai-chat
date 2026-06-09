@@ -166,7 +166,9 @@ function extractProductsFromMessage(uiMessage: UIMessage): Product[] {
       const toolPart = part as DynamicToolPart
       if (
         toolPart.state === 'output-available' &&
-        (toolPart.toolName === 'search_products' || toolPart.toolName === 'get_product_details')
+        (toolPart.toolName === 'search_products' ||
+          toolPart.toolName === 'get_product_details' ||
+          toolPart.toolName === 'get_popular_products')
       ) {
         const output = toolPart.output
         if (Array.isArray(output)) {
