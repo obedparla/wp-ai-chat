@@ -10,6 +10,7 @@ class WPAIP_APITest extends TestCase {
 		$GLOBALS['wp_options']     = array();
 		$GLOBALS['wp_actions']     = array();
 		$GLOBALS['wp_rest_routes'] = array();
+		$GLOBALS['wp_filters']     = array();
 
 		update_option( 'wpaip_settings', array(
 			'openai_api_key'      => 'sk-test',
@@ -374,8 +375,365 @@ class WPAIP_APITest extends TestCase {
 
 		$this->assertNotNull( $mock_streamer->captured_params );
 		$this->assertSame( 'gpt-5-mini', $mock_streamer->captured_params['model'] );
-		$this->assertSame( array( 'effort' => 'medium' ), $mock_streamer->captured_params['reasoning'] );
+		$this->assertSame( array( 'effort' => 'low' ), $mock_streamer->captured_params['reasoning'] );
 		$this->assertArrayNotHasKey( 'tools', $mock_streamer->captured_params );
+	}
+
+	// 'none' has no Responses API equivalent — omitting the param would make
+	// GPT-5 silently default to medium, so the provider maps it to 'minimal'.
+	public function test_handle_chat_maps_none_reasoning_effort_to_minimal(): void {
+		update_option( 'wpaip_settings', array(
+			'openai_api_key'      => 'sk-test',
+			'model'               => 'gpt-5-mini',
+			'reasoning_effort'    => 'none',
+			'freemius_product_id' => 1234,
+			'freemius_api_token'  => 'fs-api-token',
+		) );
+
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( array( 'effort' => 'minimal' ), $mock_streamer->captured_params['reasoning'] );
+	}
+
+	public function test_handle_chat_disables_openai_conversation_storage(): void {
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertFalse( $mock_streamer->captured_params['store'] );
+	}
+
+	public function test_handle_chat_sets_prompt_cache_key_from_usage_bucket(): void {
+		$this->api->set_license_validator(
+			new class extends WPAIP_License_Validator {
+				public function __construct() {}
+
+				public function validate_request( WP_REST_Request $request ): array|WP_Error {
+					return array(
+						'install_id'   => 99,
+						'license_id'   => 55,
+						'status'       => 'licensed',
+						'is_grace'     => false,
+						'usage_bucket' => 'fs_install_99',
+					);
+				}
+			}
+		);
+
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		$this->assertTrue( $this->api->authenticate_request( $request ) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( 'fs_install_99', $mock_streamer->captured_params['prompt_cache_key'] );
+	}
+
+	public function test_handle_chat_omits_prompt_cache_key_without_request_context(): void {
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertArrayNotHasKey( 'prompt_cache_key', $mock_streamer->captured_params );
+	}
+
+	// --- Request caps (P0-4) ---
+
+	public function test_validate_rejects_too_many_input_items(): void {
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array_fill( 0, 101, array( 'role' => 'user', 'content' => 'Hello' ) ) );
+
+		$result = $this->api->validate_chat_request( $request );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'invalid_request', $result->get_error_code() );
+		$this->assertSame( 400, $result->get_error_data()['status'] );
+	}
+
+	public function test_validate_accepts_input_at_item_limit(): void {
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array_fill( 0, 100, array( 'role' => 'user', 'content' => 'Hello' ) ) );
+
+		$result = $this->api->validate_chat_request( $request );
+
+		$this->assertNull( $result );
+	}
+
+	public function test_validate_rejects_oversized_instructions(): void {
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+		$request->set_param( 'instructions', str_repeat( 'a', 32769 ) );
+
+		$result = $this->api->validate_chat_request( $request );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'invalid_request', $result->get_error_code() );
+		$this->assertSame( 400, $result->get_error_data()['status'] );
+	}
+
+	public function test_validate_rejects_oversized_input_item(): void {
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => str_repeat( 'a', 70000 ) ),
+		) );
+
+		$result = $this->api->validate_chat_request( $request );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'invalid_request', $result->get_error_code() );
+	}
+
+	public function test_validate_rejects_oversized_function_call_output_item(): void {
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Search products' ),
+			array(
+				'type'    => 'function_call_output',
+				'call_id' => 'call_123',
+				'output'  => str_repeat( 'a', 70000 ),
+			),
+		) );
+
+		$result = $this->api->validate_chat_request( $request );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'invalid_request', $result->get_error_code() );
+	}
+
+	// --- Output token cap (P0-4) ---
+
+	public function test_handle_chat_sets_max_output_tokens(): void {
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( 2048, $mock_streamer->captured_params['max_output_tokens'] );
+	}
+
+	public function test_max_output_tokens_is_filterable(): void {
+		add_filter( 'wpaip_max_output_tokens', static function ( int $max_output_tokens ): int {
+			return 512;
+		} );
+
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( 512, $mock_streamer->captured_params['max_output_tokens'] );
+	}
+
+	// --- Daily budget enforcement (P0-4) ---
+
+	public function test_handle_chat_returns_429_when_over_daily_budget(): void {
+		update_option( 'wpaip_settings', array(
+			'openai_api_key'       => 'sk-test',
+			'model'                => 'gpt-5-mini',
+			'reasoning_effort'     => 'low',
+			'freemius_product_id'  => 1234,
+			'freemius_api_token'   => 'fs-api-token',
+			'daily_message_budget' => 1,
+			'daily_token_budget'   => 0,
+		) );
+		update_option( 'wpaip_usage_daily', array(
+			gmdate( 'Y-m-d' ) => array(
+				'fs_install_99' => array( 'messages' => 1 ),
+			),
+		) );
+
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = $this->make_authenticated_request();
+
+		$result = $this->api->handle_chat( $request );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'rate_limited', $result->get_error_code() );
+		$this->assertSame( 429, $result->get_error_data()['status'] );
+		$this->assertStringContainsString( 'daily limit', $result->get_error_message() );
+		$this->assertNull( $mock_streamer->captured_params );
+	}
+
+	public function test_handle_chat_records_message_for_usage_bucket(): void {
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = $this->make_authenticated_request();
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$usage_tracker = new WPAIP_Usage_Tracker();
+
+		$this->assertSame( 1, $usage_tracker->get_daily_usage( 'fs_install_99' )['messages'] );
+	}
+
+	public function test_handle_chat_records_no_usage_without_auth_context(): void {
+		$mock_streamer = $this->make_capturing_streamer();
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$this->assertNotNull( $mock_streamer->captured_params );
+		$this->assertSame( array(), get_option( 'wpaip_usage_daily', array() ) );
+	}
+
+	public function test_completed_stream_event_records_tokens_for_usage_bucket(): void {
+		// Streamer that simulates OpenAI finishing with a response.completed event.
+		$mock_streamer = new class extends WPAIP_Streamer {
+			public function __construct() {}
+
+			public function has_client(): bool {
+				return true;
+			}
+
+			public function stream( array $params ): void {
+				$this->maybe_notify_response_completed( array(
+					'event' => 'response.completed',
+					'data'  => array(
+						'type'     => 'response.completed',
+						'response' => array(
+							'usage' => array(
+								'input_tokens'         => 1000,
+								'input_tokens_details' => array( 'cached_tokens' => 900 ),
+								'output_tokens'        => 150,
+								'total_tokens'         => 1150,
+							),
+						),
+					),
+				) );
+			}
+		};
+		$this->api->set_streamer( $mock_streamer );
+
+		$request = $this->make_authenticated_request();
+
+		try {
+			$this->api->handle_chat( $request );
+		} catch ( \Throwable $e ) {
+			// exit
+		}
+
+		$usage_tracker = new WPAIP_Usage_Tracker();
+		$usage         = $usage_tracker->get_daily_usage( 'fs_install_99' );
+
+		$this->assertSame( 1, $usage['messages'] );
+		$this->assertSame( 1000, $usage['input_tokens'] );
+		$this->assertSame( 900, $usage['cached_input_tokens'] );
+		$this->assertSame( 150, $usage['output_tokens'] );
+		$this->assertSame( 1150, $usage['total_tokens'] );
+	}
+
+	/**
+	 * Build a valid request authenticated as install 99 (usage bucket fs_install_99).
+	 */
+	private function make_authenticated_request(): WP_REST_Request {
+		$this->api->set_license_validator(
+			new class extends WPAIP_License_Validator {
+				public function __construct() {}
+
+				public function validate_request( WP_REST_Request $request ): array|WP_Error {
+					return array(
+						'install_id'   => 99,
+						'license_id'   => 55,
+						'status'       => 'licensed',
+						'is_grace'     => false,
+						'usage_bucket' => 'fs_install_99',
+					);
+				}
+			}
+		);
+
+		$request = new WP_REST_Request();
+		$request->set_param( 'input', array(
+			array( 'role' => 'user', 'content' => 'Hello' ),
+		) );
+
+		$this->assertTrue( $this->api->authenticate_request( $request ) );
+
+		return $request;
 	}
 
 	private function make_capturing_streamer(): WPAIP_Streamer {

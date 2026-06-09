@@ -71,6 +71,85 @@ class WPAIP_StreamerTest extends TestCase {
 		$decoded = json_decode( substr( $streamer->output[0], 6, -2 ), true ); // strip "data: " and "\n\n"
 		$this->assertSame( 'something went wrong', $decoded['error']['message'] );
 	}
+
+	public function test_response_completed_callback_receives_usage(): void {
+		$streamer       = new TestableStreamer();
+		$captured_usage = null;
+
+		$streamer->set_on_response_completed( static function ( array $usage ) use ( &$captured_usage ): void {
+			$captured_usage = $usage;
+		} );
+
+		$streamer->testMaybeNotifyResponseCompleted( array(
+			'event' => 'response.completed',
+			'data'  => array(
+				'type'     => 'response.completed',
+				'response' => array(
+					'usage' => array(
+						'input_tokens'         => 1000,
+						'input_tokens_details' => array( 'cached_tokens' => 800 ),
+						'output_tokens'        => 200,
+						'total_tokens'         => 1200,
+					),
+				),
+			),
+		) );
+
+		$this->assertIsArray( $captured_usage );
+		$this->assertSame( 1000, $captured_usage['input_tokens'] );
+		$this->assertSame( 800, $captured_usage['input_tokens_details']['cached_tokens'] );
+		$this->assertSame( 200, $captured_usage['output_tokens'] );
+		$this->assertSame( 1200, $captured_usage['total_tokens'] );
+	}
+
+	public function test_response_completed_callback_not_fired_for_other_events(): void {
+		$streamer = new TestableStreamer();
+		$fired    = false;
+
+		$streamer->set_on_response_completed( static function ( array $usage ) use ( &$fired ): void {
+			$fired = true;
+		} );
+
+		$streamer->testMaybeNotifyResponseCompleted( array(
+			'event' => 'response.output_text.delta',
+			'data'  => array( 'delta' => 'Hi' ),
+		) );
+
+		$this->assertFalse( $fired );
+	}
+
+	public function test_response_completed_callback_not_fired_without_usage(): void {
+		$streamer = new TestableStreamer();
+		$fired    = false;
+
+		$streamer->set_on_response_completed( static function ( array $usage ) use ( &$fired ): void {
+			$fired = true;
+		} );
+
+		$streamer->testMaybeNotifyResponseCompleted( array(
+			'event' => 'response.completed',
+			'data'  => array(
+				'type'     => 'response.completed',
+				'response' => array( 'usage' => null ),
+			),
+		) );
+
+		$this->assertFalse( $fired );
+	}
+
+	public function test_completed_event_without_callback_is_a_noop(): void {
+		$streamer = new TestableStreamer();
+
+		$streamer->testMaybeNotifyResponseCompleted( array(
+			'event' => 'response.completed',
+			'data'  => array(
+				'type'     => 'response.completed',
+				'response' => array( 'usage' => array( 'total_tokens' => 1 ) ),
+			),
+		) );
+
+		$this->assertSame( array(), $streamer->output );
+	}
 }
 
 /**
@@ -114,5 +193,12 @@ class TestableStreamer extends WPAIP_Streamer {
 
 	public function testEmitError( string $message ): void {
 		$this->emit_error( $message );
+	}
+
+	/**
+	 * @param array<string, mixed> $event_payload
+	 */
+	public function testMaybeNotifyResponseCompleted( array $event_payload ): void {
+		$this->maybe_notify_response_completed( $event_payload );
 	}
 }

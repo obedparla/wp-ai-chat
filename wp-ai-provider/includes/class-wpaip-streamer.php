@@ -8,6 +8,9 @@ class WPAIP_Streamer {
 
 	private ?\OpenAI\Client $client = null;
 
+	/** @var (callable(array<string, mixed>): void)|null Receives the usage object from response.completed. */
+	private $on_response_completed = null;
+
 	public function __construct() {
 		$settings = get_option( 'wpaip_settings', array() );
 		$api_key  = is_array( $settings ) ? ( $settings['openai_api_key'] ?? '' ) : '';
@@ -19,6 +22,16 @@ class WPAIP_Streamer {
 
 	public function has_client(): bool {
 		return null !== $this->client;
+	}
+
+	/**
+	 * Register a callback invoked with the exact token usage OpenAI reports
+	 * on the final `response.completed` streaming event.
+	 *
+	 * @param callable(array<string, mixed>): void $callback
+	 */
+	public function set_on_response_completed( callable $callback ): void {
+		$this->on_response_completed = $callback;
 	}
 
 	/**
@@ -40,7 +53,9 @@ class WPAIP_Streamer {
 			$stream = $this->client->responses()->createStreamed( $params );
 
 			foreach ( $stream as $response ) {
-				$this->emit_data( $response->toArray() );
+				$event_payload = $response->toArray();
+				$this->emit_data( $event_payload );
+				$this->maybe_notify_response_completed( $event_payload );
 			}
 
 			$this->emit_done();
@@ -48,6 +63,29 @@ class WPAIP_Streamer {
 			$this->emit_error( $exception->getMessage() );
 			$this->emit_done();
 		}
+	}
+
+	/**
+	 * Fire the registered callback when the payload is a `response.completed`
+	 * event carrying a usage object ({ "event": ..., "data": { "response": { "usage": ... } } }).
+	 *
+	 * @param array<string, mixed> $event_payload
+	 */
+	protected function maybe_notify_response_completed( array $event_payload ): void {
+		if ( null === $this->on_response_completed ) {
+			return;
+		}
+
+		if ( 'response.completed' !== ( $event_payload['event'] ?? '' ) ) {
+			return;
+		}
+
+		$usage = $event_payload['data']['response']['usage'] ?? null;
+		if ( ! is_array( $usage ) ) {
+			return;
+		}
+
+		( $this->on_response_completed )( $usage );
 	}
 
 	/**

@@ -6,12 +6,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WPAIP_Admin {
 	public const DEFAULT_MODEL            = 'gpt-5-mini';
-	public const DEFAULT_REASONING_EFFORT = 'medium';
+	public const DEFAULT_REASONING_EFFORT = 'low';
+
+	// Per-install daily budgets enforced by WPAIP_Usage_Tracker. 0 = unlimited.
+	public const DEFAULT_DAILY_MESSAGE_BUDGET = 200;
+	public const DEFAULT_DAILY_TOKEN_BUDGET   = 1000000;
 
 	private WPAIP_Install_Registry $registry;
+	private WPAIP_Usage_Tracker $usage_tracker;
 
-	public function __construct( ?WPAIP_Install_Registry $registry = null ) {
-		$this->registry = $registry ?? new WPAIP_Install_Registry();
+	public function __construct( ?WPAIP_Install_Registry $registry = null, ?WPAIP_Usage_Tracker $usage_tracker = null ) {
+		$this->registry      = $registry ?? new WPAIP_Install_Registry();
+		$this->usage_tracker = $usage_tracker ?? new WPAIP_Usage_Tracker();
 	}
 
 	/**
@@ -114,6 +120,22 @@ class WPAIP_Admin {
 			'wp-ai-provider',
 			'wpaip_main_section'
 		);
+
+		add_settings_field(
+			'daily_message_budget',
+			__( 'Daily Message Budget per Install', 'wp-ai-provider' ),
+			array( $this, 'render_daily_message_budget_field' ),
+			'wp-ai-provider',
+			'wpaip_main_section'
+		);
+
+		add_settings_field(
+			'daily_token_budget',
+			__( 'Daily Token Budget per Install', 'wp-ai-provider' ),
+			array( $this, 'render_daily_token_budget_field' ),
+			'wp-ai-provider',
+			'wpaip_main_section'
+		);
 	}
 
 	/**
@@ -139,6 +161,9 @@ class WPAIP_Admin {
 		$reasoning_effort           = sanitize_text_field( $input['reasoning_effort'] ?? self::DEFAULT_REASONING_EFFORT );
 		$valid_efforts              = array_keys( self::get_available_reasoning_efforts() );
 		$sanitized['reasoning_effort'] = in_array( $reasoning_effort, $valid_efforts, true ) ? $reasoning_effort : self::DEFAULT_REASONING_EFFORT;
+
+		$sanitized['daily_message_budget'] = max( 0, (int) ( $input['daily_message_budget'] ?? ( $existing['daily_message_budget'] ?? self::DEFAULT_DAILY_MESSAGE_BUDGET ) ) );
+		$sanitized['daily_token_budget']   = max( 0, (int) ( $input['daily_token_budget'] ?? ( $existing['daily_token_budget'] ?? self::DEFAULT_DAILY_TOKEN_BUDGET ) ) );
 
 		return $sanitized;
 	}
@@ -190,6 +215,18 @@ class WPAIP_Admin {
 		echo '<p class="description">' . esc_html__( 'Reasoning effort sent to OpenAI, independent of the model.', 'wp-ai-provider' ) . '</p>';
 	}
 
+	public function render_daily_message_budget_field(): void {
+		$value = $this->get_int_setting( 'daily_message_budget', self::DEFAULT_DAILY_MESSAGE_BUDGET );
+		echo '<input type="number" min="0" step="1" name="wpaip_settings[daily_message_budget]" value="' . esc_attr( (string) $value ) . '" class="small-text" />';
+		echo '<p class="description">' . esc_html__( 'Maximum chat requests per install per day. Requests beyond this are rejected with a 429 until the next day. 0 disables the limit.', 'wp-ai-provider' ) . '</p>';
+	}
+
+	public function render_daily_token_budget_field(): void {
+		$value = $this->get_int_setting( 'daily_token_budget', self::DEFAULT_DAILY_TOKEN_BUDGET );
+		echo '<input type="number" min="0" step="1" name="wpaip_settings[daily_token_budget]" value="' . esc_attr( (string) $value ) . '" class="regular-text" />';
+		echo '<p class="description">' . esc_html__( 'Maximum total OpenAI tokens (input + output) per install per day. Requests beyond this are rejected with a 429 until the next day. 0 disables the limit.', 'wp-ai-provider' ) . '</p>';
+	}
+
 	public function render_settings_page(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
@@ -219,6 +256,7 @@ class WPAIP_Admin {
 			echo '<th>' . esc_html__( 'Status', 'wp-ai-provider' ) . '</th>';
 			echo '<th>' . esc_html__( 'License', 'wp-ai-provider' ) . '</th>';
 			echo '<th>' . esc_html__( 'Usage Bucket', 'wp-ai-provider' ) . '</th>';
+			echo '<th>' . esc_html__( 'Usage Today', 'wp-ai-provider' ) . '</th>';
 			echo '<th>' . esc_html__( 'Last Validated', 'wp-ai-provider' ) . '</th>';
 			echo '<th>' . esc_html__( 'Last Seen', 'wp-ai-provider' ) . '</th>';
 			echo '<th>' . esc_html__( 'Last Error', 'wp-ai-provider' ) . '</th>';
@@ -229,6 +267,12 @@ class WPAIP_Admin {
 				$site_label     = '' !== $site_url ? $site_url : __( 'Unknown site', 'wp-ai-provider' );
 				$license_label  = isset( $record['license_id'] ) && null !== $record['license_id'] ? (string) $record['license_id'] : '—';
 				$error_message  = (string) ( $record['last_error_message'] ?? '' );
+				$daily_usage    = $this->usage_tracker->get_daily_usage( (string) ( $record['usage_bucket_key'] ?? '' ) );
+				$usage_label    = sprintf(
+					__( '%1$s msgs · %2$s tokens', 'wp-ai-provider' ),
+					number_format( $daily_usage['messages'] ),
+					number_format( $daily_usage['total_tokens'] )
+				);
 
 				echo '<tr>';
 				echo '<td>' . esc_html( $site_label ) . '</td>';
@@ -236,6 +280,7 @@ class WPAIP_Admin {
 				echo '<td>' . esc_html( (string) ( $record['status'] ?? '' ) ) . '</td>';
 				echo '<td>' . esc_html( $license_label ) . '</td>';
 				echo '<td><code>' . esc_html( (string) ( $record['usage_bucket_key'] ?? '' ) ) . '</code></td>';
+				echo '<td>' . esc_html( $usage_label ) . '</td>';
 				echo '<td>' . esc_html( (string) ( $record['last_validated_at'] ?? '—' ) ) . '</td>';
 				echo '<td>' . esc_html( (string) ( $record['last_seen_at'] ?? '—' ) ) . '</td>';
 				echo '<td>' . esc_html( '' !== $error_message ? $error_message : '—' ) . '</td>';
@@ -245,6 +290,12 @@ class WPAIP_Admin {
 			echo '</tbody></table>';
 		}
 		echo '</div>';
+	}
+
+	private function get_int_setting( string $key, int $default ): int {
+		$settings = get_option( 'wpaip_settings', array() );
+
+		return is_array( $settings ) && isset( $settings[ $key ] ) ? max( 0, (int) $settings[ $key ] ) : $default;
 	}
 
 	private function get_freemius_product_id(): int {

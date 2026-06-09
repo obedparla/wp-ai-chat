@@ -39,7 +39,9 @@ class WPAIP_PluginTest extends TestCase {
 		$this->assertArrayHasKey( 'reasoning_effort', $settings );
 		$this->assertSame( '', $settings['openai_api_key'] );
 		$this->assertSame( 'gpt-5-mini', $settings['model'] );
-		$this->assertSame( 'medium', $settings['reasoning_effort'] );
+		$this->assertSame( 'low', $settings['reasoning_effort'] );
+		$this->assertSame( 200, $settings['daily_message_budget'] );
+		$this->assertSame( 1000000, $settings['daily_token_budget'] );
 	}
 
 	public function test_activate_does_not_overwrite_existing_settings(): void {

@@ -6,6 +6,7 @@
 $GLOBALS['wp_options'] = array();
 $GLOBALS['wp_actions'] = array();
 $GLOBALS['wp_transients'] = array();
+$GLOBALS['wp_filters'] = array();
 
 if ( ! defined( 'DAY_IN_SECONDS' ) ) {
 	define( 'DAY_IN_SECONDS', 86400 );
@@ -45,6 +46,22 @@ if ( ! function_exists( 'add_action' ) ) {
 	function add_action( string $hook, callable $callback, int $priority = 10, int $accepted_args = 1 ): bool {
 		$GLOBALS['wp_actions'][ $hook ][] = $callback;
 		return true;
+	}
+}
+
+if ( ! function_exists( 'add_filter' ) ) {
+	function add_filter( string $hook, callable $callback, int $priority = 10, int $accepted_args = 1 ): bool {
+		$GLOBALS['wp_filters'][ $hook ][] = $callback;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'apply_filters' ) ) {
+	function apply_filters( string $hook, mixed $value, mixed ...$args ): mixed {
+		foreach ( $GLOBALS['wp_filters'][ $hook ] ?? array() as $callback ) {
+			$value = $callback( $value, ...$args );
+		}
+		return $value;
 	}
 }
 

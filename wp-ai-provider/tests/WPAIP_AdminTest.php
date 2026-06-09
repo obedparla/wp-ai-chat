@@ -107,6 +107,51 @@ class WPAIP_AdminTest extends TestCase {
 		$this->assertArrayHasKey( 'reasoning_effort', $fields );
 	}
 
+	public function test_register_settings_adds_daily_budget_fields(): void {
+		$this->admin->register_settings();
+
+		$fields = $GLOBALS['wp_settings_fields']['wp-ai-provider']['wpaip_main_section'];
+		$this->assertArrayHasKey( 'daily_message_budget', $fields );
+		$this->assertArrayHasKey( 'daily_token_budget', $fields );
+	}
+
+	public function test_daily_budget_fields_render_number_inputs(): void {
+		ob_start();
+		$this->admin->render_daily_message_budget_field();
+		$this->admin->render_daily_token_budget_field();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'wpaip_settings[daily_message_budget]', $output );
+		$this->assertStringContainsString( 'wpaip_settings[daily_token_budget]', $output );
+		$this->assertStringContainsString( 'type="number"', $output );
+	}
+
+	public function test_sanitize_settings_saves_daily_budgets(): void {
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token', 'daily_message_budget' => 50, 'daily_token_budget' => 250000 );
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 50, $sanitized['daily_message_budget'] );
+		$this->assertSame( 250000, $sanitized['daily_token_budget'] );
+	}
+
+	public function test_sanitize_settings_clamps_negative_budgets_to_zero(): void {
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token', 'daily_message_budget' => -5, 'daily_token_budget' => -1 );
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 0, $sanitized['daily_message_budget'] );
+		$this->assertSame( 0, $sanitized['daily_token_budget'] );
+	}
+
+	public function test_sanitize_settings_defaults_budgets_when_missing(): void {
+		update_option( 'wpaip_settings', array() );
+
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( WPAIP_Admin::DEFAULT_DAILY_MESSAGE_BUDGET, $sanitized['daily_message_budget'] );
+		$this->assertSame( WPAIP_Admin::DEFAULT_DAILY_TOKEN_BUDGET, $sanitized['daily_token_budget'] );
+	}
+
 	public function test_freemius_product_id_field_renders_number_input(): void {
 		ob_start();
 		$this->admin->render_freemius_product_id_field();
@@ -193,7 +238,7 @@ class WPAIP_AdminTest extends TestCase {
 		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5-mini', 'reasoning_effort' => 'turbo', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertSame( 'medium', $sanitized['reasoning_effort'] );
+		$this->assertSame( 'low', $sanitized['reasoning_effort'] );
 	}
 
 	public function test_model_field_renders_select_with_all_models(): void {
@@ -279,6 +324,43 @@ class WPAIP_AdminTest extends TestCase {
 		$this->assertStringContainsString( 'fs_install_123', $output );
 	}
 
+	public function test_render_settings_page_displays_daily_usage_per_install(): void {
+		update_option(
+			'wpaip_install_registry',
+			array(
+				123 => array(
+					'install_id'        => 123,
+					'site_url'          => 'https://store.example.com',
+					'status'            => 'licensed',
+					'license_id'        => 456,
+					'usage_bucket_key'  => 'fs_install_123',
+					'last_validated_at' => '2026-04-08 10:00:00',
+					'last_seen_at'      => '2026-04-08 10:01:00',
+					'last_error_message' => '',
+				),
+			)
+		);
+		update_option(
+			'wpaip_usage_daily',
+			array(
+				gmdate( 'Y-m-d' ) => array(
+					'fs_install_123' => array(
+						'messages'     => 12,
+						'total_tokens' => 45230,
+					),
+				),
+			)
+		);
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Usage Today', $output );
+		$this->assertStringContainsString( '12 msgs', $output );
+		$this->assertStringContainsString( '45,230 tokens', $output );
+	}
+
 	public function test_sanitize_settings_saves_freemius_fields(): void {
 		$input     = array( 'openai_api_key' => 'sk-new', 'model' => 'gpt-5-mini', 'freemius_product_id' => 5678, 'freemius_api_token' => 'token-xyz' );
 		$sanitized = $this->admin->sanitize_settings( $input );
@@ -305,7 +387,7 @@ class WPAIP_AdminTest extends TestCase {
 		$input     = array( 'openai_api_key' => 'sk-test', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-token' );
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertSame( 'medium', $sanitized['reasoning_effort'] );
+		$this->assertSame( 'low', $sanitized['reasoning_effort'] );
 	}
 
 	public function test_get_available_models_returns_expected(): void {

@@ -66,11 +66,13 @@ function wpaip_activate(): void {
 	add_option(
 		'wpaip_settings',
 		array(
-			'openai_api_key'      => '',
-			'model'               => 'gpt-5-mini',
-			'reasoning_effort'    => 'medium',
-			'freemius_product_id' => WPAIP_FREEMIUS_PRODUCT_ID,
-			'freemius_api_token'  => '',
+			'openai_api_key'       => '',
+			'model'                => 'gpt-5-mini',
+			'reasoning_effort'     => 'low',
+			'freemius_product_id'  => WPAIP_FREEMIUS_PRODUCT_ID,
+			'freemius_api_token'   => '',
+			'daily_message_budget' => 200,
+			'daily_token_budget'   => 1000000,
 		)
 	);
 	add_option( 'wpaip_install_registry', array() );

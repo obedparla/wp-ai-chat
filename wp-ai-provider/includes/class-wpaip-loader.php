@@ -14,6 +14,7 @@ class WPAIP_Loader {
 		require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-admin.php';
 		require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-streamer.php';
 		require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-install-registry.php';
+		require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-usage-tracker.php';
 		require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-freemius-api.php';
 		require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-license-validator.php';
 		require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-api.php';
