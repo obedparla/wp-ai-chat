@@ -46,7 +46,7 @@ class WPAIP_License_Validator {
 
 		$install = $this->freemius_api->get_install( $install_id );
 		if ( is_wp_error( $install ) ) {
-			return $this->maybe_allow_grace_period( $record, $install );
+			return $this->maybe_allow_grace_period( $record, $headers, $install );
 		}
 
 		if ( ! $this->is_install_active( $install ) ) {
@@ -117,7 +117,7 @@ class WPAIP_License_Validator {
 
 		$license = $this->freemius_api->get_license( $license_id );
 		if ( is_wp_error( $license ) ) {
-			return $this->maybe_allow_grace_period( $record, $license );
+			return $this->maybe_allow_grace_period( $record, $headers, $license );
 		}
 
 		if ( ! $this->is_license_valid( $license ) ) {
@@ -278,9 +278,15 @@ class WPAIP_License_Validator {
 	}
 
 	/**
+	 * Freemius is unreachable, so the request HMAC cannot be verified against
+	 * the install's secret key. Grace is only granted when the request's
+	 * public key header matches the one stored during the last successful
+	 * validation — never to an unauthenticated caller guessing install IDs.
+	 *
 	 * @param array<string, mixed>|null $record
+	 * @param array{install_id: string, public_key: string, timestamp: string, signature: string} $headers
 	 */
-	private function maybe_allow_grace_period( ?array $record, WP_Error $error ): WP_Error|array {
+	private function maybe_allow_grace_period( ?array $record, array $headers, WP_Error $error ): WP_Error|array {
 		$error_data = $error->get_error_data();
 		$is_retryable = is_array( $error_data ) && ! empty( $error_data['retryable'] );
 
@@ -297,6 +303,15 @@ class WPAIP_License_Validator {
 				'rest_service_unavailable',
 				$error->get_error_message(),
 				array( 'status' => 503 )
+			);
+		}
+
+		$stored_public_key = is_string( $record['site_public_key'] ?? null ) ? $record['site_public_key'] : '';
+		if ( '' === $stored_public_key || ! hash_equals( $stored_public_key, $headers['public_key'] ) ) {
+			return new WP_Error(
+				'rest_forbidden',
+				'Install public key mismatch.',
+				array( 'status' => 403 )
 			);
 		}
 

@@ -152,7 +152,11 @@ class WPAIP_Admin {
 
 		$sanitized['freemius_product_id'] = max( 0, (int) ( $input['freemius_product_id'] ?? ( $existing['freemius_product_id'] ?? 0 ) ) );
 		$sanitized['freemius_api_token']  = sanitize_text_field( trim( $input['freemius_api_token'] ?? ( $existing['freemius_api_token'] ?? '' ) ) );
-		$sanitized['openai_api_key']      = sanitize_text_field( trim( $input['openai_api_key'] ?? '' ) );
+
+		// The key field renders blank with a masked placeholder, so an empty
+		// submission means "keep the saved key", not "clear it".
+		$submitted_api_key           = sanitize_text_field( trim( $input['openai_api_key'] ?? '' ) );
+		$sanitized['openai_api_key'] = '' !== $submitted_api_key ? $submitted_api_key : (string) ( $existing['openai_api_key'] ?? '' );
 
 		$model           = sanitize_text_field( $input['model'] ?? self::DEFAULT_MODEL );
 		$valid_models    = array_keys( self::get_available_models() );
@@ -184,9 +188,30 @@ class WPAIP_Admin {
 	}
 
 	public function render_api_key_field(): void {
-		$settings = get_option( 'wpaip_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['openai_api_key'] ?? '' ) : '';
-		echo '<input type="password" name="wpaip_settings[openai_api_key]" value="' . esc_attr( $value ) . '" class="regular-text" />';
+		$settings  = get_option( 'wpaip_settings', array() );
+		$saved_key = is_array( $settings ) ? (string) ( $settings['openai_api_key'] ?? '' ) : '';
+
+		// Never echo the saved key back into the page source; show a masked
+		// placeholder instead and let sanitize_settings keep the saved key
+		// when the field is submitted blank.
+		echo '<input type="password" name="wpaip_settings[openai_api_key]" value="" class="regular-text" autocomplete="new-password" placeholder="' . esc_attr( self::mask_api_key( $saved_key ) ) . '" />';
+		if ( '' !== $saved_key ) {
+			echo '<p class="description">' . esc_html__( 'A key is saved. Leave blank to keep it, or enter a new key to replace it.', 'wp-ai-provider' ) . '</p>';
+		}
+	}
+
+	/**
+	 * Masked representation of a saved API key: bullets plus the last 4
+	 * characters. Empty string when no key is saved.
+	 */
+	public static function mask_api_key( string $api_key ): string {
+		if ( '' === $api_key ) {
+			return '';
+		}
+
+		$last_four = strlen( $api_key ) > 4 ? substr( $api_key, -4 ) : '';
+
+		return str_repeat( '•', 12 ) . $last_four;
 	}
 
 	public function render_model_field(): void {
@@ -273,6 +298,10 @@ class WPAIP_Admin {
 					number_format( $daily_usage['messages'] ),
 					number_format( $daily_usage['total_tokens'] )
 				);
+				if ( $daily_usage['input_tokens'] > 0 ) {
+					$cache_hit_percent = (int) round( 100 * $daily_usage['cached_input_tokens'] / $daily_usage['input_tokens'] );
+					$usage_label      .= sprintf( __( ' · %d%% cached', 'wp-ai-provider' ), $cache_hit_percent );
+				}
 
 				echo '<tr>';
 				echo '<td>' . esc_html( $site_label ) . '</td>';

@@ -180,6 +180,7 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 				'install_id'        => 55,
 				'license_id'        => 77,
 				'status'            => 'licensed',
+				'site_public_key'   => 'pk_install_55',
 				'last_validated_at' => gmdate( 'Y-m-d H:i:s', time() - 300 ),
 			)
 		);
@@ -217,6 +218,97 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 		$this->assertSame( 'grace', $result['status'] );
 		$this->assertTrue( $result['is_grace'] );
 		$this->assertSame( 'fs_install_55', $result['usage_bucket'] );
+	}
+
+	public function test_validate_request_denies_grace_period_when_public_key_does_not_match_stored_record(): void {
+		$this->registry->upsert(
+			56,
+			array(
+				'install_id'        => 56,
+				'license_id'        => 78,
+				'status'            => 'licensed',
+				'site_public_key'   => 'pk_install_56',
+				'last_validated_at' => gmdate( 'Y-m-d H:i:s', time() - 300 ),
+			)
+		);
+
+		$request = new WP_REST_Request();
+		$request->set_param(
+			'messages',
+			array(
+				array(
+					'role'    => 'user',
+					'content' => 'Hello',
+				),
+			)
+		);
+		$request->set_param( 'model', 'gpt-5' );
+		$request->set_header( 'X-WPAIC-FS-Install-Id', '56' );
+		$request->set_header( 'X-WPAIC-FS-Install-Public-Key', 'pk_attacker_guess' );
+		$request->set_header( 'X-WPAIC-Timestamp', (string) time() );
+		$request->set_header( 'X-WPAIC-Signature', 'not-checked-during-grace' );
+
+		$result = ( new WPAIP_License_Validator(
+			$this->create_freemius_api_mock(
+				array(
+					'install_error' => new WP_Error(
+						'freemius_request_failed',
+						'Freemius is temporarily unavailable.',
+						array( 'retryable' => true )
+					),
+				)
+			),
+			$this->registry
+		) )->validate_request( $request );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'rest_forbidden', $result->get_error_code() );
+		$this->assertSame( 'Install public key mismatch.', $result->get_error_message() );
+	}
+
+	public function test_validate_request_denies_grace_period_when_record_has_no_stored_public_key(): void {
+		$this->registry->upsert(
+			57,
+			array(
+				'install_id'        => 57,
+				'license_id'        => 79,
+				'status'            => 'licensed',
+				'last_validated_at' => gmdate( 'Y-m-d H:i:s', time() - 300 ),
+			)
+		);
+
+		$request = new WP_REST_Request();
+		$request->set_param(
+			'messages',
+			array(
+				array(
+					'role'    => 'user',
+					'content' => 'Hello',
+				),
+			)
+		);
+		$request->set_param( 'model', 'gpt-5' );
+		$request->set_header( 'X-WPAIC-FS-Install-Id', '57' );
+		$request->set_header( 'X-WPAIC-FS-Install-Public-Key', 'pk_install_57' );
+		$request->set_header( 'X-WPAIC-Timestamp', (string) time() );
+		$request->set_header( 'X-WPAIC-Signature', 'not-checked-during-grace' );
+
+		$result = ( new WPAIP_License_Validator(
+			$this->create_freemius_api_mock(
+				array(
+					'install_error' => new WP_Error(
+						'freemius_request_failed',
+						'Freemius is temporarily unavailable.',
+						array( 'retryable' => true )
+					),
+				)
+			),
+			$this->registry
+		) )->validate_request( $request );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'rest_forbidden', $result->get_error_code() );
+		$this->assertSame( 'Install public key mismatch.', $result->get_error_message() );
 	}
 
 	public function test_validate_request_rejects_license_with_blocked_features(): void {
