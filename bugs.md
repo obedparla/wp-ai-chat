@@ -1,0 +1,2 @@
+- Fix the navigation in the chat logs. 
+- 

@@ -45,8 +45,15 @@ When debugging, always check logs on both sites:
 
 - **Provider**: `/Users/obedmarquez/Local Sites/wp-ai-chatbot-provider/app/public`
   - Debug log: `wp-content/debug.log`
-- **Chatbot**: `/Users/obedmarquez/Local Sites/wp-ai-chatbot/app/public`
+- **Chatbot**: `/Users/obedmarquez/Local Sites/wp-ai-chatbot/app/public` — `http://wp-ai-chatbot.local/`
   - Debug log: `wp-content/debug.log`
+
+### Browser verification
+
+Use the **Playwright MCP** server (installed at user scope) to drive and verify the chatbot in a real browser: navigate to `http://wp-ai-chatbot.local/`, open the chat widget, send a message, and observe the streamed response, console errors, and network requests. Use this to verify frontend/streaming changes end-to-end, not just unit tests.
+
+- **Storefront**: `http://wp-ai-chatbot.local/`
+- **Plugin admin**: `http://wp-ai-chatbot.local/wp-admin/admin.php?page=wp-ai-chatbot` — log in at `/wp-admin` with user `admin` / password `admin` (throwaway local-dev creds).
 
 ## Known Gotchas
 
