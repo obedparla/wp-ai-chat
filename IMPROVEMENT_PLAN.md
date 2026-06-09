@@ -158,3 +158,13 @@ But live testing exposed **two cart-corrupting critical bugs**, **systemic searc
 5. **Then:** P2 hygiene as capacity allows.
 
 Verification: every cart/checkout item must be re-verified with the Playwright flow on `http://wp-ai-chatbot.local/` (search → add → remove → checkout CTA → reload → reopen widget → confirm cart unchanged), and cost items verified against provider logs showing cached-token hits and reduced reasoning tokens.
+
+---
+
+## Round-2 addenda (from P0 verification, 2026-06-10)
+
+- [ ] **NEW-A [backend, small] Search recall + grounding polish (verification findings)**
+  (a) "running shoos" surfaced women's heels but never the actual 'Sports Sneakers Off White Red' products — when primary results lack a title-token match for the query noun, merge in synonym-variant results (shoe↔sneaker↔trainer) before returning. (b) Shipping: bot referenced the policy page but said "costs not shown for Spain" while the page lists $5.99/$14.99/$29.99 — strengthen the no-zone-match hint to instruct the model to actually fetch the shipping policy page (get_page_content) and quote concrete rates. (c) Pivot wording invented "pet items" the store doesn't carry — prompt rule: pivot suggestions must name only real categories from get_categories output. (d) Down-rank $0.00-priced products in search results so priceless sample data stops leading recommendations.
+
+- [ ] **NEW-B [provider, small] Provider admin: mask OpenAI key + surface cache hit rate**
+  The OpenAI API key renders as a plaintext text input (full sk-... visible in page source). Render as password-type field showing only last 4 chars when saved (keep editable). Usage Today column shows msgs + total tokens but not the tracked cached_input_tokens — add cache-hit % so cost monitoring needs no DB access.
