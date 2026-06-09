@@ -206,7 +206,9 @@ function extractCheckoutActionFromMessage(uiMessage: UIMessage): CheckoutAction 
     if (toolPart.state !== 'output-available' || toolPart.toolName !== 'get_checkout_action') {
       continue
     }
-    const output = toolPart.output as Partial<CheckoutAction> | undefined
+    const output = toolPart.output as
+      | { checkout_url?: string; cart_url?: string; has_cart?: boolean; item_count?: number }
+      | undefined
     if (!output || typeof output !== 'object') continue
     const checkoutUrl = typeof output.checkout_url === 'string' ? output.checkout_url : ''
     const cartUrl = typeof output.cart_url === 'string' ? output.cart_url : ''
@@ -214,7 +216,6 @@ function extractCheckoutActionFromMessage(uiMessage: UIMessage): CheckoutAction 
     return {
       checkout_url: checkoutUrl,
       cart_url: cartUrl,
-      has_cart: true,
       item_count: typeof output.item_count === 'number' ? output.item_count : 0,
     }
   }

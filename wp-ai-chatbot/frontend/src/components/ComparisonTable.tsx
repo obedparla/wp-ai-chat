@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { formatPrice } from '@/lib/price'
-import { applyCartUpdate, hasCartUpdateError } from '@/lib/cart'
+import { applyCartUpdate, requestAddToCart } from '@/lib/cart'
 
 export interface ComparisonProduct {
   id: number
@@ -63,27 +63,7 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
     }
 
     try {
-      const response = await fetch(
-        `${wcAjaxUrl}?action=woocommerce_ajax_add_to_cart&product_id=${product.id}&quantity=1`,
-        {
-          method: 'POST',
-          credentials: 'same-origin',
-        }
-      )
-
-      if (!response.ok) {
-        // eslint-disable-next-line react-hooks/immutability
-        window.location.href = product.add_to_cart_url || product.url
-        return
-      }
-
-      const resData = await response.json()
-
-      if (hasCartUpdateError(resData)) {
-        // eslint-disable-next-line react-hooks/immutability
-        window.location.href = product.add_to_cart_url || product.url
-        return
-      }
+      const resData = await requestAddToCart({ productId: product.id, quantity: 1 }, wcAjaxUrl)
 
       setCartStates((prev) => ({ ...prev, [product.id]: 'success' }))
       applyCartUpdate(resData)

@@ -82,9 +82,12 @@ if (!class_exists('WC_Cart')) {
         /**
          * @param int $product_id
          * @param int $quantity
+         * @param int $variation_id
+         * @param array<string, mixed> $variation
+         * @param array<string, mixed> $cart_item_data
          * @return string|false
          */
-        public function add_to_cart($product_id, $quantity = 1) {
+        public function add_to_cart($product_id = 0, $quantity = 1, $variation_id = 0, $variation = array(), $cart_item_data = array()) {
             return '';
         }
         public function get_cart_contents_count(): int {

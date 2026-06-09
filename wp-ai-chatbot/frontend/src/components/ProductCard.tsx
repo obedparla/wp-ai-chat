@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import { applyCartUpdate, hasCartUpdateError } from '@/lib/cart'
+import { applyCartUpdate, requestAddToCart } from '@/lib/cart'
 import ProductCardShell from './ProductCardShell'
 
 export interface ProductAttribute {
@@ -77,25 +77,7 @@ export default function ProductCard({ product }: ProductCardProps) {
     }
 
     try {
-      const response = await fetch(
-        `${wcAjaxUrl}?action=woocommerce_ajax_add_to_cart&product_id=${product.id}&quantity=1`,
-        {
-          method: 'POST',
-          credentials: 'same-origin',
-        }
-      )
-
-      if (!response.ok) {
-        window.location.href = product.add_to_cart_url || product.url
-        return
-      }
-
-      const data = await response.json()
-
-      if (hasCartUpdateError(data)) {
-        window.location.href = product.add_to_cart_url || product.url
-        return
-      }
+      const data = await requestAddToCart({ productId: product.id, quantity: 1 }, wcAjaxUrl)
 
       setCartState('success')
       applyCartUpdate(data)

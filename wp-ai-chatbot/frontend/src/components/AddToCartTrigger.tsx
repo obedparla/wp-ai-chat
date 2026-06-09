@@ -13,14 +13,13 @@ interface AddToCartTriggerProps {
 }
 
 export default function AddToCartTrigger({ intent }: AddToCartTriggerProps) {
-  const [status, setStatus] = useState<Status>('adding')
+  const [status, setStatus] = useState<Status>(() =>
+    window.wpaicConfig?.wcAjaxUrl ? 'adding' : 'error'
+  )
 
   useEffect(() => {
     const wcAjaxUrl = window.wpaicConfig?.wcAjaxUrl
-    if (!wcAjaxUrl) {
-      setStatus('error')
-      return
-    }
+    if (!wcAjaxUrl) return
 
     let cancelled = false
 

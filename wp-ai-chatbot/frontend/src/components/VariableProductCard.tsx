@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Product, ProductVariation } from './ProductCard'
 import { cn } from '@/lib/utils'
-import { applyCartUpdate, hasCartUpdateError } from '@/lib/cart'
+import { applyCartUpdate, requestAddToCart } from '@/lib/cart'
 import ProductCardShell from './ProductCardShell'
 
 interface VariableProductCardProps {
@@ -63,34 +63,21 @@ export default function VariableProductCard({ product }: VariableProductCardProp
       return
     }
 
+    const attributes: Record<string, string> = {}
+    product.attributes?.forEach((attr) => {
+      attributes[`attribute_${attr.name}`] = selectedAttributes[attr.name] || ''
+    })
+
     try {
-      const params = new URLSearchParams({
-        action: 'woocommerce_ajax_add_to_cart',
-        product_id: String(product.id),
-        variation_id: String(selectedVariation.variation_id),
-        quantity: '1',
-      })
-
-      product.attributes?.forEach((attr) => {
-        params.append(`attribute_${attr.name}`, selectedAttributes[attr.name] || '')
-      })
-
-      const response = await fetch(`${wcAjaxUrl}?${params.toString()}`, {
-        method: 'POST',
-        credentials: 'same-origin',
-      })
-
-      if (!response.ok) {
-        window.location.href = product.url
-        return
-      }
-
-      const data = await response.json()
-
-      if (hasCartUpdateError(data)) {
-        window.location.href = product.url
-        return
-      }
+      const data = await requestAddToCart(
+        {
+          productId: product.id,
+          variationId: selectedVariation.variation_id,
+          quantity: 1,
+          attributes,
+        },
+        wcAjaxUrl
+      )
 
       setCartState('success')
       applyCartUpdate(data)

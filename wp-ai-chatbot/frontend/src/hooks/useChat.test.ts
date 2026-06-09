@@ -909,7 +909,6 @@ describe('useChat', () => {
     expect(result.current.messages[0].checkoutAction).toEqual({
       checkout_url: 'https://shop.test/checkout/',
       cart_url: 'https://shop.test/cart/',
-      has_cart: true,
       item_count: 2,
     })
   })

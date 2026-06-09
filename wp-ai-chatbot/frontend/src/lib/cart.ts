@@ -40,6 +40,8 @@ export interface AddToCartRequest {
   productId: number
   variationId?: number
   quantity?: number
+  /** Variation attribute selections, keyed by their `attribute_*` param name. */
+  attributes?: Record<string, string>
 }
 
 export async function requestAddToCart(
@@ -54,6 +56,12 @@ export async function requestAddToCart(
 
   if (params.variationId && params.variationId > 0) {
     search.set('variation_id', String(params.variationId))
+  }
+
+  if (params.attributes) {
+    for (const [key, value] of Object.entries(params.attributes)) {
+      search.set(key, value)
+    }
   }
 
   const response = await fetch(`${wcAjaxUrl}?${search.toString()}`, {
