@@ -20,6 +20,17 @@ export function isProductTool(name: string): boolean {
   return PRODUCT_TOOLS.has(name as ToolName)
 }
 
+// Tools whose pending state renders shimmering skeleton product cards in-thread.
+const PRODUCT_SKELETON_TOOLS: ReadonlySet<string> = new Set([
+  'search_products',
+  'get_popular_products',
+  'compare_products',
+])
+
+export function showsProductSkeletons(name: string): boolean {
+  return PRODUCT_SKELETON_TOOLS.has(name)
+}
+
 // Human-readable progress label per tool. Every tool the backend can call is
 // listed so the UI never surfaces a raw tool name; unknown future tools fall back
 // to a friendly generic label in getToolProgressMessage.
@@ -35,6 +46,7 @@ export const TOOL_PROGRESS_LABELS: Record<string, string> = {
   add_to_cart: 'Adding to cart...',
   clear_cart: 'Updating your cart...',
   get_shipping_info: 'Checking shipping...',
+  get_active_promotions: 'Checking current deals...',
   create_handoff_request: 'Connecting you to support...',
   query_custom_data: 'Looking that up...',
   search_site_content: 'Searching the site...',

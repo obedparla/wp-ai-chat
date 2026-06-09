@@ -202,4 +202,38 @@ describe('ProductGrid', () => {
     render(<ProductGrid products={[varSub]} />)
     expect(screen.getByLabelText('Size')).toBeInTheDocument()
   })
+
+  it('renders zero-price simple products as View product link without price or ADD', () => {
+    const zeroPrice: Product = {
+      id: 20,
+      name: 'Unpriced Tee',
+      url: 'https://example.com/product/20',
+      price: '0',
+      product_type: 'simple',
+    }
+    render(<ProductGrid products={[zeroPrice]} />)
+    expect(screen.getByText(/VIEW PRODUCT/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add to cart/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+  })
+
+  it('renders empty-price simple products as View product link without price or ADD', () => {
+    const emptyPrice: Product = {
+      id: 21,
+      name: 'Unpriced Shoes',
+      url: 'https://example.com/product/21',
+      price: '',
+      product_type: 'simple',
+    }
+    render(<ProductGrid products={[emptyPrice]} />)
+    expect(screen.getByText(/VIEW PRODUCT/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add to cart/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+  })
+
+  it('keeps the ADD button for positively priced simple products', () => {
+    render(<ProductGrid products={[mockProducts[0]]} />)
+    expect(screen.getByRole('button', { name: /add to cart/i })).toBeInTheDocument()
+    expect(screen.getByText('$19.99')).toBeInTheDocument()
+  })
 })

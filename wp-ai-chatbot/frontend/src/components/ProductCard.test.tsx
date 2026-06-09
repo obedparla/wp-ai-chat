@@ -72,7 +72,21 @@ describe('ProductCard', () => {
     expect(screen.queryByText(/\$0/)).not.toBeInTheDocument()
   })
 
-  it('shows $0.00 when price is empty', () => {
+  it('shows the real price when sale_price is an empty string', () => {
+    const productEmptySale: Product = {
+      id: 4,
+      name: 'Non-sale Product',
+      url: 'https://example.com/product/4',
+      price: '18',
+      regular_price: '18',
+      sale_price: '',
+    }
+    render(<ProductCard product={productEmptySale} />)
+    expect(screen.getByText('$18.00')).toBeInTheDocument()
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+  })
+
+  it('hides the price line when price is empty', () => {
     const productNoPrice: Product = {
       id: 3,
       name: 'Free Product',
@@ -80,7 +94,7 @@ describe('ProductCard', () => {
       price: '',
     }
     render(<ProductCard product={productNoPrice} />)
-    expect(screen.getByText('$0.00')).toBeInTheDocument()
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
   })
 
   it('renders Add to Cart button', () => {

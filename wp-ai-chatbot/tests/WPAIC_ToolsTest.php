@@ -420,6 +420,51 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertStringContainsString( 'Order Number', $mail['message'] );
 	}
 
+	public function test_create_handoff_request_stores_conversation_id(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+			'conversation_id'      => 42,
+		) );
+
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+		$this->assertEquals( 42, $rows[0]->conversation_id );
+	}
+
+	public function test_create_handoff_request_conversation_id_null_when_absent(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+		) );
+
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+		$this->assertNull( $rows[0]->conversation_id );
+	}
+
+	public function test_create_handoff_request_conversation_id_not_in_extra_fields(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+			'conversation_id'      => 42,
+			'phone_number'         => '555-1234',
+		) );
+
+		$rows  = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$extra = json_decode( $rows[0]->extra_fields, true );
+		$this->assertArrayNotHasKey( 'conversation_id', $extra );
+	}
+
 	// --- End handoff tests ---
 
 	// --- Content index tool tests ---
@@ -448,10 +493,10 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertEquals( 'Shipping Policy', $result[0]['title'] );
 	}
 
-	public function test_get_page_content_returns_null_for_nonexistent_post(): void {
+	public function test_get_page_content_returns_error_for_nonexistent_post(): void {
 		$result = $this->tools->get_page_content( array( 'post_id' => 999 ) );
 
-		$this->assertNull( $result );
+		$this->assertSame( array( 'error' => 'Page not found or not available' ), $result );
 	}
 
 	public function test_get_page_content_returns_content_for_valid_post(): void {
@@ -971,6 +1016,187 @@ class WPAIC_ToolsTest extends TestCase {
 
 		$this->assertFalse( $result['success'] );
 		$this->assertEquals( 'woocommerce_inactive', $result['reason'] );
+	}
+
+	// --- Add-to-cart related product suggestions ---
+
+	public function test_add_to_cart_includes_cross_sell_related_products(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Coffee Maker', '79.99' );
+		$this->create_mock_product( 2, 'Coffee Filters', '4.99' );
+		$this->create_mock_product( 3, 'Descaling Kit', '12.50' );
+
+		$product = new MockWCProduct( 1 );
+		$product->set_cross_sell_ids( array( 2, 3 ) );
+		$mock_wc_products[1] = $product;
+
+		$result = $this->tools->add_to_cart( array( 'product_id' => 1 ) );
+
+		$this->assertTrue( $result['success'] );
+		$this->assertSame(
+			array(
+				array(
+					'id'    => 2,
+					'name'  => 'Coffee Filters',
+					'price' => '4.99',
+				),
+				array(
+					'id'    => 3,
+					'name'  => 'Descaling Kit',
+					'price' => '12.50',
+				),
+			),
+			$result['related_products']
+		);
+	}
+
+	public function test_add_to_cart_caps_related_products_at_three_and_dedupes(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Camera', '499.00' );
+		$this->create_mock_product( 2, 'Memory Card', '19.99' );
+		$this->create_mock_product( 3, 'Camera Bag', '39.99' );
+		$this->create_mock_product( 4, 'Tripod', '59.99' );
+		$this->create_mock_product( 5, 'Lens Cleaner', '9.99' );
+
+		$product = new MockWCProduct( 1 );
+		$product->set_cross_sell_ids( array( 2, 3 ) );
+		$product->set_upsell_ids( array( 2, 4, 5 ) );
+		$mock_wc_products[1] = $product;
+
+		$result = $this->tools->add_to_cart( array( 'product_id' => 1 ) );
+
+		$this->assertCount( 3, $result['related_products'] );
+		$this->assertSame( array( 2, 3, 4 ), array_column( $result['related_products'], 'id' ) );
+	}
+
+	public function test_add_to_cart_omits_related_products_when_none_configured(): void {
+		$this->create_mock_product( 1, 'Plain Product', '10.00' );
+
+		$result = $this->tools->add_to_cart( array( 'product_id' => 1 ) );
+
+		$this->assertTrue( $result['success'] );
+		$this->assertArrayNotHasKey( 'related_products', $result );
+	}
+
+	public function test_add_to_cart_skips_out_of_stock_and_missing_related_products(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Laptop', '999.00' );
+		$this->create_mock_product( 2, 'Laptop Sleeve', '24.99' );
+
+		$product = new MockWCProduct( 1 );
+		$product->set_cross_sell_ids( array( 2, 777 ) );
+		$mock_wc_products[1] = $product;
+		$mock_wc_products[2] = new MockWCProduct( 2, true, false );
+
+		$result = $this->tools->add_to_cart( array( 'product_id' => 1 ) );
+
+		$this->assertTrue( $result['success'] );
+		$this->assertArrayNotHasKey( 'related_products', $result );
+	}
+
+	// --- Active promotions tool ---
+
+	public function test_get_active_promotions_returns_empty_state_when_no_coupons(): void {
+		$result = $this->tools->get_active_promotions();
+
+		$this->assertFalse( $result['has_promotions'] );
+		$this->assertStringContainsString( 'no active coupons or promotions', $result['message'] );
+		$this->assertArrayNotHasKey( 'promotions', $result );
+	}
+
+	public function test_get_active_promotions_returns_coupon_details(): void {
+		$this->create_mock_coupon( 50, 'SAVE10', 'percent', '10' );
+		WPAICTestHelper::set_post_meta( 50, 'free_shipping', 'yes' );
+		WPAICTestHelper::set_post_meta( 50, 'minimum_amount', '25' );
+		WPAICTestHelper::set_post_meta( 50, 'date_expires', (string) ( time() + DAY_IN_SECONDS ) );
+
+		$result = $this->tools->get_active_promotions();
+
+		$this->assertTrue( $result['has_promotions'] );
+		$this->assertCount( 1, $result['promotions'] );
+
+		$promotion = $result['promotions'][0];
+		$this->assertSame( 'SAVE10', $promotion['code'] );
+		$this->assertSame( 'percent', $promotion['discount_type'] );
+		$this->assertSame( '10', $promotion['amount'] );
+		$this->assertTrue( $promotion['free_shipping'] );
+		$this->assertSame( '25', $promotion['minimum_spend'] );
+		$this->assertSame( gmdate( 'Y-m-d', time() + DAY_IN_SECONDS ), $promotion['expires'] );
+	}
+
+	public function test_get_active_promotions_includes_coupon_description(): void {
+		$this->create_mock_coupon( 50, 'WELCOME5', 'fixed_cart', '5' );
+		WPAICTestHelper::get_mock_post( 50 )->post_excerpt = '<p>5 off your first order</p>';
+
+		$result = $this->tools->get_active_promotions();
+
+		$this->assertSame( '5 off your first order', $result['promotions'][0]['description'] );
+	}
+
+	public function test_get_active_promotions_skips_expired_coupons(): void {
+		$this->create_mock_coupon( 50, 'EXPIRED', 'percent', '20' );
+		WPAICTestHelper::set_post_meta( 50, 'date_expires', (string) ( time() - DAY_IN_SECONDS ) );
+
+		$result = $this->tools->get_active_promotions();
+
+		$this->assertFalse( $result['has_promotions'] );
+	}
+
+	public function test_get_active_promotions_skips_usage_exhausted_coupons(): void {
+		$this->create_mock_coupon( 50, 'USEDUP', 'percent', '15' );
+		WPAICTestHelper::set_post_meta( 50, 'usage_limit', '5' );
+		WPAICTestHelper::set_post_meta( 50, 'usage_count', '5' );
+
+		$result = $this->tools->get_active_promotions();
+
+		$this->assertFalse( $result['has_promotions'] );
+	}
+
+	public function test_get_active_promotions_skips_unpublished_coupons(): void {
+		$this->create_mock_coupon( 50, 'DRAFTCODE', 'percent', '30', 'draft' );
+
+		$result = $this->tools->get_active_promotions();
+
+		$this->assertFalse( $result['has_promotions'] );
+	}
+
+	public function test_get_active_promotions_lists_restricted_product_names(): void {
+		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
+		$this->create_mock_coupon( 50, 'SHIRTDEAL', 'percent', '10' );
+		WPAICTestHelper::set_post_meta( 50, 'product_ids', '1' );
+
+		$result = $this->tools->get_active_promotions();
+
+		$this->assertSame( array( 'Red Shirt' ), $result['promotions'][0]['limited_to_products'] );
+	}
+
+	public function test_get_active_promotions_unavailable_when_woocommerce_inactive(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', false );
+		$this->create_mock_coupon( 50, 'SAVE10', 'percent', '10' );
+
+		$result = $this->tools->get_active_promotions();
+
+		$this->assertFalse( $result['has_promotions'] );
+	}
+
+	/**
+	 * Creates a mock WooCommerce coupon post with metadata.
+	 */
+	private function create_mock_coupon( int $id, string $code, string $discount_type, string $amount, string $post_status = 'publish' ): void {
+		WPAICTestHelper::add_mock_post(
+			array(
+				'ID'          => $id,
+				'post_title'  => $code,
+				'post_type'   => 'shop_coupon',
+				'post_status' => $post_status,
+			)
+		);
+
+		WPAICTestHelper::set_post_meta( $id, 'discount_type', $discount_type );
+		WPAICTestHelper::set_post_meta( $id, 'coupon_amount', $amount );
 	}
 
 	/**

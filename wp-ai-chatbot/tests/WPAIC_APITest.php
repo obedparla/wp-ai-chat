@@ -350,4 +350,291 @@ class WPAIC_APITest extends TestCase {
 			$this->assertNull( $this->invoke_private( 'check_rate_limit', $session_id ) );
 		}
 	}
+
+	// --- transform_messages ---
+
+	public function test_transform_messages_concatenates_text_parts(): void {
+		$messages = array(
+			array(
+				'role'  => 'user',
+				'parts' => array(
+					array( 'type' => 'text', 'text' => 'Hello ' ),
+					array( 'type' => 'text', 'text' => 'world' ),
+				),
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertSame( 'Hello world', $result[0]['content'] );
+		$this->assertArrayNotHasKey( 'parts', $result[0] );
+	}
+
+	public function test_transform_messages_summarizes_product_tool_parts_in_display_order(): void {
+		$messages = array(
+			array(
+				'role'  => 'assistant',
+				'parts' => array(
+					array(
+						'type'     => 'dynamic-tool',
+						'toolName' => 'search_products',
+						'state'    => 'output-available',
+						'output'   => array(
+							array( 'id' => 12, 'name' => 'Kitchen Sieve', 'price' => '8.00', 'url' => 'http://example.com/sieve/' ),
+							array( 'id' => 417, 'name' => 'Red Tongs', 'price' => '5.98', 'url' => 'http://example.com/tongs/' ),
+						),
+					),
+					array( 'type' => 'text', 'text' => 'Here are a few options:' ),
+				),
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertSame(
+			"Here are a few options:\n\nProducts shown (display order): 1. Kitchen Sieve (id 12, price 8.00) 2. Red Tongs (id 417, price 5.98)",
+			$result[0]['content']
+		);
+	}
+
+	public function test_transform_messages_summarizes_card_only_assistant_message(): void {
+		$messages = array(
+			array(
+				'role'  => 'assistant',
+				'parts' => array(
+					array(
+						'type'     => 'dynamic-tool',
+						'toolName' => 'get_popular_products',
+						'state'    => 'output-available',
+						'output'   => array(
+							array( 'id' => 7, 'name' => 'Best Seller', 'price' => '19.99' ),
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertSame( 'Products shown (display order): 1. Best Seller (id 7, price 19.99)', $result[0]['content'] );
+	}
+
+	public function test_transform_messages_summarizes_compare_products_part(): void {
+		$messages = array(
+			array(
+				'role'  => 'assistant',
+				'parts' => array(
+					array( 'type' => 'text', 'text' => 'Comparison below.' ),
+					array(
+						'type'     => 'dynamic-tool',
+						'toolName' => 'compare_products',
+						'state'    => 'output-available',
+						'output'   => array(
+							'products'   => array(
+								array( 'id' => 1, 'name' => 'Product A', 'price' => '19.99' ),
+								array( 'id' => 2, 'name' => 'Product B', 'price' => '29.99' ),
+							),
+							'attributes' => array( 'price' ),
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertStringContainsString(
+			'Products compared (display order): 1. Product A (id 1, price 19.99) 2. Product B (id 2, price 29.99)',
+			$result[0]['content']
+		);
+	}
+
+	public function test_transform_messages_summarizes_get_product_details_part(): void {
+		$messages = array(
+			array(
+				'role'  => 'assistant',
+				'parts' => array(
+					array(
+						'type'     => 'dynamic-tool',
+						'toolName' => 'get_product_details',
+						'state'    => 'output-available',
+						'output'   => array( 'id' => 5, 'name' => 'Hoodie', 'price' => '42.00' ),
+					),
+				),
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertSame( 'Products shown (display order): 1. Hoodie (id 5, price 42.00)', $result[0]['content'] );
+	}
+
+	public function test_transform_messages_ignores_non_product_tool_parts(): void {
+		$messages = array(
+			array(
+				'role'  => 'assistant',
+				'parts' => array(
+					array( 'type' => 'text', 'text' => 'Added to cart.' ),
+					array(
+						'type'     => 'dynamic-tool',
+						'toolName' => 'add_to_cart',
+						'state'    => 'output-available',
+						'output'   => array( 'success' => true, 'product' => array( 'id' => 3, 'name' => 'Water' ) ),
+					),
+				),
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertSame( 'Added to cart.', $result[0]['content'] );
+	}
+
+	public function test_transform_messages_ignores_tool_parts_without_output(): void {
+		$messages = array(
+			array(
+				'role'  => 'assistant',
+				'parts' => array(
+					array( 'type' => 'text', 'text' => 'Searching...' ),
+					array(
+						'type'     => 'dynamic-tool',
+						'toolName' => 'search_products',
+						'state'    => 'input-available',
+						'input'    => array( 'search' => 'water' ),
+					),
+					array(
+						'type'     => 'dynamic-tool',
+						'toolName' => 'search_products',
+						'state'    => 'output-available',
+						'output'   => array(),
+					),
+				),
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertSame( 'Searching...', $result[0]['content'] );
+	}
+
+	public function test_transform_messages_skips_products_missing_id_or_name(): void {
+		$messages = array(
+			array(
+				'role'  => 'assistant',
+				'parts' => array(
+					array(
+						'type'     => 'dynamic-tool',
+						'toolName' => 'search_products',
+						'state'    => 'output-available',
+						'output'   => array(
+							array( 'name' => 'No Id Product', 'price' => '1.00' ),
+							array( 'id' => 9, 'name' => 'Valid Product', 'price' => '2.00' ),
+						),
+					),
+				),
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertSame( 'Products shown (display order): 1. Valid Product (id 9, price 2.00)', $result[0]['content'] );
+	}
+
+	// --- Conversation logging completeness tests (P1-14) ---
+
+	private function reset_mock_wpdb(): void {
+		global $wpdb;
+		if ( ! $wpdb instanceof MockWpdb ) {
+			$wpdb = new MockWpdb();
+		}
+		$wpdb->reset();
+	}
+
+	public function test_log_trailing_user_messages_logs_every_trailing_user_message(): void {
+		$this->reset_mock_wpdb();
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->create_conversation( 'trailing-session' );
+
+		$messages = array(
+			array( 'role' => 'user', 'content' => 'First question' ),
+			array( 'role' => 'assistant', 'content' => 'Answer' ),
+			array( 'role' => 'user', 'content' => 'Batched one' ),
+			array( 'role' => 'user', 'content' => 'Batched two' ),
+		);
+
+		$this->invoke_private( 'log_trailing_user_messages', $conversation_id, $messages );
+
+		$logged = $logs->get_conversation_messages( $conversation_id );
+
+		$this->assertCount( 2, $logged );
+		$this->assertEquals( 'Batched one', $logged[0]->content );
+		$this->assertEquals( 'Batched two', $logged[1]->content );
+		$this->assertEquals( 'user', $logged[0]->role );
+	}
+
+	public function test_log_trailing_user_messages_logs_single_last_user_message(): void {
+		$this->reset_mock_wpdb();
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->create_conversation( 'single-session' );
+
+		$messages = array(
+			array( 'role' => 'user', 'content' => 'Hi' ),
+			array( 'role' => 'assistant', 'content' => 'Hello' ),
+			array( 'role' => 'user', 'content' => 'Only this one' ),
+		);
+
+		$this->invoke_private( 'log_trailing_user_messages', $conversation_id, $messages );
+
+		$logged = $logs->get_conversation_messages( $conversation_id );
+
+		$this->assertCount( 1, $logged );
+		$this->assertEquals( 'Only this one', $logged[0]->content );
+	}
+
+	public function test_log_trailing_user_messages_logs_nothing_when_last_is_assistant(): void {
+		$this->reset_mock_wpdb();
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->create_conversation( 'assistant-last-session' );
+
+		$messages = array(
+			array( 'role' => 'user', 'content' => 'Hi' ),
+			array( 'role' => 'assistant', 'content' => 'Hello' ),
+		);
+
+		$this->invoke_private( 'log_trailing_user_messages', $conversation_id, $messages );
+
+		$this->assertCount( 0, $logs->get_conversation_messages( $conversation_id ) );
+	}
+
+	public function test_describe_card_payload_labels_card_tools(): void {
+		$this->assertEquals(
+			'[Sent product cards]',
+			$this->invoke_private( 'describe_card_payload', 'search_products', array( array( 'id' => 1, 'name' => 'A' ) ) )
+		);
+		$this->assertEquals(
+			'[Sent product cards]',
+			$this->invoke_private( 'describe_card_payload', 'get_popular_products', array( array( 'id' => 1, 'name' => 'A' ) ) )
+		);
+		$this->assertEquals(
+			'[Sent product comparison]',
+			$this->invoke_private( 'describe_card_payload', 'compare_products', array( 'products' => array( array( 'id' => 1 ) ) ) )
+		);
+		$this->assertEquals(
+			'[Sent checkout button]',
+			$this->invoke_private( 'describe_card_payload', 'get_checkout_action', array( 'checkout_url' => 'http://example.com/checkout/' ) )
+		);
+		$this->assertEquals(
+			'[Sent add-to-cart confirmation]',
+			$this->invoke_private( 'describe_card_payload', 'add_to_cart', array( 'success' => true, 'name' => 'Hat' ) )
+		);
+	}
+
+	public function test_describe_card_payload_returns_null_for_non_card_tools_and_empty_output(): void {
+		$this->assertNull( $this->invoke_private( 'describe_card_payload', 'get_cart_contents', array( 'items' => array() ) ) );
+		$this->assertNull( $this->invoke_private( 'describe_card_payload', 'search_products', array() ) );
+		$this->assertNull( $this->invoke_private( 'describe_card_payload', 'add_to_cart', array( 'success' => false ) ) );
+		$this->assertNull( $this->invoke_private( 'describe_card_payload', '', array( 'anything' => true ) ) );
+		// get_product_details now returns an error object instead of null; no card was sent.
+		$this->assertNull( $this->invoke_private( 'describe_card_payload', 'get_product_details', array( 'error' => 'Product not found' ) ) );
+	}
 }

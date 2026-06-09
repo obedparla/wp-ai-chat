@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import { formatPrice } from '@/lib/price'
+import { formatPrice, hasPositivePrice } from '@/lib/price'
 import { Product } from './ProductCard'
 
 interface ProductCardShellProps {
@@ -26,11 +26,19 @@ export default function ProductCardShell({
   const regularPrice = priceOverride?.regular ?? product.regular_price
   const salePrice = priceOverride ? undefined : product.sale_price
 
-  const hasDiscount = priceOverride
-    ? regularPrice && currentPrice && parseFloat(currentPrice) < parseFloat(regularPrice)
-    : salePrice && regularPrice && parseFloat(salePrice) < parseFloat(regularPrice)
+  // Non-sale products arrive with sale_price '' — fall back to the real price.
+  const displayCurrent = priceOverride
+    ? currentPrice
+    : hasPositivePrice(salePrice)
+      ? salePrice
+      : currentPrice
+  const showPrice = hasPositivePrice(displayCurrent)
 
-  const displayCurrent = priceOverride ? currentPrice : (salePrice ?? currentPrice)
+  const hasDiscount =
+    showPrice &&
+    (priceOverride
+      ? regularPrice && currentPrice && parseFloat(currentPrice) < parseFloat(regularPrice)
+      : salePrice && regularPrice && parseFloat(salePrice) < parseFloat(regularPrice))
   const linkHref = href ?? product.url
   const category = product.categories?.[0]
 
@@ -78,18 +86,22 @@ export default function ProductCardShell({
       </a>
       {middleSlot}
       <div className="flex items-center justify-between gap-2 px-3.5 pb-3.5 pt-2 mt-auto max-[480px]:px-3 max-[480px]:pb-3">
-        <div className="text-base font-bold text-slate-900 max-[480px]:text-[15px]">
-          {hasDiscount ? (
-            <>
-              <span className="line-through text-slate-400 font-normal mr-1.5 text-sm">
-                {formatPrice(regularPrice)}
-              </span>
+        {showPrice ? (
+          <div className="text-base font-bold text-slate-900 max-[480px]:text-[15px]">
+            {hasDiscount ? (
+              <>
+                <span className="line-through text-slate-400 font-normal mr-1.5 text-sm">
+                  {formatPrice(regularPrice)}
+                </span>
+                <span>{formatPrice(displayCurrent)}</span>
+              </>
+            ) : (
               <span>{formatPrice(displayCurrent)}</span>
-            </>
-          ) : (
-            <span>{formatPrice(displayCurrent)}</span>
-          )}
-        </div>
+            )}
+          </div>
+        ) : (
+          <div />
+        )}
         {bottomSlot}
       </div>
     </div>

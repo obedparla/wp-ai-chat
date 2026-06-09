@@ -12,6 +12,17 @@ class WPAIC_Product_Tools {
 	public function search_products( array $args ): array {
 		$limit = isset( $args['limit'] ) && is_numeric( $args['limit'] ) ? (int) $args['limit'] : 10;
 
+		// on_sale filter: restrict results to products WooCommerce reports on sale.
+		$on_sale_ids = null;
+		if ( ! empty( $args['on_sale'] ) ) {
+			$on_sale_ids = function_exists( 'wc_get_product_ids_on_sale' )
+				? array_map( 'intval', (array) wc_get_product_ids_on_sale() )
+				: array();
+			if ( empty( $on_sale_ids ) ) {
+				return array();
+			}
+		}
+
 		// Use TNTSearch fuzzy matching when search term provided
 		if ( ! empty( $args['search'] ) && is_string( $args['search'] ) ) {
 			$filters = array();
@@ -28,6 +39,10 @@ class WPAIC_Product_Tools {
 			$search_index = new WPAIC_Search_Index();
 			$product_ids  = $search_index->search( $args['search'], $filters, $limit );
 
+			if ( null !== $on_sale_ids ) {
+				$product_ids = array_values( array_intersect( $product_ids, $on_sale_ids ) );
+			}
+
 			$products = array();
 			foreach ( $product_ids as $product_id ) {
 				$post = get_post( $product_id );
@@ -38,7 +53,7 @@ class WPAIC_Product_Tools {
 					}
 				}
 			}
-			return $products;
+			return $this->down_rank_zero_priced( $products );
 		}
 
 		// Category/price-only queries: use WP_Query
@@ -47,6 +62,10 @@ class WPAIC_Product_Tools {
 			'post_status'    => 'publish',
 			'posts_per_page' => $limit,
 		);
+
+		if ( null !== $on_sale_ids ) {
+			$query_args['post__in'] = $on_sale_ids;
+		}
 
 		if ( ! empty( $args['category'] ) && is_string( $args['category'] ) ) {
 			$query_args['tax_query'] = array(
@@ -92,7 +111,31 @@ class WPAIC_Product_Tools {
 			}
 		}
 
-		return $products;
+		return $this->down_rank_zero_priced( $products );
+	}
+
+	/**
+	 * Zero-priced products (common in sample data) read as broken cards and
+	 * should never lead recommendations: keep them, but after every priced
+	 * result, preserving relative order within each group.
+	 *
+	 * @param array<int, array<string, mixed>> $products Formatted product cards.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function down_rank_zero_priced( array $products ): array {
+		$priced   = array();
+		$unpriced = array();
+
+		foreach ( $products as $product ) {
+			$price = $product['price'] ?? '';
+			if ( is_numeric( $price ) && (float) $price > 0 ) {
+				$priced[] = $product;
+			} else {
+				$unpriced[] = $product;
+			}
+		}
+
+		return array_merge( $priced, $unpriced );
 	}
 
 	/**
@@ -204,13 +247,14 @@ class WPAIC_Product_Tools {
 
 	/**
 	 * @param int $product_id
-	 * @return array<string, mixed>|null
+	 * @return array<string, mixed> Product data, or array('error' => ...) when not found
+	 *                              (null would serialize as bare "null" to the model).
 	 */
-	public function get_product_details( int $product_id ): ?array {
+	public function get_product_details( int $product_id ): array {
 		$post = get_post( $product_id );
 
 		if ( ! $post instanceof WP_Post || 'product' !== $post->post_type ) {
-			return null;
+			return array( 'error' => 'Product not found' );
 		}
 
 		return $this->format_product( $post, true );
@@ -254,8 +298,9 @@ class WPAIC_Product_Tools {
 	public function compare_products( array $product_ids ): array {
 		if ( empty( $product_ids ) ) {
 			return array(
-				'products'   => array(),
-				'attributes' => array(),
+				'products'    => array(),
+				'attributes'  => array(),
+				'differences' => array(),
 			);
 		}
 
@@ -272,17 +317,159 @@ class WPAIC_Product_Tools {
 
 		if ( empty( $products ) ) {
 			return array(
-				'products'   => array(),
-				'attributes' => array(),
+				'products'    => array(),
+				'attributes'  => array(),
+				'differences' => array(),
 			);
 		}
 
 		$attributes = array( 'price', 'regular_price', 'stock_status', 'rating', 'categories' );
 
 		return array(
-			'products'   => $products,
-			'attributes' => $attributes,
+			'products'    => $products,
+			'attributes'  => $attributes,
+			'differences' => $this->compute_comparison_differences( $products ),
 		);
+	}
+
+	/**
+	 * Pre-computed, human-readable differences (price, rating, stock) so the
+	 * model paraphrases server-verified facts instead of re-deriving — and
+	 * potentially inverting — them at the purchase-decision moment.
+	 *
+	 * @param array<int, array<string, mixed>> $products Formatted comparison products.
+	 * @return array<int, string>
+	 */
+	private function compute_comparison_differences( array $products ): array {
+		if ( count( $products ) < 2 ) {
+			return array();
+		}
+
+		$differences = array();
+
+		$price_difference = $this->describe_price_difference( $products );
+		if ( null !== $price_difference ) {
+			$differences[] = $price_difference;
+		}
+
+		$rating_difference = $this->describe_rating_difference( $products );
+		if ( null !== $rating_difference ) {
+			$differences[] = $rating_difference;
+		}
+
+		$stock_difference = $this->describe_stock_difference( $products );
+		if ( null !== $stock_difference ) {
+			$differences[] = $stock_difference;
+		}
+
+		return $differences;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $products
+	 */
+	private function describe_price_difference( array $products ): ?string {
+		$priced = array_values(
+			array_filter( $products, static fn( $product ) => is_numeric( $product['price'] ?? null ) )
+		);
+		if ( count( $priced ) < 2 ) {
+			return null;
+		}
+
+		$cheapest       = $priced[0];
+		$most_expensive = $priced[0];
+		foreach ( $priced as $product ) {
+			if ( (float) $product['price'] < (float) $cheapest['price'] ) {
+				$cheapest = $product;
+			}
+			if ( (float) $product['price'] > (float) $most_expensive['price'] ) {
+				$most_expensive = $product;
+			}
+		}
+
+		$gap = (float) $most_expensive['price'] - (float) $cheapest['price'];
+		if ( $gap <= 0 ) {
+			return 'Price: all compared products cost ' . number_format( (float) $cheapest['price'], 2 ) . '.';
+		}
+
+		return sprintf(
+			'Price: %s is cheapest at %s; %s is most expensive at %s (%s difference).',
+			$cheapest['name'],
+			number_format( (float) $cheapest['price'], 2 ),
+			$most_expensive['name'],
+			number_format( (float) $most_expensive['price'], 2 ),
+			number_format( $gap, 2 )
+		);
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $products
+	 */
+	private function describe_rating_difference( array $products ): ?string {
+		$rated = array_values(
+			array_filter( $products, static fn( $product ) => is_numeric( $product['rating'] ?? null ) )
+		);
+		if ( count( $rated ) < 2 ) {
+			return null;
+		}
+
+		$parts   = array();
+		$highest = $rated[0];
+		$lowest  = $rated[0];
+		foreach ( $rated as $product ) {
+			$parts[] = $product['name'] . ' ' . number_format( (float) $product['rating'], 1 );
+			if ( (float) $product['rating'] > (float) $highest['rating'] ) {
+				$highest = $product;
+			}
+			if ( (float) $product['rating'] < (float) $lowest['rating'] ) {
+				$lowest = $product;
+			}
+		}
+
+		$summary = 'Rating: ' . implode( ', ', $parts );
+		if ( (float) $highest['rating'] > (float) $lowest['rating'] ) {
+			$summary .= ' — ' . $highest['name'] . ' is rated highest';
+		} else {
+			$summary .= ' — same rating';
+		}
+
+		$unrated = array_filter( $products, static fn( $product ) => ! is_numeric( $product['rating'] ?? null ) );
+		if ( ! empty( $unrated ) ) {
+			$summary .= '; no rating: ' . implode( ', ', array_column( $unrated, 'name' ) );
+		}
+
+		return $summary . '.';
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $products
+	 */
+	private function describe_stock_difference( array $products ): ?string {
+		$statuses = array();
+		foreach ( $products as $product ) {
+			$status = (string) ( $product['stock_status'] ?? '' );
+			if ( '' === $status ) {
+				continue;
+			}
+			$statuses[ $status ][] = $product['name'];
+		}
+
+		if ( count( $statuses ) < 2 ) {
+			return null;
+		}
+
+		$labels = array(
+			'instock'     => 'in stock',
+			'outofstock'  => 'out of stock',
+			'onbackorder' => 'on backorder',
+		);
+
+		$parts = array();
+		foreach ( $statuses as $status => $names ) {
+			$parts[] = implode( ', ', $names ) . ': ' . ( $labels[ $status ] ?? $status );
+		}
+
+		return 'Stock: ' . implode( '; ', $parts ) . '.';
 	}
 
 	/**
@@ -317,7 +504,51 @@ class WPAIC_Product_Tools {
 		$categories                 = wp_get_post_terms( $post->ID, 'product_cat', array( 'fields' => 'names' ) );
 		$product_data['categories'] = is_array( $categories ) ? $categories : array();
 
+		$wc_product = wc_get_product( $post->ID );
+		if ( $wc_product ) {
+			$product_data['attributes'] = $this->get_attribute_values( $wc_product );
+
+			$weight = $wc_product->get_weight();
+			if ( '' !== (string) $weight ) {
+				$product_data['weight'] = $weight . ' ' . get_option( 'woocommerce_weight_unit', 'kg' );
+			}
+
+			$dimensions = array_filter(
+				$wc_product->get_dimensions( false ),
+				static fn( $dimension ) => '' !== (string) $dimension
+			);
+			if ( ! empty( $dimensions ) ) {
+				$product_data['dimensions'] = implode( ' x ', $dimensions ) . ' ' . get_option( 'woocommerce_dimension_unit', 'cm' );
+			}
+		}
+
 		return $product_data;
+	}
+
+	/**
+	 * Human-labeled attribute values (taxonomy pa_* and custom attributes) for a
+	 * product, e.g. array( 'Color' => 'Blue, Red', 'Warranty' => '3 years' ).
+	 * get_attribute() returns term names for taxonomy attributes, so values are
+	 * already shopper-readable.
+	 *
+	 * @param WC_Product $wc_product
+	 * @return array<string, string>
+	 */
+	private function get_attribute_values( $wc_product ): array {
+		$values = array();
+		foreach ( $wc_product->get_attributes() as $attribute_key => $attribute ) {
+			$attribute_name = is_object( $attribute ) && method_exists( $attribute, 'get_name' )
+				? $attribute->get_name()
+				: (string) $attribute_key;
+
+			$value = $wc_product->get_attribute( $attribute_name );
+			if ( '' === $value ) {
+				continue;
+			}
+
+			$values[ wc_attribute_label( $attribute_name, $wc_product ) ] = $value;
+		}
+		return $values;
 	}
 
 	/**
@@ -401,13 +632,18 @@ class WPAIC_Product_Tools {
 
 		foreach ( $variation_attrs as $attr_name => $options ) {
 			$attr_label = wc_attribute_label( $attr_name, $product );
+			$options    = array_values( $options );
 			$attributes[] = array(
 				// sanitize_title() matches WooCommerce's attribute_* keys in
 				// get_available_variations() and add-to-cart requests — custom
 				// attribute names like "Logo" otherwise never match attribute_logo.
-				'name'    => sanitize_title( $attr_name ),
-				'label'   => $attr_label,
-				'options' => array_values( $options ),
+				'name'          => sanitize_title( $attr_name ),
+				'label'         => $attr_label,
+				'options'       => $options,
+				// Slug => human label map for display ("blue" => "Blue"); the
+				// slugs in `options` stay intact because WC AJAX add-to-cart
+				// requests must send the slug values.
+				'option_labels' => $this->get_attribute_option_labels( (string) $attr_name, $options ),
 			);
 		}
 
@@ -421,18 +657,65 @@ class WPAIC_Product_Tools {
 		if ( ! $is_complex ) {
 			$variations = array();
 			foreach ( $available_vars as $var ) {
+				$variation_attributes = is_array( $var['attributes'] ) ? $var['attributes'] : array();
 				$variations[] = array(
-					'variation_id' => $var['variation_id'],
-					'attributes'   => $var['attributes'],
-					'price'        => $var['display_price'],
-					'regular_price' => $var['display_regular_price'],
-					'is_in_stock'  => $var['is_in_stock'],
-					'image'        => isset( $var['image']['url'] ) ? $var['image']['url'] : null,
+					'variation_id'     => $var['variation_id'],
+					'attributes'       => $variation_attributes,
+					// Human labels keyed by the same attribute_* keys; the slug
+					// values in `attributes` stay intact for WC AJAX adds.
+					'attribute_labels' => $this->humanize_variation_attributes( $variation_attributes ),
+					'price'            => $var['display_price'],
+					'regular_price'    => $var['display_regular_price'],
+					'is_in_stock'      => $var['is_in_stock'],
+					'image'            => isset( $var['image']['url'] ) ? $var['image']['url'] : null,
 				);
 			}
 			$data['variations'] = $variations;
 		}
 
 		return $data;
+	}
+
+	/**
+	 * Map attribute option slugs to human display labels. Taxonomy attributes
+	 * (pa_*) store term slugs as options ("blue"), so resolve the term name
+	 * ("Blue"); custom attribute options are already display values.
+	 *
+	 * @param string $attribute_name Raw attribute name / taxonomy, e.g. "pa_color" or "Logo".
+	 * @param array<int, string> $options Option slugs or values.
+	 * @return array<string, string> Option => display label.
+	 */
+	private function get_attribute_option_labels( string $attribute_name, array $options ): array {
+		$labels = array();
+		foreach ( $options as $option ) {
+			$labels[ (string) $option ] = $this->humanize_attribute_option( $attribute_name, (string) $option );
+		}
+		return $labels;
+	}
+
+	/**
+	 * Human labels for one variation's attribute_* => slug map, e.g.
+	 * array( 'attribute_pa_color' => 'Blue' ) for array( 'attribute_pa_color' => 'blue' ).
+	 *
+	 * @param array<string, string> $variation_attributes
+	 * @return array<string, string>
+	 */
+	private function humanize_variation_attributes( array $variation_attributes ): array {
+		$labels = array();
+		foreach ( $variation_attributes as $attribute_key => $option ) {
+			$taxonomy                          = (string) preg_replace( '/^attribute_/', '', (string) $attribute_key );
+			$labels[ (string) $attribute_key ] = $this->humanize_attribute_option( $taxonomy, (string) $option );
+		}
+		return $labels;
+	}
+
+	private function humanize_attribute_option( string $attribute_name, string $option ): string {
+		if ( '' !== $option && taxonomy_exists( $attribute_name ) ) {
+			$term = get_term_by( 'slug', $option, $attribute_name );
+			if ( $term instanceof WP_Term && '' !== $term->name ) {
+				return $term->name;
+			}
+		}
+		return $option;
 	}
 }

@@ -1,6 +1,7 @@
 import ProductCard, { Product } from './ProductCard'
 import VariableProductCard from './VariableProductCard'
 import LinkProductCard from './LinkProductCard'
+import { hasPositivePrice } from '@/lib/price'
 import {
   Carousel,
   CarouselContent,
@@ -60,6 +61,19 @@ function renderProductCard(product: Product) {
   }
 
   if (SIMPLE_TYPES.has(type) || VARIABLE_TYPES.has(type)) {
+    // Zero/empty price (e.g. unpriced sample products): an active ADD button
+    // would add a $0.00 item, so link to the product page instead.
+    if (!hasPositivePrice(product.price)) {
+      return (
+        <LinkProductCard
+          key={product.id}
+          product={product}
+          href={product.url}
+          target="_blank"
+          label="View product"
+        />
+      )
+    }
     return <ProductCard key={product.id} product={product} />
   }
 

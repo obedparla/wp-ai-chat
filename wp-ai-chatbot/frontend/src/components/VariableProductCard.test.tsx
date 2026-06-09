@@ -67,6 +67,31 @@ describe('VariableProductCard', () => {
     expect(screen.getByLabelText('Size')).toBeInTheDocument()
   })
 
+  it('renders human option labels while keeping slug option values', () => {
+    const productWithLabels: Product = {
+      ...mockVariableProduct,
+      attributes: [
+        {
+          name: 'pa_color',
+          label: 'Color',
+          options: ['navy-blue', 'red'],
+          option_labels: { 'navy-blue': 'Navy Blue', red: 'Red' },
+        },
+      ],
+      variations: [],
+    }
+
+    render(<VariableProductCard product={productWithLabels} />)
+
+    const option = screen.getByRole('option', { name: 'Navy Blue' }) as HTMLOptionElement
+    expect(option.value).toBe('navy-blue')
+  })
+
+  it('falls back to the raw option when no labels map is provided', () => {
+    render(<VariableProductCard product={mockVariableProduct} />)
+    expect(screen.getByRole('option', { name: 'Blue' })).toBeInTheDocument()
+  })
+
   it('shows Pick label when no attributes selected', () => {
     render(<VariableProductCard product={mockVariableProduct} />)
     expect(screen.getByRole('button', { name: /add to cart/i })).toHaveTextContent('PICK')

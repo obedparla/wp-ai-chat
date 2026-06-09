@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ChatWidget from './components/ChatWidget'
 import ChatButton from './components/ChatButton'
+import ProactiveTeaser from './components/ProactiveTeaser'
 import { useChat } from './hooks/useChat'
 
 declare global {
@@ -42,7 +43,7 @@ declare global {
   }
 }
 
-const PROACTIVE_SHOWN_KEY = 'wpaic_proactive_shown'
+const PROACTIVE_DISMISSED_KEY = 'wpaic_proactive_dismissed'
 
 function hexToHoverColor(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16)
@@ -56,8 +57,11 @@ export default function App() {
   const [isOpen, setIsOpen] = useState(false)
   const [hasInteracted, setHasInteracted] = useState(false)
   const [autoFocusInput, setAutoFocusInput] = useState(false)
+  const [showTeaser, setShowTeaser] = useState(false)
+  const [hasUnread, setHasUnread] = useState(false)
   const chat = useChat()
-  const { showProactiveGreeting } = chat
+  const { showProactiveGreeting, isLoading } = chat
+  const previousIsLoadingRef = useRef(isLoading)
   const themeColor = window.wpaicConfig?.themeColor || '#2545B8'
   const config = window.wpaicConfig
 
@@ -67,24 +71,45 @@ export default function App() {
     root.style.setProperty('--wpaic-primary-hover', hexToHoverColor(themeColor))
   }, [themeColor])
 
+  // A response finished streaming while the widget was closed — surface an
+  // unread badge on the launcher until the visitor opens the chat.
   useEffect(() => {
-    if (!config?.proactiveEnabled || hasInteracted) return
+    if (previousIsLoadingRef.current && !isLoading && !isOpen) {
+      setHasUnread(true)
+    }
+    previousIsLoadingRef.current = isLoading
+  }, [isLoading, isOpen])
 
-    const alreadyShown = sessionStorage.getItem(PROACTIVE_SHOWN_KEY)
-    if (alreadyShown) return
+  useEffect(() => {
+    if (!config?.proactiveEnabled || hasInteracted || isOpen) return
 
-    const delay = (config.proactiveDelay ?? 10) * 1000
+    const dismissed = sessionStorage.getItem(PROACTIVE_DISMISSED_KEY)
+    if (dismissed) return
+
+    // wp_localize_script delivers numbers as strings; an empty value would
+    // coerce to a 0ms delay, so only accept a positive finite number.
+    const configuredDelay = Number(config.proactiveDelay)
+    const delaySeconds = Number.isFinite(configuredDelay) && configuredDelay > 0 ? configuredDelay : 10
     const timer = setTimeout(() => {
-      if (!hasInteracted) {
-        showProactiveGreeting()
-        setAutoFocusInput(false)
-        setIsOpen(true)
-        sessionStorage.setItem(PROACTIVE_SHOWN_KEY, 'true')
-      }
-    }, delay)
+      setShowTeaser(true)
+    }, delaySeconds * 1000)
 
     return () => clearTimeout(timer)
-  }, [config?.proactiveEnabled, config?.proactiveDelay, hasInteracted, showProactiveGreeting])
+  }, [config?.proactiveEnabled, config?.proactiveDelay, hasInteracted, isOpen])
+
+  const dismissProactiveForSession = () => {
+    sessionStorage.setItem(PROACTIVE_DISMISSED_KEY, 'true')
+    setShowTeaser(false)
+  }
+
+  const handleTeaserOpen = () => {
+    dismissProactiveForSession()
+    setHasInteracted(true)
+    setHasUnread(false)
+    showProactiveGreeting()
+    setAutoFocusInput(true)
+    setIsOpen(true)
+  }
 
   const handleClose = () => {
     setHasInteracted(true)
@@ -95,9 +120,17 @@ export default function App() {
   const handleToggle = () => {
     setHasInteracted(true)
     const nextIsOpen = !isOpen
+    if (nextIsOpen) {
+      // Opening the chat consumes the teaser for this session.
+      dismissProactiveForSession()
+      setHasUnread(false)
+    }
     setAutoFocusInput(nextIsOpen)
     setIsOpen(nextIsOpen)
   }
+
+  const teaserMessage =
+    config?.proactiveMessage || config?.greeting || 'Hello! How can I help you today?'
 
   return (
     <>
@@ -112,7 +145,14 @@ export default function App() {
           autoFocusInput={autoFocusInput}
         />
       )}
-      {!isOpen && <ChatButton onClick={handleToggle} isOpen={isOpen} />}
+      {!isOpen && showTeaser && (
+        <ProactiveTeaser
+          message={teaserMessage}
+          onOpen={handleTeaserOpen}
+          onDismiss={dismissProactiveForSession}
+        />
+      )}
+      {!isOpen && <ChatButton onClick={handleToggle} isOpen={isOpen} hasUnread={hasUnread} />}
     </>
   )
 }

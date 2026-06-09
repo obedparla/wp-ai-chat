@@ -98,4 +98,12 @@ class WPAIC_ActivationTest extends TestCase {
 		$this->assertFalse( $settings['enabled'] );
 		$this->assertEquals( 'Custom prompt', $settings['system_prompt'] );
 	}
+
+	public function test_activation_sets_redirect_transient(): void {
+		$this->assertFalse( get_transient( 'wpaic_activation_redirect' ) );
+
+		wpaic_activate();
+
+		$this->assertTrue( (bool) get_transient( 'wpaic_activation_redirect' ) );
+	}
 }

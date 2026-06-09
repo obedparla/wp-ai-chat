@@ -15,7 +15,7 @@ class WPAIC_Search_Index {
 	 */
 	private const SYNONYM_GROUPS = array(
 		array( 'perfume', 'fragrance' ),
-		array( 'shoe', 'sneaker' ),
+		array( 'shoe', 'sneaker', 'trainer' ),
 		array( 't shirt', 'tshirt', 'tee' ),
 	);
 
@@ -214,12 +214,125 @@ class WPAIC_Search_Index {
 			foreach ( $queries as $candidate_query ) {
 				$product_ids = $this->search_single( $candidate_query, $candidate_filters, $limit );
 				if ( ! empty( $product_ids ) ) {
-					return $product_ids;
+					return $this->merge_synonym_variant_results( $product_ids, $query, $candidate_filters, $limit );
 				}
 			}
 		}
 
 		return array();
+	}
+
+	/**
+	 * Weak-result recall booster: when the primary results carry no title-token
+	 * match for a query noun that has known synonyms (e.g. "running shoos"
+	 * fuzzy-matched heels via their description but no result has shoe/shoos in
+	 * its title), run the synonym-substituted query variants (shoe↔sneaker↔
+	 * trainer) and merge their results in. Bounded to one extra search per
+	 * synonym variant of the unmatched token; a no-op when any result already
+	 * names the noun in its title.
+	 *
+	 * @param array<int>          $product_ids Primary (non-empty) result IDs.
+	 * @param string              $query Original query.
+	 * @param array<string,mixed> $filters Filter set the primary results matched.
+	 * @param int                 $limit Max results.
+	 * @return array<int>
+	 */
+	private function merge_synonym_variant_results( array $product_ids, string $query, array $filters, int $limit ): array {
+		$variant_queries = $this->synonym_variants_for_unmatched_title_tokens( $product_ids, $query );
+		if ( empty( $variant_queries ) ) {
+			return $product_ids;
+		}
+
+		$merged = $product_ids;
+		foreach ( $variant_queries as $variant_query ) {
+			foreach ( $this->search_single( $variant_query, $filters, $limit ) as $variant_product_id ) {
+				if ( ! in_array( $variant_product_id, $merged, true ) ) {
+					$merged[] = $variant_product_id;
+				}
+			}
+		}
+
+		return array_slice( $merged, 0, $limit );
+	}
+
+	/**
+	 * Synonym-substituted query variants for each significant query token that
+	 * (a) belongs to a synonym group — exactly or within one typo letter, so
+	 * "shoos" still maps to the shoe group — and (b) appears in no result title.
+	 * Tokens already named in a result title produce no variants.
+	 *
+	 * @param array<int> $product_ids
+	 * @return array<string>
+	 */
+	private function synonym_variants_for_unmatched_title_tokens( array $product_ids, string $query ): array {
+		$tokens = $this->significant_query_tokens( $query );
+		if ( empty( $tokens ) ) {
+			return array();
+		}
+
+		$title_tokens = array();
+		foreach ( $product_ids as $product_id ) {
+			$data = $this->get_product_data( (int) $product_id );
+			if ( null !== $data ) {
+				$title_tokens += $this->tokenize_haystack( (string) $data['title'] );
+			}
+		}
+
+		$singular_query = implode(
+			' ',
+			array_map(
+				array( $this, 'singularize_token' ),
+				explode( ' ', $this->normalize_query_text( $query ) )
+			)
+		);
+
+		$variants = array();
+		foreach ( $tokens as $token ) {
+			$singular = $this->singularize_token( $token );
+			if ( isset( $title_tokens[ $token ] ) || isset( $title_tokens[ $singular ] ) ) {
+				continue;
+			}
+
+			foreach ( self::SYNONYM_GROUPS as $group ) {
+				if ( ! $this->token_matches_synonym_group( $singular, $group ) ) {
+					continue;
+				}
+				foreach ( $group as $replacement ) {
+					if ( $replacement === $singular ) {
+						continue;
+					}
+					$substituted = preg_replace(
+						'/\b' . preg_quote( $singular, '/' ) . '\b/',
+						$replacement,
+						$singular_query
+					);
+					if ( is_string( $substituted ) && '' !== trim( $substituted ) && $substituted !== $singular_query ) {
+						$variants[ $substituted ] = true;
+					}
+				}
+			}
+		}
+
+		return array_keys( $variants );
+	}
+
+	/**
+	 * Whether a (singularized) query token belongs to a synonym group, exactly
+	 * or within a single-letter typo for words long enough to be distinctive
+	 * ("shoo" → "shoe").
+	 *
+	 * @param array<string> $group
+	 */
+	private function token_matches_synonym_group( string $token, array $group ): bool {
+		foreach ( $group as $member ) {
+			if ( $token === $member ) {
+				return true;
+			}
+			if ( strlen( $token ) >= 4 && strlen( $member ) >= 4 && 1 === levenshtein( $token, $member ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

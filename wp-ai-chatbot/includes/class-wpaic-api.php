@@ -85,7 +85,21 @@ class WPAIC_API {
 	}
 
 	/**
-	 * Transform AI SDK UIMessage format to OpenAI format.
+	 * Tools whose outputs render as product cards or a comparison table in the
+	 * widget. Their products are summarized into the transformed text content so
+	 * the model can resolve "the second one" against what was actually shown.
+	 */
+	private const PRODUCT_BEARING_TOOLS = array(
+		'search_products',
+		'get_popular_products',
+		'get_product_details',
+		'compare_products',
+	);
+
+	/**
+	 * Transform AI SDK UIMessage format to OpenAI format. Text parts are
+	 * concatenated; product-bearing tool parts become a compact "Products shown
+	 * (display order)" line so ordinal references survive across turns.
 	 *
 	 * @param array<int, array<string, mixed>> $messages
 	 * @return array<int, array<string, mixed>>
@@ -93,17 +107,79 @@ class WPAIC_API {
 	private function transform_messages( array $messages ): array {
 		foreach ( $messages as &$msg ) {
 			if ( isset( $msg['parts'] ) && is_array( $msg['parts'] ) ) {
-				$content = '';
+				$content           = '';
+				$product_summaries = array();
 				foreach ( $msg['parts'] as $part ) {
-					if ( is_array( $part ) && 'text' === ( $part['type'] ?? '' ) ) {
-						$content .= $part['text'] ?? '';
+					if ( ! is_array( $part ) ) {
+						continue;
 					}
+					if ( 'text' === ( $part['type'] ?? '' ) ) {
+						$content .= $part['text'] ?? '';
+						continue;
+					}
+					$summary = $this->summarize_product_tool_part( $part );
+					if ( null !== $summary ) {
+						$product_summaries[] = $summary;
+					}
+				}
+				if ( ! empty( $product_summaries ) ) {
+					$content = trim( $content . "\n\n" . implode( "\n", $product_summaries ) );
 				}
 				$msg['content'] = $content;
 				unset( $msg['parts'] );
 			}
 		}
 		return $messages;
+	}
+
+	/**
+	 * Build a compact text summary of a product-bearing dynamic-tool part,
+	 * preserving display order. Keeps only name, id, and price so the carried
+	 * context stays cheap.
+	 *
+	 * @param array<string, mixed> $part
+	 */
+	private function summarize_product_tool_part( array $part ): ?string {
+		if ( 'dynamic-tool' !== ( $part['type'] ?? '' ) || 'output-available' !== ( $part['state'] ?? '' ) ) {
+			return null;
+		}
+
+		$tool_name = $part['toolName'] ?? '';
+		if ( ! in_array( $tool_name, self::PRODUCT_BEARING_TOOLS, true ) ) {
+			return null;
+		}
+
+		$output = $part['output'] ?? null;
+		if ( ! is_array( $output ) ) {
+			return null;
+		}
+
+		if ( 'compare_products' === $tool_name ) {
+			$products = isset( $output['products'] ) && is_array( $output['products'] ) ? $output['products'] : array();
+		} elseif ( 'get_product_details' === $tool_name ) {
+			$products = array( $output );
+		} else {
+			$products = $output;
+		}
+
+		$entries  = array();
+		$position = 1;
+		foreach ( $products as $product ) {
+			if ( ! is_array( $product ) || ! isset( $product['id'], $product['name'] ) ) {
+				continue;
+			}
+			$price      = $product['price'] ?? '';
+			$price_part = is_scalar( $price ) && '' !== (string) $price ? ', price ' . $price : '';
+			$entries[]  = $position . '. ' . $product['name'] . ' (id ' . (int) $product['id'] . $price_part . ')';
+			++$position;
+		}
+
+		if ( empty( $entries ) ) {
+			return null;
+		}
+
+		$label = 'compare_products' === $tool_name ? 'Products compared (display order): ' : 'Products shown (display order): ';
+		return $label . implode( ' ', $entries );
 	}
 
 	/**
@@ -171,116 +247,201 @@ class WPAIC_API {
 
 		$conversation_id = $this->logs->get_or_create_conversation( $session_id );
 
-		$last_message = end( $messages );
-		if ( is_array( $last_message ) && 'user' === ( $last_message['role'] ?? '' ) ) {
-			$this->logs->log_message( $conversation_id, 'user', $last_message['content'] ?? '' );
-		}
+		$this->log_trailing_user_messages( $conversation_id, $messages );
 
 		$this->start_event_stream();
 
-		$response_content = '';
-		$message_id       = wp_generate_uuid4();
-		$text_started     = false;
-		$chat             = new WPAIC_Chat( $page_context );
-		$chat->send_stream(
-			$messages,
-			/** @param array<string, mixed> $data */
-			function ( array $data ) use ( &$response_content, &$text_started, $message_id ): void {
-				if ( isset( $data['content'] ) && is_string( $data['content'] ) ) {
-					if ( ! $text_started ) {
-						$text_started = true;
+		$response_content      = '';
+		$message_id            = wp_generate_uuid4();
+		$text_started          = false;
+		$tool_names_by_call_id = array();
+		$card_only_labels      = array();
+
+		try {
+			$chat = new WPAIC_Chat( $page_context );
+			$chat->set_conversation_id( $conversation_id );
+			$chat->send_stream(
+				$messages,
+				/** @param array<string, mixed> $data */
+				function ( array $data ) use ( &$response_content, &$text_started, &$tool_names_by_call_id, &$card_only_labels, $message_id ): void {
+					if ( isset( $data['content'] ) && is_string( $data['content'] ) ) {
+						if ( ! $text_started ) {
+							$text_started = true;
+							// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
+							echo 'data: ' . wp_json_encode(
+								array(
+									'type' => 'text-start',
+									'id'   => $message_id,
+								)
+							) . "\n\n";
+						}
+						$response_content .= $data['content'];
 						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
 						echo 'data: ' . wp_json_encode(
 							array(
-								'type' => 'text-start',
-								'id'   => $message_id,
+								'type'  => 'text-delta',
+								'id'    => $message_id,
+								'delta' => $data['content'],
 							)
 						) . "\n\n";
 					}
-					$response_content .= $data['content'];
-					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-					echo 'data: ' . wp_json_encode(
-						array(
-							'type'  => 'text-delta',
-							'id'    => $message_id,
-							'delta' => $data['content'],
-						)
-					) . "\n\n";
-				}
-				if ( isset( $data['tool_input_start'] ) && is_array( $data['tool_input_start'] ) ) {
-					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-					echo 'data: ' . wp_json_encode(
-						array(
-							'type'       => 'tool-input-start',
-							'toolCallId' => $data['tool_input_start']['toolCallId'] ?? '',
-							'toolName'   => $data['tool_input_start']['toolName'] ?? '',
-							'dynamic'    => true,
-						)
-					) . "\n\n";
-				}
-				if ( isset( $data['tool_input_delta'] ) && is_array( $data['tool_input_delta'] ) ) {
-					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-					echo 'data: ' . wp_json_encode(
-						array(
-							'type'           => 'tool-input-delta',
-							'toolCallId'     => $data['tool_input_delta']['toolCallId'] ?? '',
-							'inputTextDelta' => $data['tool_input_delta']['inputTextDelta'] ?? '',
-						)
-					) . "\n\n";
-				}
-				if ( isset( $data['tool_input_available'] ) && is_array( $data['tool_input_available'] ) ) {
-					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-					echo 'data: ' . wp_json_encode(
-						array(
-							'type'       => 'tool-input-available',
-							'toolCallId' => $data['tool_input_available']['toolCallId'] ?? '',
-							'toolName'   => $data['tool_input_available']['toolName'] ?? '',
-							'input'      => $data['tool_input_available']['input'] ?? new \stdClass(),
-							'dynamic'    => true,
-						)
-					) . "\n\n";
-				}
-				if ( isset( $data['tool_output_available'] ) && is_array( $data['tool_output_available'] ) ) {
-					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-					echo 'data: ' . wp_json_encode(
-						array(
-							'type'       => 'tool-output-available',
-							'toolCallId' => $data['tool_output_available']['toolCallId'] ?? '',
-							'output'     => $data['tool_output_available']['output'] ?? new \stdClass(),
-							'dynamic'    => true,
-						)
-					) . "\n\n";
-				}
-				if ( isset( $data['done'] ) && true === $data['done'] ) {
-					if ( $text_started ) {
+					if ( isset( $data['tool_input_start'] ) && is_array( $data['tool_input_start'] ) ) {
 						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
 						echo 'data: ' . wp_json_encode(
 							array(
-								'type' => 'text-end',
-								'id'   => $message_id,
+								'type'       => 'tool-input-start',
+								'toolCallId' => $data['tool_input_start']['toolCallId'] ?? '',
+								'toolName'   => $data['tool_input_start']['toolName'] ?? '',
+								'dynamic'    => true,
 							)
 						) . "\n\n";
 					}
-					echo "data: [DONE]\n\n";
+					if ( isset( $data['tool_input_delta'] ) && is_array( $data['tool_input_delta'] ) ) {
+						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
+						echo 'data: ' . wp_json_encode(
+							array(
+								'type'           => 'tool-input-delta',
+								'toolCallId'     => $data['tool_input_delta']['toolCallId'] ?? '',
+								'inputTextDelta' => $data['tool_input_delta']['inputTextDelta'] ?? '',
+							)
+						) . "\n\n";
+					}
+					if ( isset( $data['tool_input_available'] ) && is_array( $data['tool_input_available'] ) ) {
+						$tool_call_id = $data['tool_input_available']['toolCallId'] ?? '';
+						$tool_name    = $data['tool_input_available']['toolName'] ?? '';
+						if ( is_string( $tool_call_id ) && is_string( $tool_name ) ) {
+							$tool_names_by_call_id[ $tool_call_id ] = $tool_name;
+						}
+						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
+						echo 'data: ' . wp_json_encode(
+							array(
+								'type'       => 'tool-input-available',
+								'toolCallId' => $data['tool_input_available']['toolCallId'] ?? '',
+								'toolName'   => $data['tool_input_available']['toolName'] ?? '',
+								'input'      => $data['tool_input_available']['input'] ?? new \stdClass(),
+								'dynamic'    => true,
+							)
+						) . "\n\n";
+					}
+					if ( isset( $data['tool_output_available'] ) && is_array( $data['tool_output_available'] ) ) {
+						$tool_call_id = $data['tool_output_available']['toolCallId'] ?? '';
+						$card_label   = $this->describe_card_payload(
+							is_string( $tool_call_id ) ? ( $tool_names_by_call_id[ $tool_call_id ] ?? '' ) : '',
+							$data['tool_output_available']['output'] ?? null
+						);
+						if ( null !== $card_label && ! in_array( $card_label, $card_only_labels, true ) ) {
+							$card_only_labels[] = $card_label;
+						}
+						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
+						echo 'data: ' . wp_json_encode(
+							array(
+								'type'       => 'tool-output-available',
+								'toolCallId' => $data['tool_output_available']['toolCallId'] ?? '',
+								'output'     => $data['tool_output_available']['output'] ?? new \stdClass(),
+								'dynamic'    => true,
+							)
+						) . "\n\n";
+					}
+					if ( isset( $data['done'] ) && true === $data['done'] ) {
+						if ( $text_started ) {
+							// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
+							echo 'data: ' . wp_json_encode(
+								array(
+									'type' => 'text-end',
+									'id'   => $message_id,
+								)
+							) . "\n\n";
+						}
+						echo "data: [DONE]\n\n";
+					}
+					if ( isset( $data['error'] ) && is_string( $data['error'] ) ) {
+						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
+						echo 'data: ' . wp_json_encode(
+							array(
+								'type'  => 'error',
+								'error' => $data['error'],
+							)
+						) . "\n\n";
+					}
+					flush();
 				}
-				if ( isset( $data['error'] ) && is_string( $data['error'] ) ) {
-					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-					echo 'data: ' . wp_json_encode(
-						array(
-							'type'  => 'error',
-							'error' => $data['error'],
-						)
-					) . "\n\n";
-				}
-				flush();
-			}
-		);
+			);
+		} catch ( \Throwable $throwable ) {
+			// A third-party fatal mid-stream must surface as an SSE error event,
+			// not a dead spinner. Detail goes to the server log only.
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( '[WPAIC] Chat stream failed: ' . $throwable->getMessage() );
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
+			echo 'data: ' . wp_json_encode(
+				array(
+					'type'  => 'error',
+					'error' => 'Something went wrong. Please try again.',
+				)
+			) . "\n\n";
+			echo "data: [DONE]\n\n";
+			flush();
+		}
 
 		if ( '' !== $response_content ) {
 			$this->logs->log_message( $conversation_id, 'assistant', $response_content );
+		} elseif ( ! empty( $card_only_labels ) ) {
+			// Card-only reply (no text): keep a row so the transcript shows the bot responded.
+			$this->logs->log_message( $conversation_id, 'assistant', implode( "\n", $card_only_labels ) );
 		}
 
 		exit;
+	}
+
+	/**
+	 * Log every trailing user message. Frontend debounce batching can send
+	 * several consecutive user messages in one request; logging only the last
+	 * loses the rest from the transcript.
+	 *
+	 * @param array<int, array<string, mixed>> $messages
+	 */
+	private function log_trailing_user_messages( int $conversation_id, array $messages ): void {
+		$trailing_user_contents = array();
+		for ( $i = count( $messages ) - 1; $i >= 0; $i-- ) {
+			$message = $messages[ $i ] ?? null;
+			if ( ! is_array( $message ) || 'user' !== ( $message['role'] ?? '' ) ) {
+				break;
+			}
+			$content = $message['content'] ?? '';
+			array_unshift( $trailing_user_contents, is_string( $content ) ? $content : '' );
+		}
+
+		foreach ( $trailing_user_contents as $content ) {
+			$this->logs->log_message( $conversation_id, 'user', $content );
+		}
+	}
+
+	/**
+	 * Placeholder transcript text for tools whose output renders as UI (cards,
+	 * buttons) instead of text, so a card-only assistant turn still logs a row.
+	 *
+	 * @param mixed $output Tool result as emitted to the frontend.
+	 */
+	private function describe_card_payload( string $tool_name, mixed $output ): ?string {
+		switch ( $tool_name ) {
+			case 'search_products':
+			case 'get_popular_products':
+				return is_array( $output ) && ! empty( $output ) ? '[Sent product cards]' : null;
+
+			case 'get_product_details':
+				return is_array( $output ) && empty( $output['error'] ) ? '[Sent product card]' : null;
+
+			case 'compare_products':
+				return is_array( $output ) && ! empty( $output['products'] ) ? '[Sent product comparison]' : null;
+
+			case 'get_checkout_action':
+				return '[Sent checkout button]';
+
+			case 'add_to_cart':
+				return is_array( $output ) && ! empty( $output['success'] ) ? '[Sent add-to-cart confirmation]' : null;
+
+			default:
+				return null;
+		}
 	}
 
 	/**

@@ -307,6 +307,14 @@ class WPAICTestHelper {
 			);
 		}
 
+		if ( ! empty( $query_args['post__in'] ) && is_array( $query_args['post__in'] ) ) {
+			$include_ids = array_map( 'intval', $query_args['post__in'] );
+			$posts       = array_filter(
+				$posts,
+				fn( $p ) => in_array( $p->ID, $include_ids, true )
+			);
+		}
+
 		if ( ! empty( $query_args['s'] ) ) {
 			// Mirror WP_Query: split the search into whitespace-separated terms,
 			// every term must appear (LIKE %term%) in the title or content.
@@ -535,6 +543,10 @@ class WPAICTestHelper {
 		return self::$mock_transients[ $name ] ?? $default;
 	}
 
+	public static function delete_transient( string $name ): void {
+		unset( self::$mock_transients[ $name ] );
+	}
+
 	public static function add_filter( string $hook_name, callable $callback ): void {
 		self::$mock_filters[ $hook_name ][] = $callback;
 	}
@@ -703,6 +715,14 @@ if ( ! function_exists( 'get_terms' ) ) {
 	}
 }
 
+if ( ! function_exists( 'taxonomy_exists' ) ) {
+	function taxonomy_exists( string $taxonomy ): bool {
+		// WooCommerce registers each global product attribute as a pa_{slug}
+		// taxonomy; custom per-product attributes are not taxonomies.
+		return str_starts_with( $taxonomy, 'pa_' ) || 'product_cat' === $taxonomy;
+	}
+}
+
 if ( ! function_exists( 'get_term_by' ) ) {
 	function get_term_by( string $field, string|int $value, string $taxonomy = '' ): WP_Term|false {
 		foreach ( WPAICTestHelper::get_mock_terms() as $term ) {
@@ -802,6 +822,25 @@ if ( ! function_exists( 'set_transient' ) ) {
 if ( ! function_exists( 'get_transient' ) ) {
 	function get_transient( string $transient ): mixed {
 		return WPAICTestHelper::get_transient( $transient, false );
+	}
+}
+
+if ( ! function_exists( 'delete_transient' ) ) {
+	function delete_transient( string $transient ): bool {
+		WPAICTestHelper::delete_transient( $transient );
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_doing_ajax' ) ) {
+	function wp_doing_ajax(): bool {
+		return (bool) WPAICTestHelper::get_option( 'test_doing_ajax', false );
+	}
+}
+
+if ( ! function_exists( 'is_network_admin' ) ) {
+	function is_network_admin(): bool {
+		return (bool) WPAICTestHelper::get_option( 'test_is_network_admin', false );
 	}
 }
 
@@ -1052,6 +1091,7 @@ class MockWpdb {
 			'wp_wpaic_messages'        => array(),
 			'wp_wpaic_faqs'            => array(),
 			'wp_wpaic_support_requests' => array(),
+			'wp_wpaic_events'          => array(),
 		);
 	}
 
@@ -1084,6 +1124,14 @@ class MockWpdb {
 		$id               = $this->auto_increment++;
 		$data['id']       = $id;
 		$this->insert_id  = $id;
+
+		// Mimic the schema's DEFAULT CURRENT_TIMESTAMP.
+		if ( ! isset( $data['created_at'] ) ) {
+			$data['created_at'] = gmdate( 'Y-m-d H:i:s' );
+		}
+		if ( ! isset( $data['updated_at'] ) && in_array( $table, array( 'wp_wpaic_conversations', 'wp_wpaic_support_requests' ), true ) ) {
+			$data['updated_at'] = $data['created_at'];
+		}
 
 		if ( ! isset( $this->tables[ $table ] ) ) {
 			$this->tables[ $table ] = array();
@@ -1153,11 +1201,20 @@ class MockWpdb {
 	}
 
 	public function prepare( string $query, mixed ...$args ): string {
-		$prepared = $query;
-		foreach ( $args as $arg ) {
-			$prepared = preg_replace( '/%[sd]/', is_string( $arg ) ? "'$arg'" : (string) $arg, $prepared, 1 );
-		}
-		return $prepared;
+		// Single pass so substituted values containing %s/%d (e.g. LIKE '%shoes%') are never re-matched.
+		$index = 0;
+		return (string) preg_replace_callback(
+			'/%[sd]/',
+			function ( array $match ) use ( $args, &$index ) {
+				$arg = $args[ $index++ ] ?? '';
+				return is_string( $arg ) ? "'" . $arg . "'" : (string) $arg;
+			},
+			$query
+		);
+	}
+
+	public function esc_like( string $text ): string {
+		return addcslashes( $text, '_%\\' );
 	}
 
 	public function get_var( string $query ): mixed {
@@ -1172,10 +1229,80 @@ class MockWpdb {
 		}
 
 		if ( preg_match( '/SELECT\s+COUNT\(\*\)\s+FROM\s+\S+wpaic_conversations/i', $query ) ) {
-			return (string) count( $this->tables['wp_wpaic_conversations'] );
+			return (string) count( $this->filter_conversation_rows( $query ) );
+		}
+
+		if ( preg_match( "/SELECT\s+COUNT\(\*\)\s+FROM\s+\S+wpaic_events\s+WHERE\s+event_type\s*=\s*'([^']+)'/i", $query, $matches ) ) {
+			$event_type = $matches[1];
+			$count      = 0;
+			foreach ( $this->tables['wp_wpaic_events'] as $row ) {
+				if ( ( $row['event_type'] ?? '' ) === $event_type && $this->row_matches_created_at_bounds( $row, $query ) ) {
+					++$count;
+				}
+			}
+			return (string) $count;
 		}
 
 		return null;
+	}
+
+	/**
+	 * Apply optional created_at bounds (>=, < or <=) parsed from a prepared
+	 * query to a row. No bounds in the query means the row matches.
+	 *
+	 * @param array<string, mixed> $row
+	 */
+	private function row_matches_created_at_bounds( array $row, string $query ): bool {
+		$created_at = (string) ( $row['created_at'] ?? '' );
+
+		if ( preg_match( "/(?:c\.)?created_at\s*>=\s*'([^']+)'/i", $query, $matches ) && strcmp( $created_at, $matches[1] ) < 0 ) {
+			return false;
+		}
+
+		if ( preg_match( "/(?:c\.)?created_at\s*(<=?)\s*'([^']+)'/i", $query, $matches ) ) {
+			$comparison = strcmp( $created_at, $matches[2] );
+			if ( '<' === $matches[1] ? $comparison >= 0 : $comparison > 0 ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Conversation rows matching optional created_at bounds and a message
+	 * content LIKE filter parsed from a prepared query. No filters means all
+	 * rows match, preserving the original mock behavior.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function filter_conversation_rows( string $query ): array {
+		$search = null;
+		if ( preg_match( "/ms\.content\s+LIKE\s+'%(.*)%'/i", $query, $matches ) ) {
+			$search = stripcslashes( $matches[1] );
+		}
+
+		$rows = array();
+		foreach ( $this->tables['wp_wpaic_conversations'] as $row ) {
+			if ( ! $this->row_matches_created_at_bounds( $row, $query ) ) {
+				continue;
+			}
+			if ( null !== $search ) {
+				$found = false;
+				foreach ( $this->tables['wp_wpaic_messages'] as $msg ) {
+					if ( $msg['conversation_id'] == $row['id'] && false !== stripos( (string) ( $msg['content'] ?? '' ), $search ) ) {
+						$found = true;
+						break;
+					}
+				}
+				if ( ! $found ) {
+					continue;
+				}
+			}
+			$rows[] = $row;
+		}
+
+		return $rows;
 	}
 
 	/**
@@ -1184,20 +1311,25 @@ class MockWpdb {
 	public function get_results( string $query ): ?array {
 		if ( preg_match( '/FROM\s+\S+wpaic_conversations/i', $query ) ) {
 			$results = array();
-			foreach ( $this->tables['wp_wpaic_conversations'] as $row ) {
+			foreach ( $this->filter_conversation_rows( $query ) as $row ) {
 				$obj = (object) $row;
 
-				$message_count = 0;
-				$total_chars   = 0;
+				$message_count      = 0;
+				$first_user_message = null;
 				foreach ( $this->tables['wp_wpaic_messages'] as $msg ) {
 					if ( $msg['conversation_id'] == $row['id'] ) {
 						++$message_count;
-						$total_chars += mb_strlen( (string) ( $msg['content'] ?? '' ) );
+						if ( null === $first_user_message && 'user' === ( $msg['role'] ?? '' ) ) {
+							$first_user_message = (string) ( $msg['content'] ?? '' );
+						}
 					}
 				}
-				$obj->message_count = $message_count;
-				$obj->total_chars   = $total_chars;
-				$results[]          = $obj;
+				$obj->message_count      = $message_count;
+				$obj->first_user_message = $first_user_message;
+				$results[]               = $obj;
+			}
+			if ( preg_match( '/LIMIT\s+(\d+)\s+OFFSET\s+(\d+)/i', $query, $limit_match ) ) {
+				$results = array_slice( $results, (int) $limit_match[2], (int) $limit_match[1] );
 			}
 			return $results;
 		}
@@ -1232,7 +1364,39 @@ class MockWpdb {
 			return $results;
 		}
 
+		if ( preg_match( '/FROM\s+\S+wpaic_events\s+WHERE\s+conversation_id\s*=\s*(\d+)/i', $query, $matches ) ) {
+			$conv_id = (int) $matches[1];
+			$results = array();
+			foreach ( $this->tables['wp_wpaic_events'] as $row ) {
+				if ( $row['conversation_id'] == $conv_id ) {
+					$results[] = (object) $row;
+				}
+			}
+			return $results;
+		}
+
+		if ( preg_match( "/FROM\s+\S+wpaic_events\s+WHERE\s+event_type\s*=\s*'([^']+)'/i", $query, $matches ) ) {
+			$event_type = $matches[1];
+			$results    = array();
+			foreach ( $this->tables['wp_wpaic_events'] as $row ) {
+				if ( ( $row['event_type'] ?? '' ) === $event_type && $this->row_matches_created_at_bounds( $row, $query ) ) {
+					$results[] = (object) $row;
+				}
+			}
+			return $results;
+		}
+
 		return array();
+	}
+
+	public function get_row( string $query ): ?object {
+		if ( preg_match( '/FROM\s+\S+wpaic_support_requests\s+WHERE\s+id\s*=\s*(\d+)/i', $query, $matches ) ) {
+			$id = (int) $matches[1];
+			return isset( $this->tables['wp_wpaic_support_requests'][ $id ] )
+				? (object) $this->tables['wp_wpaic_support_requests'][ $id ]
+				: null;
+		}
+		return null;
 	}
 
 	public function reset(): void {
@@ -1241,6 +1405,7 @@ class MockWpdb {
 			'wp_wpaic_messages'        => array(),
 			'wp_wpaic_faqs'            => array(),
 			'wp_wpaic_support_requests' => array(),
+			'wp_wpaic_events'          => array(),
 		);
 		$this->auto_increment = 1;
 		$this->insert_id      = 0;
@@ -1281,6 +1446,9 @@ function wpaic_activate(): void {
 
 	wpaic_create_tables();
 	flush_rewrite_rules();
+
+	// Mirrors the real activation hook: one-time redirect to the settings page.
+	set_transient( 'wpaic_activation_redirect', true, 60 );
 }
 
 /**
@@ -1520,6 +1688,18 @@ if ( ! function_exists( 'rest_url' ) ) {
 if ( ! function_exists( '__' ) ) {
 	function __( string $text, string $domain = 'default' ): string {
 		return $text;
+	}
+}
+
+if ( ! function_exists( '_n' ) ) {
+	function _n( string $single, string $plural, int $number, string $domain = 'default' ): string {
+		return 1 === $number ? $single : $plural;
+	}
+}
+
+if ( ! function_exists( 'number_format_i18n' ) ) {
+	function number_format_i18n( float $number, int $decimals = 0 ): string {
+		return number_format( $number, $decimals );
 	}
 }
 
@@ -1965,6 +2145,10 @@ if ( ! class_exists( 'MockWCProduct' ) ) {
 			return $post ? $post->post_title : '';
 		}
 
+		public function get_price(): string {
+			return (string) ( WPAICTestHelper::get_post_meta( $this->id, '_price', true ) ?: '' );
+		}
+
 		public function get_sku(): string {
 			return WPAICTestHelper::get_post_meta( $this->id, '_sku', true ) ?: '';
 		}
@@ -1981,6 +2165,92 @@ if ( ! class_exists( 'MockWCProduct' ) ) {
 
 		public function is_type( string $type ): bool {
 			return $this->type === $type;
+		}
+
+		/** @var array<string, string> */
+		private array $attribute_values = array();
+		private string $weight = '';
+		/** @var array<string, string> */
+		private array $dimensions = array(
+			'length' => '',
+			'width'  => '',
+			'height' => '',
+		);
+		/** @var array<int, int> */
+		private array $cross_sell_ids = array();
+		/** @var array<int, int> */
+		private array $upsell_ids = array();
+
+		/**
+		 * @param array<int, int> $cross_sell_ids
+		 */
+		public function set_cross_sell_ids( array $cross_sell_ids ): void {
+			$this->cross_sell_ids = $cross_sell_ids;
+		}
+
+		/**
+		 * @return array<int, int>
+		 */
+		public function get_cross_sell_ids(): array {
+			return $this->cross_sell_ids;
+		}
+
+		/**
+		 * @param array<int, int> $upsell_ids
+		 */
+		public function set_upsell_ids( array $upsell_ids ): void {
+			$this->upsell_ids = $upsell_ids;
+		}
+
+		/**
+		 * @return array<int, int>
+		 */
+		public function get_upsell_ids(): array {
+			return $this->upsell_ids;
+		}
+
+		/**
+		 * @param array<string, string> $attribute_values Attribute name (e.g. pa_color) => value string.
+		 */
+		public function set_attribute_values( array $attribute_values ): void {
+			$this->attribute_values = $attribute_values;
+		}
+
+		/**
+		 * Real WC_Product::get_attributes() returns WC_Product_Attribute objects
+		 * keyed by attribute name; production code only reads the keys (via
+		 * get_name() or the array key), so string values suffice here.
+		 *
+		 * @return array<string, string>
+		 */
+		public function get_attributes(): array {
+			return $this->attribute_values;
+		}
+
+		public function get_attribute( string $name ): string {
+			return $this->attribute_values[ $name ] ?? '';
+		}
+
+		public function set_weight( string $weight ): void {
+			$this->weight = $weight;
+		}
+
+		public function get_weight(): string {
+			return $this->weight;
+		}
+
+		/**
+		 * @param array<string, string> $dimensions length/width/height map.
+		 */
+		public function set_dimensions( array $dimensions ): void {
+			$this->dimensions = $dimensions;
+		}
+
+		/**
+		 * @return array<string, string>
+		 */
+		public function get_dimensions( bool $formatted = true ): array {
+			return $this->dimensions;
 		}
 	}
 }
@@ -2247,6 +2517,16 @@ if ( ! function_exists( 'woocommerce_mini_cart' ) ) {
 if ( ! function_exists( 'get_woocommerce_currency' ) ) {
 	function get_woocommerce_currency(): string {
 		return WPAICTestHelper::get_option( 'woocommerce_currency', 'USD' );
+	}
+}
+
+if ( ! function_exists( 'wc_get_product_ids_on_sale' ) ) {
+	/**
+	 * @return array<int>
+	 */
+	function wc_get_product_ids_on_sale(): array {
+		$ids = WPAICTestHelper::get_option( 'test_product_ids_on_sale', array() );
+		return is_array( $ids ) ? array_map( 'intval', $ids ) : array();
 	}
 }
 

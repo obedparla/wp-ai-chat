@@ -108,7 +108,7 @@ export default function VariableProductCard({ product }: VariableProductCardProp
             <option value="">Choose {attr.label}</option>
             {attr.options.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {attr.option_labels?.[option] ?? option}
               </option>
             ))}
           </select>

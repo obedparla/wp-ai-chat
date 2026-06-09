@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import MessageList from './MessageList'
+import MessageList, { curateProducts, MAX_RENDERED_PRODUCTS } from './MessageList'
 import type { Message } from '../hooks/useChat'
+import type { Product } from './ProductCard'
+import type { ComparisonData } from './ComparisonTable'
 
 function makeMessages(count: number): Message[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -116,5 +118,115 @@ describe('MessageList checkout rendering', () => {
     render(<MessageList messages={messageWithCheckout()} />)
     const checkoutLink = screen.getByText('CHECKOUT').closest('a')
     expect(checkoutLink).toHaveAttribute('href', 'https://shop.example/checkout')
+  })
+})
+
+describe('MessageList product card curation', () => {
+  function makeProduct(id: number, name: string): Product {
+    return {
+      id,
+      name,
+      url: `https://shop.example/product/${id}`,
+      price: '19.99',
+      product_type: 'simple',
+    }
+  }
+
+  function makeComparison(products: Product[]): ComparisonData {
+    return {
+      products: products.map((product) => ({
+        id: product.id,
+        name: product.name,
+        url: product.url,
+        price: product.price,
+      })),
+      attributes: ['price'],
+    }
+  }
+
+  function assistantMessage(overrides: Partial<Message>): Message[] {
+    return [{ role: 'assistant', content: 'Here you go.', id: 'm-products', ...overrides }]
+  }
+
+  it('dedupes products with the same id within a message', () => {
+    const productOne = makeProduct(1, 'Product One')
+    render(
+      <MessageList
+        messages={assistantMessage({
+          products: [productOne, { ...productOne }, makeProduct(2, 'Product Two')],
+        })}
+      />
+    )
+    expect(screen.getAllByText('Product One')).toHaveLength(1)
+    expect(screen.getAllByText('Product Two')).toHaveLength(1)
+  })
+
+  it('suppresses product cards for ids already shown in the comparison table', () => {
+    const products = [makeProduct(1, 'Product One'), makeProduct(2, 'Product Two')]
+    render(
+      <MessageList
+        messages={assistantMessage({
+          products,
+          comparison: makeComparison(products),
+        })}
+      />
+    )
+    // Names appear once each (in the comparison table), not again as cards.
+    expect(screen.getAllByText('Product One')).toHaveLength(1)
+    expect(screen.getAllByText('Product Two')).toHaveLength(1)
+    expect(screen.queryByText(/PICKS/)).not.toBeInTheDocument()
+  })
+
+  it('keeps cards for products not part of the comparison', () => {
+    const compared = [makeProduct(1, 'Product One'), makeProduct(2, 'Product Two')]
+    const extra = makeProduct(3, 'Product Three')
+    render(
+      <MessageList
+        messages={assistantMessage({
+          products: [...compared, extra],
+          comparison: makeComparison(compared),
+        })}
+      />
+    )
+    expect(screen.getAllByText('Product One')).toHaveLength(1)
+    expect(screen.getAllByText('Product Three')).toHaveLength(1)
+  })
+
+  it('caps rendered picks at 6 with the header reflecting the shown count', () => {
+    const names = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight']
+    const products = names.map((name, i) => makeProduct(i + 1, `Product ${name}`))
+    render(<MessageList messages={assistantMessage({ products })} />)
+    expect(screen.getByText('6 PICKS')).toBeInTheDocument()
+    expect(screen.getByText('Product Six')).toBeInTheDocument()
+    expect(screen.queryByText('Product Seven')).not.toBeInTheDocument()
+    expect(screen.queryByText('Product Eight')).not.toBeInTheDocument()
+  })
+})
+
+describe('curateProducts', () => {
+  const product = (id: number): Product => ({
+    id,
+    name: `Product ${id}`,
+    url: `https://shop.example/product/${id}`,
+    price: '10.00',
+  })
+
+  it('preserves order and ids when nothing needs curating', () => {
+    const products = [product(1), product(2)]
+    expect(curateProducts(products)).toEqual(products)
+  })
+
+  it('caps at MAX_RENDERED_PRODUCTS', () => {
+    const products = Array.from({ length: 10 }, (_, i) => product(i + 1))
+    expect(curateProducts(products)).toHaveLength(MAX_RENDERED_PRODUCTS)
+  })
+
+  it('applies dedupe and comparison suppression before the cap', () => {
+    const products = [product(1), product(1), product(2), product(3)]
+    const comparison: ComparisonData = {
+      products: [product(2), product(3)],
+      attributes: ['price'],
+    }
+    expect(curateProducts(products, comparison).map((p) => p.id)).toEqual([1])
   })
 })

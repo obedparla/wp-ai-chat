@@ -75,7 +75,7 @@ class WPAIC_Tools {
 		if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 			return array(
 				'error' => 'Shipping settings could not be read.',
-				'hint'  => 'Do not tell the shopper shipping is unavailable or misconfigured. Call search_site_content with "shipping" and answer from the store\'s shipping policy page; if nothing is found, say you do not have shipping details and offer to connect them with the team.',
+				'hint'  => 'Do not tell the shopper shipping is unavailable or misconfigured. Call search_site_content with "shipping", then call get_page_content on the best matching result and quote the concrete rates and conditions the shipping policy page lists; only if nothing is found, say you do not have shipping details and offer to connect them with the team.',
 			);
 		}
 
@@ -112,7 +112,7 @@ class WPAIC_Tools {
 			return array(
 				'has_shipping_configured' => false,
 				'message'                 => 'No shipping details are available from the store settings.',
-				'hint'                    => 'Do not tell the shopper shipping is unavailable or not configured. Call search_site_content with "shipping" and answer from the store\'s shipping policy page; if nothing is found, say you do not have shipping details and offer to connect them with the team.',
+				'hint'                    => 'Do not tell the shopper shipping is unavailable or not configured. Call search_site_content with "shipping", then call get_page_content on the best matching result and quote the concrete rates and conditions the shipping policy page lists (never say costs are not shown while the page lists them); only if nothing is found, say you do not have shipping details and offer to connect them with the team.',
 			);
 		}
 
@@ -122,7 +122,7 @@ class WPAIC_Tools {
 			'zones'                   => $zones,
 			'notes'                   => array(
 				'WooCommerce core does not store processing time or delivery estimates. Only the configured zones, methods, and costs are reported. Do not invent durations.',
-				'If the shopper asks about a destination not covered by any zone listed here, do not say the store cannot ship there. Call search_site_content with "shipping" and check the store\'s shipping policy page before answering.',
+				'If the shopper asks about a destination not covered by any zone listed here, do not say the store cannot ship there. Call search_site_content with "shipping", then call get_page_content on the shipping policy page and quote the concrete rates it lists for that destination before answering.',
 			),
 		);
 	}
@@ -220,6 +220,138 @@ class WPAIC_Tools {
 			$methods[] = $entry;
 		}
 		return $methods;
+	}
+
+	/**
+	 * How many coupons get_active_promotions reads and returns at most.
+	 */
+	private const MAX_PROMOTIONS = 20;
+
+	/**
+	 * Get the store's currently active promotions: published, non-expired
+	 * WooCommerce coupons (`shop_coupon` posts) with their code, discount
+	 * amount/type, common restrictions, and expiry. Coupons whose usage limit is
+	 * exhausted are skipped so the bot never advertises a dead code.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function get_active_promotions(): array {
+		if ( ! wpaic_is_woocommerce_active() ) {
+			return array(
+				'has_promotions' => false,
+				'message'        => 'No promotion information is available.',
+			);
+		}
+
+		$query = new WP_Query(
+			array(
+				'post_type'      => 'shop_coupon',
+				'post_status'    => 'publish',
+				'posts_per_page' => self::MAX_PROMOTIONS,
+			)
+		);
+
+		$promotions = array();
+		foreach ( $query->posts as $post ) {
+			if ( ! $post instanceof WP_Post ) {
+				continue;
+			}
+
+			$expiry_timestamp = get_post_meta( $post->ID, 'date_expires', true );
+			if ( is_numeric( $expiry_timestamp ) && (int) $expiry_timestamp > 0 && (int) $expiry_timestamp < time() ) {
+				continue;
+			}
+
+			$usage_limit = get_post_meta( $post->ID, 'usage_limit', true );
+			$usage_count = get_post_meta( $post->ID, 'usage_count', true );
+			if ( is_numeric( $usage_limit ) && (int) $usage_limit > 0 && (int) $usage_count >= (int) $usage_limit ) {
+				continue;
+			}
+
+			$promotions[] = $this->format_promotion( $post );
+		}
+
+		if ( empty( $promotions ) ) {
+			return array(
+				'has_promotions' => false,
+				'message'        => 'There are no active coupons or promotions right now.',
+			);
+		}
+
+		return array(
+			'has_promotions' => true,
+			'promotions'     => $promotions,
+		);
+	}
+
+	/**
+	 * Format one coupon post into a model-friendly promotion payload.
+	 *
+	 * @param WP_Post $post Coupon post.
+	 * @return array<string, mixed>
+	 */
+	private function format_promotion( WP_Post $post ): array {
+		$discount_type = get_post_meta( $post->ID, 'discount_type', true );
+
+		$promotion = array(
+			'code'          => $post->post_title,
+			'discount_type' => is_string( $discount_type ) && '' !== $discount_type ? $discount_type : 'fixed_cart',
+			'amount'        => (string) get_post_meta( $post->ID, 'coupon_amount', true ),
+		);
+
+		if ( '' !== $post->post_excerpt ) {
+			$promotion['description'] = wp_strip_all_tags( $post->post_excerpt );
+		}
+
+		$expiry_timestamp = get_post_meta( $post->ID, 'date_expires', true );
+		if ( is_numeric( $expiry_timestamp ) && (int) $expiry_timestamp > 0 ) {
+			$promotion['expires'] = gmdate( 'Y-m-d', (int) $expiry_timestamp );
+		}
+
+		if ( 'yes' === get_post_meta( $post->ID, 'free_shipping', true ) ) {
+			$promotion['free_shipping'] = true;
+		}
+
+		$minimum_amount = get_post_meta( $post->ID, 'minimum_amount', true );
+		if ( is_numeric( $minimum_amount ) && (float) $minimum_amount > 0 ) {
+			$promotion['minimum_spend'] = (string) $minimum_amount;
+		}
+
+		$maximum_amount = get_post_meta( $post->ID, 'maximum_amount', true );
+		if ( is_numeric( $maximum_amount ) && (float) $maximum_amount > 0 ) {
+			$promotion['maximum_spend'] = (string) $maximum_amount;
+		}
+
+		$restricted_product_names = $this->get_promotion_restricted_product_names( $post->ID );
+		if ( ! empty( $restricted_product_names ) ) {
+			$promotion['limited_to_products'] = $restricted_product_names;
+		}
+
+		return $promotion;
+	}
+
+	/**
+	 * Product names a coupon is restricted to (WC stores `product_ids` as a
+	 * comma-separated string or an array of IDs).
+	 *
+	 * @return array<int, string>
+	 */
+	private function get_promotion_restricted_product_names( int $coupon_id ): array {
+		$product_ids_raw = get_post_meta( $coupon_id, 'product_ids', true );
+		$product_ids     = is_array( $product_ids_raw ) ? $product_ids_raw : explode( ',', (string) $product_ids_raw );
+
+		$names = array();
+		foreach ( $product_ids as $product_id ) {
+			if ( ! is_numeric( $product_id ) || (int) $product_id <= 0 ) {
+				continue;
+			}
+			$product_post = get_post( (int) $product_id );
+			if ( $product_post instanceof WP_Post && '' !== $product_post->post_title ) {
+				$names[] = $product_post->post_title;
+			}
+		}
+
+		return $names;
 	}
 
 	/**
@@ -381,7 +513,63 @@ class WPAIC_Tools {
 			$intent['variation_id'] = $variation_id;
 		}
 
+		$related_products = $this->get_related_product_suggestions( $product );
+		if ( ! empty( $related_products ) ) {
+			$intent['related_products'] = $related_products;
+		}
+
 		return $intent;
+	}
+
+	/**
+	 * Up to 3 cross-sell/upsell products (id/name/price only) configured on the
+	 * added product, so the model can offer a single genuinely related suggestion
+	 * after a successful add. Cross-sells come first (the WooCommerce-intended
+	 * "goes well with" relation); upsells fill remaining slots.
+	 *
+	 * @param object $product The product just added to the cart.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function get_related_product_suggestions( object $product ): array {
+		$related_ids = array();
+		foreach ( array( 'get_cross_sell_ids', 'get_upsell_ids' ) as $method ) {
+			if ( ! method_exists( $product, $method ) ) {
+				continue;
+			}
+			$ids = $product->$method();
+			if ( is_array( $ids ) ) {
+				$related_ids = array_merge( $related_ids, array_map( 'intval', $ids ) );
+			}
+		}
+
+		$suggestions = array();
+		foreach ( array_unique( $related_ids ) as $related_id ) {
+			if ( count( $suggestions ) >= 3 ) {
+				break;
+			}
+			if ( $related_id <= 0 ) {
+				continue;
+			}
+
+			$related_product = wc_get_product( $related_id );
+			if ( ! is_object( $related_product ) || ! method_exists( $related_product, 'get_name' ) ) {
+				continue;
+			}
+			if ( method_exists( $related_product, 'is_purchasable' ) && ! $related_product->is_purchasable() ) {
+				continue;
+			}
+			if ( method_exists( $related_product, 'is_in_stock' ) && ! $related_product->is_in_stock() ) {
+				continue;
+			}
+
+			$suggestions[] = array(
+				'id'    => $related_id,
+				'name'  => (string) $related_product->get_name(),
+				'price' => method_exists( $related_product, 'get_price' ) ? (string) $related_product->get_price() : '',
+			);
+		}
+
+		return $suggestions;
 	}
 
 	/**
@@ -525,6 +713,8 @@ class WPAIC_Tools {
 		$customer_name  = isset( $args['customer_name'] ) && is_string( $args['customer_name'] ) ? sanitize_text_field( $args['customer_name'] ) : '';
 		$customer_email = isset( $args['customer_email'] ) && is_string( $args['customer_email'] ) ? sanitize_email( $args['customer_email'] ) : '';
 		$transcript     = isset( $args['conversation_summary'] ) && is_string( $args['conversation_summary'] ) ? sanitize_textarea_field( $args['conversation_summary'] ) : '';
+		// Injected server-side by WPAIC_Chat::execute_tool, never part of the model-facing schema.
+		$conversation_id = isset( $args['conversation_id'] ) && is_numeric( $args['conversation_id'] ) ? (int) $args['conversation_id'] : 0;
 
 		if ( '' === $customer_name ) {
 			return array( 'error' => 'Customer name is required.' );
@@ -546,15 +736,16 @@ class WPAIC_Tools {
 		$table_name = $wpdb->prefix . 'wpaic_support_requests';
 
 		$insert_data    = array(
-			'customer_name'  => $customer_name,
-			'customer_email' => $customer_email,
-			'transcript'     => $transcript,
-			'extra_fields'   => $extra_fields_json,
-			'status'         => 'new',
-			'created_at'     => current_time( 'mysql' ),
-			'updated_at'     => current_time( 'mysql' ),
+			'customer_name'   => $customer_name,
+			'customer_email'  => $customer_email,
+			'conversation_id' => $conversation_id > 0 ? $conversation_id : null,
+			'transcript'      => $transcript,
+			'extra_fields'    => $extra_fields_json,
+			'status'          => 'new',
+			'created_at'      => current_time( 'mysql' ),
+			'updated_at'      => current_time( 'mysql' ),
 		);
-		$insert_formats = array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' );
+		$insert_formats = array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' );
 
 		$inserted = $wpdb->insert( $table_name, $insert_data, $insert_formats );
 
@@ -745,12 +936,13 @@ class WPAIC_Tools {
 
 	/**
 	 * @param array<string, mixed> $args
-	 * @return array<string, mixed>|null
+	 * @return array<string, mixed> Page content, or array('error' => ...) when unavailable
+	 *                              (null would serialize as bare "null" to the model).
 	 */
-	public function get_page_content( array $args ): ?array {
+	public function get_page_content( array $args ): array {
 		$post_id       = isset( $args['post_id'] ) && is_numeric( $args['post_id'] ) ? (int) $args['post_id'] : 0;
 		$content_index = new WPAIC_Content_Index();
-		return $content_index->get_page_content( $post_id );
+		return $content_index->get_page_content( $post_id ) ?? array( 'error' => 'Page not found or not available' );
 	}
 
 	/**

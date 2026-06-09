@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChatWidget from './ChatWidget'
@@ -439,6 +439,140 @@ describe('ChatWidget product cards', () => {
     })
     const { container } = render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
     expect(container.querySelector('.wpaic-product-grid')).not.toBeInTheDocument()
+  })
+})
+
+describe('ChatWidget mobile fullscreen', () => {
+  const originalMatchMedia = window.matchMedia
+
+  function mockMatchMedia(matches: boolean) {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: (query: string) => ({
+        matches,
+        media: query,
+        onchange: null,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        dispatchEvent: () => false,
+      }),
+    })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: originalMatchMedia,
+    })
+    document.body.style.overflow = ''
+    document.documentElement.style.overflow = ''
+    document.getElementById('wpadminbar')?.remove()
+  })
+
+  it('uses 100dvh (not 100vh) for the fullscreen height', () => {
+    const { container } = render(<ChatWidget onClose={vi.fn()} chat={createMockChat()} />)
+    const widget = container.firstChild as HTMLElement
+    expect(widget.className).toContain('max-[480px]:h-[calc(100dvh-var(--wpaic-mobile-top-offset,0px))]')
+    expect(widget.className).not.toContain('100vh]')
+  })
+
+  it('locks body scroll while fullscreen and restores it on unmount', () => {
+    mockMatchMedia(true)
+    document.body.style.overflow = 'scroll'
+
+    const { unmount } = render(<ChatWidget onClose={vi.fn()} chat={createMockChat()} />)
+
+    expect(document.body.style.overflow).toBe('hidden')
+    expect(document.documentElement.style.overflow).toBe('hidden')
+
+    unmount()
+
+    expect(document.body.style.overflow).toBe('scroll')
+    expect(document.documentElement.style.overflow).toBe('')
+  })
+
+  it('does not lock body scroll when not fullscreen', () => {
+    mockMatchMedia(false)
+
+    render(<ChatWidget onClose={vi.fn()} chat={createMockChat()} />)
+
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('offsets the widget below a visible admin bar', () => {
+    const adminBar = document.createElement('div')
+    adminBar.id = 'wpadminbar'
+    adminBar.getBoundingClientRect = () =>
+      ({ bottom: 46, top: 0, left: 0, right: 0, width: 0, height: 46, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    document.body.appendChild(adminBar)
+
+    const { container } = render(<ChatWidget onClose={vi.fn()} chat={createMockChat()} />)
+    const widget = container.firstChild as HTMLElement
+
+    expect(widget.style.getPropertyValue('--wpaic-mobile-top-offset')).toBe(
+      'calc(46px + env(safe-area-inset-top, 0px))'
+    )
+  })
+
+  it('clamps the admin bar offset at zero when the bar is scrolled out of view', () => {
+    const adminBar = document.createElement('div')
+    adminBar.id = 'wpadminbar'
+    adminBar.getBoundingClientRect = () =>
+      ({ bottom: -20, top: -66, left: 0, right: 0, width: 0, height: 46, x: 0, y: -66, toJSON: () => ({}) }) as DOMRect
+    document.body.appendChild(adminBar)
+
+    const { container } = render(<ChatWidget onClose={vi.fn()} chat={createMockChat()} />)
+    const widget = container.firstChild as HTMLElement
+
+    expect(widget.style.getPropertyValue('--wpaic-mobile-top-offset')).toBe(
+      'calc(0px + env(safe-area-inset-top, 0px))'
+    )
+  })
+
+  it('uses a zero admin bar offset when no admin bar is present', () => {
+    const { container } = render(<ChatWidget onClose={vi.fn()} chat={createMockChat()} />)
+    const widget = container.firstChild as HTMLElement
+
+    expect(widget.style.getPropertyValue('--wpaic-mobile-top-offset')).toBe(
+      'calc(0px + env(safe-area-inset-top, 0px))'
+    )
+  })
+})
+
+describe('ChatWidget product skeletons', () => {
+  it.each(['search_products', 'get_popular_products', 'compare_products'])(
+    'renders skeleton product cards while %s is running',
+    (toolName) => {
+      const mockChat = createMockChat({
+        messages: [],
+        isLoading: true,
+        activeTools: [{ toolName, state: 'executing' }],
+      })
+      render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
+      expect(screen.getByRole('status', { name: 'Loading products' })).toBeInTheDocument()
+    }
+  )
+
+  it('does not render skeletons for non-product tools', () => {
+    const mockChat = createMockChat({
+      messages: [],
+      isLoading: true,
+      activeTools: [{ toolName: 'add_to_cart', state: 'executing' }],
+    })
+    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
+    expect(screen.queryByRole('status', { name: 'Loading products' })).not.toBeInTheDocument()
+  })
+
+  it('does not render skeletons when not loading', () => {
+    const mockChat = createMockChat({
+      messages: [],
+      isLoading: false,
+      activeTools: [{ toolName: 'search_products', state: 'executing' }],
+    })
+    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
+    expect(screen.queryByRole('status', { name: 'Loading products' })).not.toBeInTheDocument()
   })
 })
 

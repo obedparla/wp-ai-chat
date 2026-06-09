@@ -10,6 +10,7 @@ require_once __DIR__ . '/../includes/class-wpaic-product-tools.php';
 require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-page-context.php';
 require_once __DIR__ . '/../includes/class-wpaic-system-prompt.php';
+require_once __DIR__ . '/../includes/class-wpaic-events.php';
 require_once __DIR__ . '/../includes/class-wpaic-chat.php';
 
 class WPAIC_ChatTest extends TestCase {
@@ -119,7 +120,7 @@ class WPAIC_ChatTest extends TestCase {
 
 		$tools = $method->invoke( $chat );
 
-		$this->assertCount( 13, $tools );
+		$this->assertCount( 14, $tools );
 
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertContains( 'search_products', $tool_names );
@@ -133,6 +134,7 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertContains( 'compare_products', $tool_names );
 		$this->assertContains( 'get_order_status', $tool_names );
 		$this->assertContains( 'get_shipping_info', $tool_names );
+		$this->assertContains( 'get_active_promotions', $tool_names );
 		$this->assertContains( 'search_site_content', $tool_names );
 		$this->assertContains( 'get_page_content', $tool_names );
 
@@ -169,7 +171,31 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertArrayHasKey( 'category', $search_properties );
 		$this->assertArrayHasKey( 'min_price', $search_properties );
 		$this->assertArrayHasKey( 'max_price', $search_properties );
+		$this->assertArrayHasKey( 'on_sale', $search_properties );
+		$this->assertSame( 'boolean', $search_properties['on_sale']['type'] );
 		$this->assertArrayHasKey( 'limit', $search_properties );
+	}
+
+	public function test_get_active_promotions_tool_uses_empty_object_properties_schema(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_tool_definitions' );
+		$method->setAccessible( true );
+
+		$tools           = $method->invoke( $chat );
+		$promotions_tool = array_values( array_filter( $tools, fn( $t ) => $t['function']['name'] === 'get_active_promotions' ) )[0];
+
+		$this->assertSame( 'object', $promotions_tool['function']['parameters']['type'] );
+		$this->assertInstanceOf( stdClass::class, $promotions_tool['function']['parameters']['properties'] );
 	}
 
 	public function test_get_cart_contents_tool_uses_empty_object_properties_schema(): void {
@@ -455,7 +481,7 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertEmpty( $result );
 	}
 
-	public function test_execute_tool_get_product_details_returns_null_for_nonexistent(): void {
+	public function test_execute_tool_get_product_details_returns_error_for_nonexistent(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
@@ -471,7 +497,42 @@ class WPAIC_ChatTest extends TestCase {
 
 		$result = $method->invoke( $chat, 'get_product_details', array( 'product_id' => 999 ) );
 
-		$this->assertNull( $result );
+		$this->assertSame( array( 'error' => 'Product not found' ), $result );
+	}
+
+	public function test_execute_tool_converts_throwable_into_error_result(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+
+		// Simulate a third-party-plugin fatal inside a WooCommerce tool call.
+		$throwing_tools = new class() extends WPAIC_Tools {
+			public function get_cart_contents(): array {
+				throw new Error( 'Call to undefined function third_party_plugin_hook()' );
+			}
+		};
+		$tools_property = $reflection->getProperty( 'tools' );
+		$tools_property->setAccessible( true );
+		$tools_property->setValue( $chat, $throwing_tools );
+
+		$method = $reflection->getMethod( 'execute_tool' );
+		$method->setAccessible( true );
+
+		$previous_error_log = ini_set( 'error_log', '/dev/null' );
+		try {
+			$result = $method->invoke( $chat, 'get_cart_contents', array() );
+		} finally {
+			ini_set( 'error_log', (string) $previous_error_log );
+		}
+
+		$this->assertSame( array( 'error' => 'Tool execution failed unexpectedly.' ), $result );
 	}
 
 	public function test_format_messages_adds_system_prompt(): void {
@@ -560,6 +621,28 @@ class WPAIC_ChatTest extends TestCase {
 
 		$this->assertStringContainsString( 'get_cart_contents', $prompt );
 		$this->assertStringContainsString( 'current cart questions', $prompt );
+	}
+
+	public function test_get_system_prompt_includes_ordinal_and_comparison_rules(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'ORDINAL AND POSITIONAL REFERENCES', $prompt );
+		$this->assertStringContainsString( 'Products shown (display order)', $prompt );
+		$this->assertStringContainsString( 'COMPARISON ACCURACY', $prompt );
+		$this->assertStringContainsString( 'differences summary', $prompt );
 	}
 
 	public function test_get_system_prompt_includes_product_page_context(): void {
@@ -1042,7 +1125,7 @@ class WPAIC_ChatTest extends TestCase {
 
 		$this->assertStringContainsString( 'STRICT CATEGORY GROUNDING', $prompt );
 		$this->assertStringContainsString( 'Only ever name categories that appear in the get_categories output', $prompt );
-		$this->assertStringContainsString( 'copying their names and slugs exactly as returned', $prompt );
+		$this->assertStringContainsString( 'NEVER by its slug', $prompt );
 		$this->assertStringContainsString( 'do not claim a "clothing" category exists', $prompt );
 	}
 
@@ -1231,6 +1314,77 @@ class WPAIC_ChatTest extends TestCase {
 		// "isn't configured" dev-speak or a flat denial.
 		$this->assertStringContainsString( 'no listed zone covers the shopper\'s destination', $prompt );
 		$this->assertStringContainsString( 'call search_site_content with "shipping"', $prompt );
+		// The model must FETCH the policy page and quote real rates, not just
+		// reference the page while claiming costs are unavailable.
+		$this->assertStringContainsString( 'call get_page_content on the best matching result', $prompt );
+		$this->assertStringContainsString( 'quote the concrete rates, thresholds, and conditions', $prompt );
+	}
+
+	public function test_system_prompt_routes_discount_questions_to_get_active_promotions(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'DISCOUNTS AND PROMOTIONS', $prompt );
+		$this->assertStringContainsString( 'call get_active_promotions', $prompt );
+		$this->assertStringContainsString( 'tell the shopper honestly that there are no current promotions', $prompt );
+		$this->assertStringContainsString( 'NEVER invent, guess, or hint at codes', $prompt );
+		$this->assertStringContainsString( 'call search_products with on_sale set to true', $prompt );
+	}
+
+	public function test_system_prompt_allows_single_related_suggestion_after_add(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'If the add_to_cart result includes related_products', $prompt );
+		$this->assertStringContainsString( 'never more than one suggestion, never pushy', $prompt );
+	}
+
+	public function test_system_prompt_grounds_pivot_suggestions_in_real_categories(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'The same applies to pivots and alternative suggestions', $prompt );
+		$this->assertStringContainsString( 'categories or product types that get_categories actually returned', $prompt );
+		$this->assertStringContainsString( 'do not offer pet items unless such a category exists', $prompt );
 	}
 
 	public function test_system_prompt_forbids_asserting_catalog_absence_on_zero_results(): void {
@@ -2499,6 +2653,62 @@ class WPAIC_ChatTest extends TestCase {
 		);
 	}
 
+	public function test_to_model_payload_prefers_variation_attribute_labels(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			'id'         => 5,
+			'name'       => 'Hoodie',
+			'variations' => array(
+				array(
+					'variation_id'     => 51,
+					'attributes'       => array( 'attribute_pa_color' => 'navy-blue' ),
+					'attribute_labels' => array( 'attribute_pa_color' => 'Navy Blue' ),
+					'price'            => 45.0,
+					'is_in_stock'      => true,
+				),
+			),
+		);
+
+		$model_payload = $method->invoke( $chat, 'get_product_details', $tool_result );
+
+		$this->assertSame( 'color: Navy Blue', $model_payload['variations'][0]['attributes'] );
+	}
+
+	public function test_to_model_payload_humanizes_attribute_options_and_drops_labels_map(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			'id'         => 5,
+			'name'       => 'Hoodie',
+			'attributes' => array(
+				array(
+					'name'          => 'pa_color',
+					'label'         => 'Color',
+					'options'       => array( 'navy-blue', 'red' ),
+					'option_labels' => array(
+						'navy-blue' => 'Navy Blue',
+						'red'       => 'Red',
+					),
+				),
+			),
+		);
+
+		$model_payload = $method->invoke( $chat, 'get_product_details', $tool_result );
+
+		$this->assertSame( array( 'Navy Blue', 'Red' ), $model_payload['attributes'][0]['options'] );
+		$this->assertArrayNotHasKey( 'option_labels', $model_payload['attributes'][0] );
+		// Frontend copy keeps the slug options and labels map untouched.
+		$this->assertSame( array( 'navy-blue', 'red' ), $tool_result['attributes'][0]['options'] );
+		$this->assertArrayHasKey( 'option_labels', $tool_result['attributes'][0] );
+	}
+
 	public function test_to_model_payload_slims_compare_products_entries(): void {
 		$chat       = new WPAIC_Chat();
 		$reflection = new ReflectionClass( $chat );
@@ -2526,6 +2736,57 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertArrayNotHasKey( 'image', $model_payload['products'][0] );
 		$this->assertSame( 4.0, $model_payload['products'][0]['rating'] );
 		$this->assertSame( array( 'price' ), $model_payload['attributes'] );
+	}
+
+	public function test_to_model_payload_keeps_compare_differences_and_attributes(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			'products'    => array(
+				array(
+					'id'         => 1,
+					'name'       => 'Product A',
+					'url'        => 'http://example.com/product/a/',
+					'image'      => 'http://example.com/a.jpg',
+					'price'      => '19.99',
+					'attributes' => array(
+						'Color'    => 'Blue, Red',
+						'Warranty' => '3 years',
+					),
+					'weight'     => '1.5 kg',
+					'dimensions' => '10 x 5 cm',
+				),
+				array(
+					'id'    => 2,
+					'name'  => 'Product B',
+					'url'   => 'http://example.com/product/b/',
+					'price' => '29.99',
+				),
+			),
+			'attributes'  => array( 'price', 'rating' ),
+			'differences' => array(
+				'Price: Product A is cheapest at 19.99; Product B is most expensive at 29.99 (10.00 difference).',
+			),
+		);
+
+		$model_payload = $method->invoke( $chat, 'compare_products', $tool_result );
+
+		$this->assertSame( $tool_result['differences'], $model_payload['differences'] );
+		$this->assertSame(
+			array(
+				'Color'    => 'Blue, Red',
+				'Warranty' => '3 years',
+			),
+			$model_payload['products'][0]['attributes']
+		);
+		$this->assertSame( '1.5 kg', $model_payload['products'][0]['weight'] );
+		$this->assertSame( '10 x 5 cm', $model_payload['products'][0]['dimensions'] );
+		$this->assertArrayNotHasKey( 'url', $model_payload['products'][0] );
+		$this->assertArrayNotHasKey( 'image', $model_payload['products'][0] );
+		$this->assertArrayNotHasKey( 'url', $model_payload['products'][1] );
 	}
 
 	public function test_to_model_payload_strips_checkout_and_cart_urls(): void {
@@ -2668,5 +2929,200 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'Question 30?', $prompt );
 		$this->assertStringNotContainsString( 'Question 31?', $prompt );
 		$this->assertStringNotContainsString( 'Question 35?', $prompt );
+	}
+
+	// --- Tool event recording tests (P1-14) ---
+
+	private function execute_tool_on( WPAIC_Chat $chat, string $name, array $arguments ): mixed {
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'execute_tool' );
+		$method->setAccessible( true );
+
+		return $method->invoke( $chat, $name, $arguments );
+	}
+
+	public function test_execute_tool_search_products_records_search_and_products_shown_events(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+		$this->create_mock_product( 1, 'Test Product', '19.99' );
+
+		$chat = new WPAIC_Chat();
+		$chat->set_conversation_id( 3 );
+		$this->execute_tool_on( $chat, 'search_products', array( 'search' => 'test' ) );
+
+		$events = WPAIC_Events::get_for_conversation( 3 );
+
+		$this->assertCount( 2, $events );
+		$this->assertEquals( WPAIC_Events::SEARCH_PERFORMED, $events[0]->event_type );
+		$this->assertEquals( 'test', $events[0]->event_data['query'] );
+		$this->assertEquals( 1, $events[0]->event_data['result_count'] );
+		$this->assertEquals( WPAIC_Events::PRODUCTS_SHOWN, $events[1]->event_type );
+		$this->assertEquals( array( 1 ), $events[1]->event_data['ids'] );
+		$this->assertEquals( array( 'Test Product' ), $events[1]->event_data['names'] );
+	}
+
+	public function test_execute_tool_search_products_records_zero_result_search_without_products_shown(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+		$chat->set_conversation_id( 3 );
+		$this->execute_tool_on( $chat, 'search_products', array( 'search' => 'nothing matches' ) );
+
+		$events = WPAIC_Events::get_for_conversation( 3 );
+
+		$this->assertCount( 1, $events );
+		$this->assertEquals( WPAIC_Events::SEARCH_PERFORMED, $events[0]->event_type );
+		$this->assertEquals( 0, $events[0]->event_data['result_count'] );
+	}
+
+	public function test_execute_tool_records_no_events_without_conversation_id(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+		$this->create_mock_product( 1, 'Test Product', '19.99' );
+
+		$chat = new WPAIC_Chat();
+		$this->execute_tool_on( $chat, 'search_products', array( 'search' => 'test' ) );
+
+		global $wpdb;
+		$this->assertSame( array(), $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_events WHERE conversation_id = 0" ) );
+		$this->assertSame( array(), WPAIC_Events::get_for_conversation( 3 ) );
+	}
+
+	public function test_execute_tool_add_to_cart_records_product_added_event_with_price(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+		$this->create_mock_product( 11, 'Hat', '5.00' );
+
+		$chat = new WPAIC_Chat();
+		$chat->set_conversation_id( 4 );
+		$result = $this->execute_tool_on( $chat, 'add_to_cart', array( 'product_id' => 11 ) );
+
+		$this->assertTrue( $result['success'] );
+
+		$events = WPAIC_Events::get_for_conversation( 4 );
+
+		$this->assertCount( 1, $events );
+		$this->assertEquals( WPAIC_Events::PRODUCT_ADDED_TO_CART, $events[0]->event_type );
+		$this->assertEquals( 11, $events[0]->event_data['id'] );
+		$this->assertEquals( 'Hat', $events[0]->event_data['name'] );
+		$this->assertEquals( '5.00', $events[0]->event_data['price'] );
+	}
+
+	public function test_execute_tool_add_to_cart_failure_records_no_event(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+		$chat->set_conversation_id( 4 );
+		$result = $this->execute_tool_on( $chat, 'add_to_cart', array( 'product_id' => 999 ) );
+
+		$this->assertFalse( $result['success'] );
+		$this->assertSame( array(), WPAIC_Events::get_for_conversation( 4 ) );
+	}
+
+	public function test_execute_tool_get_checkout_action_records_checkout_started(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+		$chat->set_conversation_id( 5 );
+		$this->execute_tool_on( $chat, 'get_checkout_action', array() );
+
+		$events = WPAIC_Events::get_for_conversation( 5 );
+
+		$this->assertCount( 1, $events );
+		$this->assertEquals( WPAIC_Events::CHECKOUT_STARTED, $events[0]->event_type );
+	}
+
+	public function test_execute_tool_create_handoff_request_links_conversation_and_records_event(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+		$chat->set_conversation_id( 6 );
+		$result = $this->execute_tool_on(
+			$chat,
+			'create_handoff_request',
+			array(
+				'customer_name'        => 'Jane Doe',
+				'customer_email'       => 'jane@example.com',
+				'conversation_summary' => 'Needs a human',
+			)
+		);
+
+		$this->assertTrue( $result['success'] );
+
+		global $wpdb;
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+		$this->assertEquals( 6, $rows[0]->conversation_id );
+
+		$events = WPAIC_Events::get_for_conversation( 6 );
+		$this->assertCount( 1, $events );
+		$this->assertEquals( WPAIC_Events::HANDOFF_CREATED, $events[0]->event_type );
+		$this->assertEquals( $result['request_id'], $events[0]->event_data['request_id'] );
+	}
+
+	public function test_execute_tool_get_active_promotions_returns_coupons(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		WPAICTestHelper::add_mock_post(
+			array(
+				'ID'          => 41,
+				'post_title'  => 'SAVE10',
+				'post_type'   => 'shop_coupon',
+				'post_status' => 'publish',
+			)
+		);
+		WPAICTestHelper::set_post_meta( 41, 'discount_type', 'percent' );
+		WPAICTestHelper::set_post_meta( 41, 'coupon_amount', '10' );
+
+		$chat   = new WPAIC_Chat();
+		$result = $this->execute_tool_on( $chat, 'get_active_promotions', array() );
+
+		$this->assertTrue( $result['has_promotions'] );
+		$this->assertSame( 'SAVE10', $result['promotions'][0]['code'] );
 	}
 }

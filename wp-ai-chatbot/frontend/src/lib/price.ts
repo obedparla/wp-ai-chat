@@ -41,6 +41,14 @@ function applyPosition(symbol: string, amount: string, position: Required<Curren
   }
 }
 
+// Products with a 0/empty price (e.g. unpriced sample data) should not render
+// a "$0.00" line or an active ADD button.
+export function hasPositivePrice(value: string | number | null | undefined): boolean {
+  if (value === null || value === undefined || value === '') return false
+  const numeric = typeof value === 'number' ? value : parseFloat(value)
+  return Number.isFinite(numeric) && numeric > 0
+}
+
 export function formatPrice(value: string | number | null | undefined, override?: CurrencyConfig): string {
   const config = resolveConfig(override)
 

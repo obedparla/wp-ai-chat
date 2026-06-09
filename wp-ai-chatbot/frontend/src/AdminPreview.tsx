@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import ChatWidgetUI from './components/ChatWidgetUI'
+import ProactiveTeaser from './components/ProactiveTeaser'
 import type { Message } from './hooks/useChat'
 import type { Product } from './components/ProductCard'
 
@@ -11,6 +12,7 @@ declare global {
       chatbotLogo: string
       chatbotRole: string
       themeColor: string
+      proactiveMessage?: string
     }
   }
 }
@@ -97,12 +99,17 @@ function isValidHex(color: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(color)
 }
 
-export default function AdminPreview() {
+interface AdminPreviewProps {
+  variant?: 'widget' | 'teaser'
+}
+
+export default function AdminPreview({ variant = 'widget' }: AdminPreviewProps) {
   const config = window.wpaicAdminPreview
   const [chatbotName, setChatbotName] = useState(config?.chatbotName ?? '')
   const [chatbotLogo, setChatbotLogo] = useState(config?.chatbotLogo ?? '')
   const [chatbotRole, setChatbotRole] = useState(config?.chatbotRole ?? '')
   const [themeColor, setThemeColor] = useState(config?.themeColor ?? '#2545B8')
+  const [proactiveMessage, setProactiveMessage] = useState(config?.proactiveMessage ?? '')
   const [input, setInput] = useState('')
 
   const messages = buildPreviewMessages(config?.greeting ?? '')
@@ -153,6 +160,17 @@ export default function AdminPreview() {
     }
   }, [applyThemeColor])
 
+  // Engagement tab: live-update the teaser preview as the proactive message is typed.
+  useEffect(() => {
+    if (variant !== 'teaser') return
+    const messageInput = document.querySelector<HTMLTextAreaElement>('#wpaic_proactive_message')
+    if (!messageInput) return
+
+    const handleInput = () => setProactiveMessage(messageInput.value)
+    messageInput.addEventListener('input', handleInput)
+    return () => messageInput.removeEventListener('input', handleInput)
+  }, [variant])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
   }
@@ -162,6 +180,29 @@ export default function AdminPreview() {
     if (target.closest('button')) {
       e.preventDefault()
     }
+  }
+
+  if (variant === 'teaser') {
+    const teaserMessage =
+      proactiveMessage.trim() || config?.greeting || 'Hello! How can I help you today?'
+    return (
+      <div className="relative h-[240px] w-full [&_button]:pointer-events-none">
+        <ProactiveTeaser
+          message={teaserMessage}
+          onOpen={() => undefined}
+          onDismiss={() => undefined}
+          className="absolute bottom-[88px] right-5 z-auto"
+        />
+        <div
+          className="absolute bottom-5 right-5 w-[60px] h-[60px] rounded-full bg-[var(--wpaic-primary)] text-white shadow-lg flex items-center justify-center"
+          aria-hidden
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        </div>
+      </div>
+    )
   }
 
   return (

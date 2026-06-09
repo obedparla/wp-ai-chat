@@ -5,9 +5,10 @@ import './styles.css'
 
 const root = document.getElementById('wpaic-admin-preview')
 if (root) {
+  const variant = root.dataset.previewVariant === 'teaser' ? 'teaser' : 'widget'
   createRoot(root).render(
     <StrictMode>
-      <AdminPreview />
+      <AdminPreview variant={variant} />
     </StrictMode>
   )
 }

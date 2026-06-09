@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'WPAIC_VERSION', '1.0.0' );
-define( 'WPAIC_DB_VERSION', '1.0.0' );
+define( 'WPAIC_DB_VERSION', '1.1.0' );
 define( 'WPAIC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPAIC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'WPAIC_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -205,6 +205,9 @@ function wpaic_activate(): void {
 	require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-content-index.php';
 	$content_index = new WPAIC_Content_Index();
 	$content_index->build_index();
+
+	// One-time redirect to the settings page after a fresh activation.
+	set_transient( 'wpaic_activation_redirect', true, 60 );
 }
 
 function wpaic_create_tables(): void {
@@ -214,6 +217,7 @@ function wpaic_create_tables(): void {
 	$conversations_table    = $wpdb->prefix . 'wpaic_conversations';
 	$messages_table         = $wpdb->prefix . 'wpaic_messages';
 	$support_requests_table = $wpdb->prefix . 'wpaic_support_requests';
+	$events_table           = $wpdb->prefix . 'wpaic_events';
 
 	$sql = "CREATE TABLE $conversations_table (
 		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -252,6 +256,18 @@ function wpaic_create_tables(): void {
 		PRIMARY KEY (id),
 		KEY customer_email (customer_email),
 		KEY status (status),
+		KEY created_at (created_at)
+	) $charset_collate;
+
+	CREATE TABLE $events_table (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		conversation_id bigint(20) unsigned NOT NULL,
+		event_type varchar(40) NOT NULL,
+		event_data longtext DEFAULT NULL,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (id),
+		KEY conversation_id (conversation_id),
+		KEY event_type (event_type),
 		KEY created_at (created_at)
 	) $charset_collate;";
 

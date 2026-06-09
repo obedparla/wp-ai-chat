@@ -5,7 +5,7 @@ import ChatWidgetUI from './ChatWidgetUI'
 import SendTranscriptDialog from './SendTranscriptDialog'
 import ConfirmDialog from './ConfirmDialog'
 import ConversationStarters from './ConversationStarters'
-import { TOOL_PROGRESS_LABELS } from '../hooks/tools'
+import { TOOL_PROGRESS_LABELS, showsProductSkeletons } from '../hooks/tools'
 
 interface ChatWidgetProps {
   onClose: () => void
@@ -28,6 +28,9 @@ function getToolProgressMessage(tool: ActiveTool): string {
   return TOOL_PROGRESS_LABELS[tool.toolName] ?? 'Working on it…'
 }
 
+// Matches the max-[480px] fullscreen breakpoint in the widget container classes.
+const FULLSCREEN_MEDIA_QUERY = '(max-width: 480px)'
+
 export default function ChatWidget({
   onClose,
   chat,
@@ -43,6 +46,63 @@ export default function ChatWidget({
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false)
   const clearCart = useClearCart(messages)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [adminBarOffset, setAdminBarOffset] = useState(0)
+
+  // Fullscreen mobile: the WP admin bar (z-index 99999) overlays the widget
+  // header for logged-in users — offset the widget below its visible part.
+  useEffect(() => {
+    const adminBar = document.getElementById('wpadminbar')
+    if (!adminBar) return
+
+    const updateAdminBarOffset = () =>
+      setAdminBarOffset(Math.max(0, adminBar.getBoundingClientRect().bottom))
+
+    updateAdminBarOffset()
+    window.addEventListener('resize', updateAdminBarOffset)
+    return () => window.removeEventListener('resize', updateAdminBarOffset)
+  }, [])
+
+  // Lock body scroll while the widget is fullscreen so the page behind
+  // does not scroll; restore the previous overflow on close.
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(FULLSCREEN_MEDIA_QUERY)
+    let savedOverflow: { html: string; body: string } | null = null
+
+    const lockBodyScroll = () => {
+      if (savedOverflow !== null) return
+      savedOverflow = {
+        html: document.documentElement.style.overflow,
+        body: document.body.style.overflow,
+      }
+      document.documentElement.style.overflow = 'hidden'
+      document.body.style.overflow = 'hidden'
+    }
+
+    const unlockBodyScroll = () => {
+      if (savedOverflow === null) return
+      document.documentElement.style.overflow = savedOverflow.html
+      document.body.style.overflow = savedOverflow.body
+      savedOverflow = null
+    }
+
+    const syncBodyScrollLock = () => {
+      if (mediaQuery.matches) {
+        lockBodyScroll()
+      } else {
+        unlockBodyScroll()
+      }
+    }
+
+    syncBodyScrollLock()
+    mediaQuery.addEventListener('change', syncBodyScrollLock)
+    return () => {
+      mediaQuery.removeEventListener('change', syncBodyScrollLock)
+      unlockBodyScroll()
+    }
+  }, [])
+
+  const showProductSkeletons =
+    isLoading && activeTools.some((tool) => showsProductSkeletons(tool.toolName))
 
   const isGreetingOnly =
     messages.length === 0 ||
@@ -150,7 +210,10 @@ export default function ChatWidget({
   )
 
   return (
-    <div className="fixed bottom-6 right-6 w-[428px] max-w-[calc(100vw-48px)] h-[680px] max-h-[calc(100vh-48px)] z-[9998] animate-wpaic-slideUp max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[100vh] max-[480px]:max-h-[100vh] max-[480px]:rounded-none max-[480px]:animate-wpaic-slideUpMobile">
+    <div
+      className="fixed bottom-6 right-6 w-[428px] max-w-[calc(100vw-48px)] h-[680px] max-h-[calc(100vh-48px)] z-[9998] animate-wpaic-slideUp max-[480px]:bottom-0 max-[480px]:right-0 max-[480px]:left-0 max-[480px]:w-full max-[480px]:max-w-full max-[480px]:h-[calc(100dvh-var(--wpaic-mobile-top-offset,0px))] max-[480px]:max-h-[calc(100dvh-var(--wpaic-mobile-top-offset,0px))] max-[480px]:rounded-none max-[480px]:animate-wpaic-slideUpMobile"
+      style={{ '--wpaic-mobile-top-offset': `calc(${adminBarOffset}px + env(safe-area-inset-top, 0px))` } as React.CSSProperties}
+    >
       {showTranscriptDialog && (
         <SendTranscriptDialog
           messages={messages}
@@ -189,6 +252,7 @@ export default function ChatWidget({
         onSubmit={handleSubmit}
         onRetry={retry}
         clearCartStatuses={clearCart.statuses}
+        showProductSkeletons={showProductSkeletons}
         inputRef={inputRef}
         headerActions={headerActions}
         loadingIndicator={

@@ -15,6 +15,8 @@ class WPAIC_Chat {
 	private ?WPAIC_Product_Tools $product_tools = null;
 	private ?Client $client     = null;
 	private WPAIC_License_Manager $license_manager;
+	/** Logged conversation this chat belongs to; used to record tool events and link handoffs. */
+	private int $conversation_id = 0;
 
 	/**
 	 * @param array<string, mixed> $page_context
@@ -36,6 +38,14 @@ class WPAIC_Chat {
 				$this->client = \OpenAI::client( $api_key );
 			}
 		}
+	}
+
+	/**
+	 * Attach the logged conversation so tool execution can record events
+	 * (WPAIC_Events) and link handoff requests to the conversation.
+	 */
+	public function set_conversation_id( int $conversation_id ): void {
+		$this->conversation_id = $conversation_id;
 	}
 
 	/**
@@ -471,13 +481,9 @@ class WPAIC_Chat {
 			);
 		}
 
-		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-		error_log( "[WPAIC] Provider stream opened, HTTP {$http_status}. Reading..." );
-
 		/** @var array<string, array{call_id: string, name: string, arguments: string}> $tool_calls Keyed by Responses output item id. */
-		$tool_calls  = array();
-		$buffer      = '';
-		$total_bytes = 0;
+		$tool_calls = array();
+		$buffer     = '';
 
 		while ( ! feof( $stream ) ) {
 			$chunk = fread( $stream, 8192 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
@@ -489,8 +495,7 @@ class WPAIC_Chat {
 			if ( '' === $chunk ) {
 				continue;
 			}
-			$total_bytes += strlen( $chunk );
-			$buffer      .= $chunk;
+			$buffer .= $chunk;
 
 			while ( false !== ( $newline_pos = strpos( $buffer, "\n" ) ) ) {
 				$line   = substr( $buffer, 0, $newline_pos );
@@ -590,9 +595,6 @@ class WPAIC_Chat {
 		}
 
 		fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
-
-		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-		error_log( "[WPAIC] Stream finished. Total bytes read: {$total_bytes}, tool_calls: " . count( $tool_calls ) . ', remaining buffer: ' . substr( $buffer, 0, 200 ) );
 
 		if ( ! empty( $tool_calls ) ) {
 			return array( 'tool_calls' => array_values( $tool_calls ) );
@@ -745,6 +747,10 @@ class WPAIC_Chat {
 							'max_price' => array(
 								'type'        => 'number',
 								'description' => 'Max price',
+							),
+							'on_sale'   => array(
+								'type'        => 'boolean',
+								'description' => 'Only return products currently on sale. Use for "what is on sale", "any deals", or "discounted products" requests.',
 							),
 							'limit'     => array(
 								'type'        => 'integer',
@@ -925,6 +931,17 @@ class WPAIC_Chat {
 				'function' => array(
 					'name'        => 'get_shipping_info',
 					'description' => 'Get site-wide shipping zones, methods, and costs configured in WooCommerce. Use when the customer asks about shipping cost, shipping options, where the store ships, or shipping times. Returns only what is actually configured — never invent delivery times or costs not in the response.',
+					'parameters'  => array(
+						'type'       => 'object',
+						'properties' => new \stdClass(),
+					),
+				),
+			);
+			$tools[] = array(
+				'type'     => 'function',
+				'function' => array(
+					'name'        => 'get_active_promotions',
+					'description' => 'Get the store\'s currently active coupons and promotions (code, discount amount and type, restrictions, expiry). Use whenever the shopper asks about discounts, coupons, promo codes, vouchers, offers, or current deals. Returns only real configured coupons — if none are returned, tell the shopper there are no current promotions.',
 					'parameters'  => array(
 						'type'       => 'object',
 						'properties' => new \stdClass(),
@@ -1184,15 +1201,40 @@ class WPAIC_Chat {
 	}
 
 	/**
+	 * Execute a tool, converting any Throwable (e.g. a third-party-plugin fatal
+	 * inside a WooCommerce call) into an error result so the conversation loop
+	 * keeps streaming instead of dying mid-request.
+	 *
 	 * @param string $name
 	 * @param array<string, mixed> $arguments
-	 * @return array<string, mixed>|array<int, array<string, mixed>>|null
+	 * @return array<string, mixed>|array<int, array<string, mixed>>
 	 */
-	private function execute_tool( string $name, array $arguments ): array|null {
+	private function execute_tool( string $name, array $arguments ): array {
+		try {
+			return $this->dispatch_tool( $name, $arguments );
+		} catch ( \Throwable $throwable ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( "[WPAIC] Tool {$name} failed: " . $throwable->getMessage() );
+			return array( 'error' => 'Tool execution failed unexpectedly.' );
+		}
+	}
+
+	/**
+	 * @param string $name
+	 * @param array<string, mixed> $arguments
+	 * @return array<string, mixed>|array<int, array<string, mixed>>
+	 */
+	private function dispatch_tool( string $name, array $arguments ): array {
 		// Handoff and custom data tools work without WooCommerce
 		if ( 'create_handoff_request' === $name ) {
-			$tools = new WPAIC_Tools();
-			return $tools->create_handoff_request( $arguments );
+			if ( $this->conversation_id > 0 ) {
+				// Link the originating conversation; never part of the model-facing schema.
+				$arguments['conversation_id'] = $this->conversation_id;
+			}
+			$tools  = new WPAIC_Tools();
+			$result = $tools->create_handoff_request( $arguments );
+			$this->record_tool_event( $name, $arguments, $result );
+			return $result;
 		}
 
 		if ( 'query_custom_data' === $name ) {
@@ -1214,7 +1256,7 @@ class WPAIC_Chat {
 			return array( 'error' => 'Product tools unavailable' );
 		}
 
-		return match ( $name ) {
+		$result = match ( $name ) {
 			'search_products' => $this->product_tools->search_products( $arguments ),
 			'get_popular_products' => $this->product_tools->get_popular_products( $arguments ),
 			'get_product_details' => $this->product_tools->get_product_details( (int) ( $arguments['product_id'] ?? 0 ) ),
@@ -1226,8 +1268,120 @@ class WPAIC_Chat {
 			'compare_products' => $this->product_tools->compare_products( isset( $arguments['product_ids'] ) && is_array( $arguments['product_ids'] ) ? $arguments['product_ids'] : array() ),
 			'get_order_status' => $this->tools->get_order_status( $arguments ),
 			'get_shipping_info' => $this->tools->get_shipping_info(),
+			'get_active_promotions' => $this->tools->get_active_promotions(),
 			default => array( 'error' => 'Unknown tool' ),
 		};
+
+		$this->record_tool_event( $name, $arguments, $result );
+
+		return $result;
+	}
+
+	/**
+	 * Record compact per-conversation analytics events for shopper-meaningful
+	 * tool calls: searches, products shown, add-to-cart, checkout, handoffs.
+	 * No-op when no conversation is attached (e.g. direct tool invocations).
+	 *
+	 * @param string $name Tool name.
+	 * @param array<string, mixed> $arguments Parsed tool arguments.
+	 * @param array<string, mixed>|array<int, array<string, mixed>>|null $result Tool result.
+	 */
+	private function record_tool_event( string $name, array $arguments, array|null $result ): void {
+		if ( $this->conversation_id <= 0 || ! class_exists( 'WPAIC_Events' ) ) {
+			return;
+		}
+
+		switch ( $name ) {
+			case 'search_products':
+				$products = is_array( $result ) ? array_values( array_filter( $result, 'is_array' ) ) : array();
+				WPAIC_Events::record(
+					$this->conversation_id,
+					WPAIC_Events::SEARCH_PERFORMED,
+					array(
+						'query'        => isset( $arguments['search'] ) && is_string( $arguments['search'] ) ? $arguments['search'] : '',
+						'result_count' => count( $products ),
+					)
+				);
+				$this->record_products_shown_event( $products );
+				break;
+
+			case 'get_popular_products':
+				$products = is_array( $result ) ? array_values( array_filter( $result, 'is_array' ) ) : array();
+				$this->record_products_shown_event( $products );
+				break;
+
+			case 'add_to_cart':
+				if ( ! is_array( $result ) || empty( $result['success'] ) ) {
+					break;
+				}
+				$product_id   = isset( $result['product_id'] ) && is_numeric( $result['product_id'] ) ? (int) $result['product_id'] : 0;
+				$variation_id = isset( $result['variation_id'] ) && is_numeric( $result['variation_id'] ) ? (int) $result['variation_id'] : 0;
+				WPAIC_Events::record(
+					$this->conversation_id,
+					WPAIC_Events::PRODUCT_ADDED_TO_CART,
+					array(
+						'id'    => $product_id,
+						'name'  => isset( $result['name'] ) && is_string( $result['name'] ) ? $result['name'] : '',
+						'price' => $this->get_product_price_for_event( $variation_id > 0 ? $variation_id : $product_id ),
+					)
+				);
+				break;
+
+			case 'get_checkout_action':
+				WPAIC_Events::record( $this->conversation_id, WPAIC_Events::CHECKOUT_STARTED, array() );
+				break;
+
+			case 'create_handoff_request':
+				if ( is_array( $result ) && ! empty( $result['success'] ) ) {
+					WPAIC_Events::record(
+						$this->conversation_id,
+						WPAIC_Events::HANDOFF_CREATED,
+						array( 'request_id' => isset( $result['request_id'] ) && is_numeric( $result['request_id'] ) ? (int) $result['request_id'] : 0 )
+					);
+				}
+				break;
+		}
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $products Product payloads (id/name fields).
+	 */
+	private function record_products_shown_event( array $products ): void {
+		$ids   = array();
+		$names = array();
+		foreach ( $products as $product ) {
+			if ( ! isset( $product['id'] ) || ! is_numeric( $product['id'] ) ) {
+				continue;
+			}
+			$ids[]   = (int) $product['id'];
+			$names[] = isset( $product['name'] ) && is_string( $product['name'] ) ? $product['name'] : '';
+		}
+
+		if ( empty( $ids ) ) {
+			return;
+		}
+
+		WPAIC_Events::record(
+			$this->conversation_id,
+			WPAIC_Events::PRODUCTS_SHOWN,
+			array(
+				'ids'   => $ids,
+				'names' => $names,
+			)
+		);
+	}
+
+	private function get_product_price_for_event( int $product_id ): ?string {
+		if ( $product_id <= 0 || ! function_exists( 'wc_get_product' ) ) {
+			return null;
+		}
+
+		$product = wc_get_product( $product_id );
+		if ( ! is_object( $product ) || ! method_exists( $product, 'get_price' ) ) {
+			return null;
+		}
+
+		return (string) $product->get_price();
 	}
 
 	/**
@@ -1284,6 +1438,13 @@ class WPAIC_Chat {
 	private function slim_product_for_model( array $product ): array {
 		unset( $product['url'], $product['add_to_cart_url'], $product['image'], $product['external_url'] );
 
+		if ( isset( $product['attributes'] ) && is_array( $product['attributes'] ) ) {
+			$product['attributes'] = array_map(
+				fn( $attribute ) => is_array( $attribute ) ? $this->slim_attribute_for_model( $attribute ) : $attribute,
+				$product['attributes']
+			);
+		}
+
 		if ( isset( $product['variations'] ) && is_array( $product['variations'] ) ) {
 			$product['variations'] = array_map(
 				fn( $variation ) => is_array( $variation ) ? $this->slim_variation_for_model( $variation ) : $variation,
@@ -1295,6 +1456,30 @@ class WPAIC_Chat {
 	}
 
 	/**
+	 * The model only ever passes variation_id (never attribute slugs), so swap
+	 * slug options for their human labels ("blue" -> "Blue") and drop the
+	 * frontend-only option_labels map to save tokens.
+	 *
+	 * @param array<string, mixed> $attribute
+	 * @return array<string, mixed>
+	 */
+	private function slim_attribute_for_model( array $attribute ): array {
+		if ( isset( $attribute['options'], $attribute['option_labels'] ) && is_array( $attribute['options'] ) && is_array( $attribute['option_labels'] ) ) {
+			$option_labels        = $attribute['option_labels'];
+			$attribute['options'] = array_values(
+				array_map(
+					static fn( $option ) => $option_labels[ $option ] ?? $option,
+					$attribute['options']
+				)
+			);
+		}
+
+		unset( $attribute['option_labels'] );
+
+		return $attribute;
+	}
+
+	/**
 	 * Collapse a full variation object to what the model needs to resolve and
 	 * confirm a choice: variation_id, a short attribute summary, price, and
 	 * stock. Variation images and regular prices stay frontend-only.
@@ -1303,12 +1488,16 @@ class WPAIC_Chat {
 	 * @return array<string, mixed>
 	 */
 	private function slim_variation_for_model( array $variation ): array {
+		// Prefer the human option labels ("Blue") over the slug values ("blue")
+		// so the model's copy reads naturally; both carry the same keys.
+		$attribute_values = isset( $variation['attribute_labels'] ) && is_array( $variation['attribute_labels'] ) && ! empty( $variation['attribute_labels'] )
+			? $variation['attribute_labels']
+			: ( isset( $variation['attributes'] ) && is_array( $variation['attributes'] ) ? $variation['attributes'] : array() );
+
 		$attribute_parts = array();
-		if ( isset( $variation['attributes'] ) && is_array( $variation['attributes'] ) ) {
-			foreach ( $variation['attributes'] as $attribute_name => $attribute_value ) {
-				$label             = str_replace( array( 'attribute_pa_', 'attribute_' ), '', (string) $attribute_name );
-				$attribute_parts[] = $label . ': ' . (string) $attribute_value;
-			}
+		foreach ( $attribute_values as $attribute_name => $attribute_value ) {
+			$label             = str_replace( array( 'attribute_pa_', 'attribute_' ), '', (string) $attribute_name );
+			$attribute_parts[] = $label . ': ' . (string) $attribute_value;
 		}
 
 		return array(

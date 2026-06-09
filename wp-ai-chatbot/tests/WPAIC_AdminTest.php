@@ -6,8 +6,11 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-logs.php';
+require_once __DIR__ . '/../includes/class-wpaic-events.php';
+require_once __DIR__ . '/../includes/class-wpaic-tools.php';
 require_once __DIR__ . '/../includes/class-wpaic-search-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
+require_once __DIR__ . '/../includes/class-wpaic-system-prompt.php';
 require_once __DIR__ . '/../includes/class-wpaic-admin.php';
 
 class WPAIC_AdminTest extends TestCase {
@@ -56,6 +59,7 @@ class WPAIC_AdminTest extends TestCase {
 			'provider_url_configured'       => true,
 			'license_status_label'          => 'License required',
 			'has_valid_chat_license'        => false,
+			'can_render_chat'               => false,
 			'activation_url'                => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot',
 			'account_url'                   => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot-account',
 			'pricing_url'                   => 'https://example.com/wp-admin/admin.php?page=wp-ai-chatbot-pricing',
@@ -87,6 +91,10 @@ class WPAIC_AdminTest extends TestCase {
 
 			public function has_valid_chat_license(): bool {
 				return (bool) $this->config['has_valid_chat_license'];
+			}
+
+			public function can_render_chat(): bool {
+				return (bool) $this->config['can_render_chat'];
 			}
 
 			public function get_activation_url(): string {
@@ -615,6 +623,123 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertStringNotContainsString( '>User<', $output );
 		$this->assertStringContainsString( 'Chat Logs', $output );
 		$this->assertStringContainsString( 'No conversations found', $output );
+	}
+
+	public function test_render_logs_page_shows_insights_summary_cards(): void {
+		global $wpdb;
+		$wpdb = new MockWpdb();
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->create_conversation( 'insights-session' );
+		WPAIC_Events::record( $conversation_id, WPAIC_Events::PRODUCT_ADDED_TO_CART, array( 'id' => 5, 'name' => 'Mug' ) );
+		WPAIC_Events::record( $conversation_id, WPAIC_Events::CHECKOUT_STARTED );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_logs_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Conversations', $output );
+		$this->assertStringContainsString( 'Added to cart', $output );
+		$this->assertStringContainsString( 'Checkouts started', $output );
+		$this->assertStringContainsString( 'Handoffs', $output );
+		$this->assertStringContainsString( 'vs previous week', $output );
+	}
+
+	public function test_render_logs_page_outputs_filter_controls(): void {
+		global $wpdb;
+		$wpdb = new MockWpdb();
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_logs_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'name="s"', $output );
+		$this->assertStringContainsString( 'name="date_from"', $output );
+		$this->assertStringContainsString( 'name="date_to"', $output );
+	}
+
+	public function test_render_logs_page_shows_first_user_message_preview_instead_of_total_text(): void {
+		global $wpdb;
+		$wpdb = new MockWpdb();
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->create_conversation( 'preview-session' );
+		$logs->log_message( $conversation_id, 'user', str_repeat( 'a', 90 ) );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_logs_page();
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'Total Text', $output );
+		$this->assertStringContainsString( 'First message', $output );
+		$this->assertStringContainsString( str_repeat( 'a', 80 ) . '…', $output );
+		$this->assertStringNotContainsString( str_repeat( 'a', 81 ), $output );
+	}
+
+	public function test_render_logs_page_missed_searches_card_links_to_add_faq(): void {
+		global $wpdb;
+		$wpdb = new MockWpdb();
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		WPAIC_Events::record( 1, WPAIC_Events::SEARCH_PERFORMED, array( 'query' => 'vegan leather bag', 'result_count' => 0 ) );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_logs_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Missed searches', $output );
+		$this->assertStringContainsString( 'vegan leather bag', $output );
+		$this->assertStringContainsString( 'Add as FAQ', $output );
+		$this->assertStringContainsString( 'wpaic_faq_question', $output );
+	}
+
+	public function test_render_logs_page_hides_missed_searches_card_without_zero_result_searches(): void {
+		global $wpdb;
+		$wpdb = new MockWpdb();
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		WPAIC_Events::record( 1, WPAIC_Events::SEARCH_PERFORMED, array( 'query' => 'mug', 'result_count' => 3 ) );
+
+		$this->admin = new WPAIC_Admin();
+
+		ob_start();
+		$this->admin->render_logs_page();
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'Missed searches', $output );
+	}
+
+	public function test_knowledge_tab_prefills_faq_question_from_query_param(): void {
+		global $wpdb;
+		$wpdb = new MockWpdb();
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		$_GET['tab']                = 'knowledge';
+		$_GET['wpaic_faq_question'] = 'vegan leather bag';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( "Q: vegan leather bag\nA: ", $output );
+
+		unset( $_GET['tab'], $_GET['wpaic_faq_question'] );
 	}
 
 	public function test_all_settings_fields_have_correct_names(): void {
@@ -1498,6 +1623,454 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 		$this->assertStringContainsString( 'wpaic_settings[conversation_starters][]', $output );
 		$this->assertStringContainsString( 'Find a product', $output );
 		$this->assertStringContainsString( 'Track my order', $output );
+		unset( $_GET['tab'] );
+	}
+
+	// --- Transcript items (messages + event chips) tests (P1-14) ---
+
+	private function reset_mock_wpdb(): void {
+		global $wpdb;
+		if ( ! $wpdb instanceof MockWpdb ) {
+			$wpdb = new MockWpdb();
+		}
+		$wpdb->reset();
+	}
+
+	public function test_ajax_get_conversation_merges_messages_and_event_chips(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->create_conversation( 'merged-session' );
+		$logs->log_message( $conversation_id, 'user', 'Show me mugs' );
+		WPAIC_Events::record(
+			$conversation_id,
+			WPAIC_Events::PRODUCTS_SHOWN,
+			array(
+				'ids'   => array( 1, 2 ),
+				'names' => array( 'Mug A', 'Mug B' ),
+			)
+		);
+		$logs->log_message( $conversation_id, 'assistant', 'Here are some mugs.' );
+
+		$_POST['conversation_id'] = (string) $conversation_id;
+
+		try {
+			$this->admin->ajax_get_conversation();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $response ) {
+			$this->assertTrue( $response->success );
+			$items = $response->data;
+
+			$this->assertCount( 3, $items );
+			$this->assertEquals( 'message', $items[0]['type'] );
+			$this->assertEquals( 'user', $items[0]['role'] );
+			$this->assertEquals( 'event', $items[1]['type'] );
+			$this->assertStringContainsString( 'Mug A, Mug B', $items[1]['label'] );
+			$this->assertEquals( 'message', $items[2]['type'] );
+			$this->assertEquals( 'assistant', $items[2]['role'] );
+		} finally {
+			unset( $_POST['conversation_id'] );
+		}
+	}
+
+	public function test_ajax_get_support_transcript_includes_linked_conversation(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->create_conversation( 'handoff-session' );
+		$logs->log_message( $conversation_id, 'user', 'I need a human' );
+		$logs->log_message( $conversation_id, 'assistant', 'Connecting you now.' );
+
+		$tools  = new WPAIC_Tools();
+		$result = $tools->create_handoff_request(
+			array(
+				'customer_name'        => 'Jane Doe',
+				'customer_email'       => 'jane@example.com',
+				'conversation_summary' => 'Customer needs help',
+				'conversation_id'      => $conversation_id,
+			)
+		);
+
+		$_POST['request_id'] = (string) $result['request_id'];
+
+		try {
+			$this->admin->ajax_get_support_transcript();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $response ) {
+			$this->assertTrue( $response->success );
+			$this->assertArrayHasKey( 'conversation', $response->data );
+			$conversation = $response->data['conversation'];
+
+			$this->assertCount( 2, $conversation );
+			$this->assertEquals( 'I need a human', $conversation[0]['content'] );
+			$this->assertEquals( 'Connecting you now.', $conversation[1]['content'] );
+		} finally {
+			unset( $_POST['request_id'] );
+		}
+	}
+
+	public function test_ajax_get_support_transcript_omits_conversation_when_not_linked(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$tools  = new WPAIC_Tools();
+		$result = $tools->create_handoff_request(
+			array(
+				'customer_name'        => 'Jane Doe',
+				'customer_email'       => 'jane@example.com',
+				'conversation_summary' => 'User: hi',
+			)
+		);
+
+		$_POST['request_id'] = (string) $result['request_id'];
+
+		try {
+			$this->admin->ajax_get_support_transcript();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $response ) {
+			$this->assertTrue( $response->success );
+			$this->assertArrayNotHasKey( 'conversation', $response->data );
+			$this->assertEquals( 'User: hi', $response->data['transcript'] );
+		} finally {
+			unset( $_POST['request_id'] );
+		}
+	}
+
+	// ---- Header status pill (P1-22b) ----
+
+	public function test_header_pill_shows_live_when_enabled_and_chat_can_render(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => true ) );
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub( array( 'can_render_chat' => true ) ) );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Live on site', $output );
+		$this->assertStringNotContainsString( 'Hidden —', $output );
+	}
+
+	public function test_header_pill_shows_hidden_reason_when_enabled_but_license_gate_blocks(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => true ) );
+
+		$this->admin = new WPAIC_Admin(
+			$this->create_license_manager_stub(
+				array(
+					'can_render_chat'        => false,
+					'has_valid_chat_license' => false,
+				)
+			)
+		);
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Hidden — license required', $output );
+		$this->assertStringNotContainsString( 'Live on site', $output );
+	}
+
+	public function test_header_pill_shows_paused_when_disabled(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => false ) );
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub( array( 'can_render_chat' => true ) ) );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Paused', $output );
+		$this->assertStringNotContainsString( 'Live on site', $output );
+	}
+
+	// ---- Onboarding checklist (P1-22a) ----
+
+	public function test_general_tab_renders_onboarding_checklist(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => true ) );
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub() );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'id="wpaic-onboarding"', $output );
+		$this->assertStringContainsString( 'Start your trial or activate your license', $output );
+		$this->assertStringContainsString( 'Name and brand your chatbot', $output );
+		$this->assertStringContainsString( 'Add knowledge', $output );
+		$this->assertStringContainsString( 'Open your store and try it', $output );
+		$this->assertStringContainsString( 'id="wpaic-onboarding-dismiss"', $output );
+	}
+
+	public function test_onboarding_checklist_hidden_when_dismissed(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => true ) );
+		WPAICTestHelper::set_option( 'wpaic_onboarding', array( 'dismissed' => true ) );
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub() );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'id="wpaic-onboarding"', $output );
+	}
+
+	public function test_onboarding_license_step_done_when_chat_can_render(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => true ) );
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub( array( 'can_render_chat' => true ) ) );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'data-onboarding-step="1" data-onboarding-done="1"', $output );
+	}
+
+	public function test_onboarding_license_step_pending_when_chat_cannot_render(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => true ) );
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub( array( 'can_render_chat' => false ) ) );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'data-onboarding-step="1" data-onboarding-done="0"', $output );
+	}
+
+	public function test_onboarding_brand_step_done_when_chatbot_named(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'enabled'      => true,
+				'chatbot_name' => 'Astra',
+			)
+		);
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub() );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'data-onboarding-step="2" data-onboarding-done="1"', $output );
+	}
+
+	public function test_onboarding_knowledge_step_done_when_faqs_exist(): void {
+		$this->reset_mock_wpdb();
+		global $wpdb;
+		$wpdb->insert(
+			'wp_wpaic_faqs',
+			array(
+				'question' => 'What is your return policy?',
+				'answer'   => '30 days.',
+			)
+		);
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => true ) );
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub() );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'data-onboarding-step="3" data-onboarding-done="1"', $output );
+	}
+
+	public function test_onboarding_try_it_step_done_when_persisted(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'enabled' => true ) );
+		WPAICTestHelper::set_option( 'wpaic_onboarding', array( 'steps' => array( 'try_it' ) ) );
+
+		$this->admin = new WPAIC_Admin( $this->create_license_manager_stub() );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'data-onboarding-step="4" data-onboarding-done="1"', $output );
+	}
+
+	public function test_ajax_update_onboarding_persists_dismissal(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		$_POST['dismissed'] = '1';
+
+		try {
+			$this->admin->ajax_update_onboarding();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $response ) {
+			$this->assertTrue( $response->success );
+		} finally {
+			unset( $_POST['dismissed'] );
+		}
+
+		$onboarding = get_option( 'wpaic_onboarding' );
+		$this->assertTrue( $onboarding['dismissed'] );
+	}
+
+	public function test_ajax_update_onboarding_persists_try_it_step(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		$_POST['step'] = 'try_it';
+
+		try {
+			$this->admin->ajax_update_onboarding();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $response ) {
+			$this->assertTrue( $response->success );
+		} finally {
+			unset( $_POST['step'] );
+		}
+
+		$onboarding = get_option( 'wpaic_onboarding' );
+		$this->assertContains( 'try_it', $onboarding['steps'] );
+		$this->assertArrayNotHasKey( 'dismissed', $onboarding );
+	}
+
+	public function test_ajax_update_onboarding_ignores_unknown_step(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		$_POST['step'] = 'bogus_step';
+
+		try {
+			$this->admin->ajax_update_onboarding();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $response ) {
+			$this->assertTrue( $response->success );
+		} finally {
+			unset( $_POST['step'] );
+		}
+
+		$onboarding = get_option( 'wpaic_onboarding' );
+		$this->assertArrayNotHasKey( 'steps', $onboarding );
+	}
+
+	public function test_ajax_update_onboarding_requires_permission(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', false );
+		$_POST['dismissed'] = '1';
+
+		try {
+			$this->admin->ajax_update_onboarding();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $response ) {
+			$this->assertFalse( $response->success );
+		} finally {
+			unset( $_POST['dismissed'] );
+		}
+
+		$this->assertFalse( get_option( 'wpaic_onboarding', false ) );
+	}
+
+	// ---- Activation redirect (P1-22a) ----
+
+	public function test_maybe_redirect_after_activation_redirects_and_clears_transient(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		set_transient( 'wpaic_activation_redirect', true, 60 );
+
+		try {
+			$this->admin->maybe_redirect_after_activation();
+			$this->fail( 'Expected WPAICRedirectException' );
+		} catch ( WPAICRedirectException $redirect ) {
+			$this->assertStringContainsString( 'page=wp-ai-chatbot', $redirect->location );
+		}
+
+		$this->assertFalse( get_transient( 'wpaic_activation_redirect' ) );
+	}
+
+	public function test_maybe_redirect_after_activation_noop_without_transient(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$this->admin->maybe_redirect_after_activation();
+
+		$this->assertFalse( get_transient( 'wpaic_activation_redirect' ) );
+	}
+
+	public function test_maybe_redirect_after_activation_skips_bulk_activation(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		set_transient( 'wpaic_activation_redirect', true, 60 );
+		$_GET['activate-multi'] = '1';
+
+		try {
+			$this->admin->maybe_redirect_after_activation();
+		} finally {
+			unset( $_GET['activate-multi'] );
+		}
+
+		// Transient consumed but no redirect thrown.
+		$this->assertFalse( get_transient( 'wpaic_activation_redirect' ) );
+	}
+
+	// ---- FAQ prompt-cap note on Knowledge tab (P0-6 leftover) ----
+
+	public function test_knowledge_tab_warns_when_faq_pairs_exceed_prompt_cap(): void {
+		$this->reset_mock_wpdb();
+		global $wpdb;
+		for ( $i = 1; $i <= 31; $i++ ) {
+			$wpdb->insert(
+				'wp_wpaic_faqs',
+				array(
+					'question' => "Question {$i}?",
+					'answer'   => "Answer {$i}.",
+				)
+			);
+		}
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		$_GET['tab'] = 'knowledge';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'Using 30 of 31', $output );
+		$this->assertStringContainsString( 'only the first 30 FAQ pairs are included in answers', $output );
+		$this->assertStringContainsString( '31 pairs', $output );
+
+		unset( $_GET['tab'] );
+	}
+
+	public function test_knowledge_tab_shows_count_without_warning_at_or_below_cap(): void {
+		$this->reset_mock_wpdb();
+		global $wpdb;
+		$wpdb->insert(
+			'wp_wpaic_faqs',
+			array(
+				'question' => 'Do you ship internationally?',
+				'answer'   => 'Yes.',
+			)
+		);
+
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		$_GET['tab'] = 'knowledge';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( '1 pair', $output );
+		$this->assertStringNotContainsString( 'only the first 30 FAQ pairs', $output );
+
 		unset( $_GET['tab'] );
 	}
 }

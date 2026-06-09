@@ -123,6 +123,13 @@ if (!function_exists('wc_attribute_label')) {
     }
 }
 
+if (!function_exists('wc_get_product_ids_on_sale')) {
+    /** @return array<int> */
+    function wc_get_product_ids_on_sale(): array {
+        return [];
+    }
+}
+
 if (!class_exists('WC_Product')) {
     class WC_Product {
         public function is_purchasable(): bool {
@@ -154,6 +161,31 @@ if (!class_exists('WC_Product')) {
         }
         public function is_type(string $type): bool {
             return false;
+        }
+        /** @return array<string, WC_Product_Attribute|string> */
+        public function get_attributes(): array {
+            return [];
+        }
+        public function get_attribute(string $attribute): string {
+            return '';
+        }
+        public function get_weight(): string {
+            return '';
+        }
+        /** @return ($formatted is true ? string : array<string, string>) */
+        public function get_dimensions(bool $formatted = true) {
+            return $formatted ? '' : [];
+        }
+        public function get_price(): string {
+            return '';
+        }
+        /** @return array<int, int> */
+        public function get_cross_sell_ids(): array {
+            return [];
+        }
+        /** @return array<int, int> */
+        public function get_upsell_ids(): array {
+            return [];
         }
     }
 }
@@ -382,6 +414,9 @@ if (!class_exists('WC_Product_Simple')) {
 
 if (!class_exists('WC_Product_Attribute')) {
     class WC_Product_Attribute {
+        public function get_name(): string {
+            return '';
+        }
         public function set_name(string $name): void {}
         /** @param array<int, string> $options */
         public function set_options(array $options): void {}
