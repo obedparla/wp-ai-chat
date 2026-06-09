@@ -36,6 +36,44 @@ export function hasCartUpdateError(response: CartUpdateResponse): boolean {
   return response.error === true || response.success === false
 }
 
+export interface AddToCartRequest {
+  productId: number
+  variationId?: number
+  quantity?: number
+}
+
+export async function requestAddToCart(
+  params: AddToCartRequest,
+  wcAjaxUrl: string
+): Promise<CartUpdateResponse> {
+  const search = new URLSearchParams({
+    action: 'woocommerce_ajax_add_to_cart',
+    product_id: String(params.productId),
+    quantity: String(params.quantity && params.quantity > 0 ? params.quantity : 1),
+  })
+
+  if (params.variationId && params.variationId > 0) {
+    search.set('variation_id', String(params.variationId))
+  }
+
+  const response = await fetch(`${wcAjaxUrl}?${search.toString()}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Add to cart failed with status ${response.status}`)
+  }
+
+  const data = (await response.json()) as CartUpdateResponse
+
+  if (hasCartUpdateError(data)) {
+    throw new Error('Add to cart was rejected')
+  }
+
+  return data
+}
+
 export function applyCartUpdate(response: CartUpdateResponse): void {
   const fragments = response.fragments ?? {}
 

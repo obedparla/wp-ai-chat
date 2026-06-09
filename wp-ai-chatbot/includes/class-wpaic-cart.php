@@ -19,12 +19,15 @@ class WPAIC_Cart {
 		$product_id = isset( $_REQUEST['product_id'] ) ? absint( $_REQUEST['product_id'] ) : 0;
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public AJAX for add to cart
 		$quantity = isset( $_REQUEST['quantity'] ) ? absint( $_REQUEST['quantity'] ) : 1;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public AJAX for add to cart
+		$variation_id = isset( $_REQUEST['variation_id'] ) ? absint( $_REQUEST['variation_id'] ) : 0;
 
 		if ( $product_id <= 0 ) {
 			wp_send_json_error( array( 'message' => 'Invalid product ID' ) );
 		}
 
-		$product = wc_get_product( $product_id );
+		// For a variable product, validate and add the chosen variation, not the parent.
+		$product = wc_get_product( $variation_id > 0 ? $variation_id : $product_id );
 
 		if ( ! $product ) {
 			wp_send_json_error( array( 'message' => 'Product not found' ) );
@@ -38,7 +41,7 @@ class WPAIC_Cart {
 			wp_send_json_error( array( 'message' => 'Product is out of stock' ) );
 		}
 
-		$cart_item_key = WC()->cart->add_to_cart( $product_id, $quantity );
+		$cart_item_key = WC()->cart->add_to_cart( $product_id, $quantity, $variation_id, $this->get_request_variation_attributes() );
 
 		if ( $cart_item_key ) {
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- WooCommerce standard hook
@@ -57,6 +60,22 @@ class WPAIC_Cart {
 		} else {
 			wp_send_json_error( array( 'message' => 'Failed to add product to cart' ) );
 		}
+	}
+
+	/**
+	 * Collect attribute_* variation selections from the request.
+	 *
+	 * @return array<string, string>
+	 */
+	private function get_request_variation_attributes(): array {
+		$attributes = array();
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public AJAX for add to cart
+		foreach ( $_REQUEST as $key => $value ) {
+			if ( is_string( $key ) && str_starts_with( $key, 'attribute_' ) && is_string( $value ) ) {
+				$attributes[ sanitize_key( $key ) ] = sanitize_text_field( wp_unslash( $value ) );
+			}
+		}
+		return $attributes;
 	}
 
 	/**

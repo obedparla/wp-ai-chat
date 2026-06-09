@@ -317,7 +317,7 @@ class WPAIC_API {
 	 * @return WP_REST_Response
 	 */
 	public function get_products( WP_REST_Request $request ): WP_REST_Response {
-		$tools    = new WPAIC_Tools();
+		$tools    = new WPAIC_Product_Tools();
 		$search   = $request->get_param( 'search' );
 		$category = $request->get_param( 'category' );
 		$limit    = $request->get_param( 'limit' ) ?? 10;

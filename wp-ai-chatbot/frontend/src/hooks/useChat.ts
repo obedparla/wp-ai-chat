@@ -5,6 +5,14 @@ import { DefaultChatTransport, UIMessage } from 'ai'
 import { Product } from '../components/ProductCard'
 import { ComparisonData, ComparisonProduct } from '../components/ComparisonTable'
 import { CheckoutAction } from '../components/CheckoutButton'
+import { isProductTool } from './tools'
+
+export interface AddToCartIntent {
+  toolCallId: string
+  productId: number
+  variationId?: number
+  quantity: number
+}
 
 export interface Message {
   role: 'user' | 'assistant'
@@ -14,6 +22,7 @@ export interface Message {
   products?: Product[]
   comparison?: ComparisonData
   checkoutAction?: CheckoutAction
+  addToCartIntents?: AddToCartIntent[]
   createdAt?: number
 }
 
@@ -164,12 +173,7 @@ function extractProductsFromMessage(uiMessage: UIMessage): Product[] {
   for (const part of uiMessage.parts) {
     if (part.type === 'dynamic-tool') {
       const toolPart = part as DynamicToolPart
-      if (
-        toolPart.state === 'output-available' &&
-        (toolPart.toolName === 'search_products' ||
-          toolPart.toolName === 'get_product_details' ||
-          toolPart.toolName === 'get_popular_products')
-      ) {
+      if (toolPart.state === 'output-available' && isProductTool(toolPart.toolName)) {
         const output = toolPart.output
         if (Array.isArray(output)) {
           for (const item of output) {
@@ -206,15 +210,42 @@ function extractCheckoutActionFromMessage(uiMessage: UIMessage): CheckoutAction 
     if (!output || typeof output !== 'object') continue
     const checkoutUrl = typeof output.checkout_url === 'string' ? output.checkout_url : ''
     const cartUrl = typeof output.cart_url === 'string' ? output.cart_url : ''
-    if (!checkoutUrl && !cartUrl) continue
+    if ((!checkoutUrl && !cartUrl) || !output.has_cart) continue
     return {
       checkout_url: checkoutUrl,
       cart_url: cartUrl,
-      has_cart: Boolean(output.has_cart),
+      has_cart: true,
       item_count: typeof output.item_count === 'number' ? output.item_count : 0,
     }
   }
   return undefined
+}
+
+function extractAddToCartIntents(uiMessage: UIMessage): AddToCartIntent[] {
+  const intents: AddToCartIntent[] = []
+
+  for (const part of uiMessage.parts) {
+    if (part.type !== 'dynamic-tool') continue
+    const toolPart = part as DynamicToolPart
+    if (toolPart.state !== 'output-available' || toolPart.toolName !== 'add_to_cart') continue
+
+    const output = toolPart.output as
+      | { success?: boolean; product_id?: number; variation_id?: number; quantity?: number }
+      | undefined
+    if (!output || output.success !== true || typeof output.product_id !== 'number') continue
+
+    const intent: AddToCartIntent = {
+      toolCallId: toolPart.toolCallId,
+      productId: output.product_id,
+      quantity: typeof output.quantity === 'number' && output.quantity > 0 ? output.quantity : 1,
+    }
+    if (typeof output.variation_id === 'number' && output.variation_id > 0) {
+      intent.variationId = output.variation_id
+    }
+    intents.push(intent)
+  }
+
+  return intents
 }
 
 function extractComparisonFromMessage(uiMessage: UIMessage): ComparisonData | undefined {
@@ -423,6 +454,7 @@ export function useChat() {
       const products = msg.role === 'assistant' ? extractProductsFromMessage(msg) : undefined
       const comparison = msg.role === 'assistant' ? extractComparisonFromMessage(msg) : undefined
       const checkoutAction = msg.role === 'assistant' ? extractCheckoutActionFromMessage(msg) : undefined
+      const addToCartIntents = msg.role === 'assistant' ? extractAddToCartIntents(msg) : undefined
       return {
         role: msg.role as 'user' | 'assistant',
         content: extractTextContent(msg),
@@ -431,6 +463,7 @@ export function useChat() {
         products: products && products.length > 0 ? products : undefined,
         comparison,
         checkoutAction,
+        addToCartIntents: addToCartIntents && addToCartIntents.length > 0 ? addToCartIntents : undefined,
         createdAt: msg.id ? timestamps[msg.id] : undefined,
       }
     })

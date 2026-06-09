@@ -134,8 +134,49 @@ class WPAIC_CartTest extends TestCase {
 		}
 	}
 
+	public function test_ajax_add_to_cart_validates_variation_stock(): void {
+		global $mock_wc_products, $mock_wc;
+		$mock_wc               = new MockWooCommerce();
+		$mock_wc_products[10]  = new MockWCProduct( 10, true, true, 'variable' );
+		$mock_wc_products[101] = new MockWCProduct( 101, true, false, 'variation', 10 );
+
+		$_REQUEST['product_id']   = 10;
+		$_REQUEST['variation_id'] = 101;
+		$_REQUEST['quantity']     = 1;
+
+		try {
+			$this->cart->ajax_add_to_cart();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertFalse( $e->success );
+			$this->assertEquals( 'Product is out of stock', $e->data['message'] );
+		}
+	}
+
+	public function test_ajax_add_to_cart_adds_selected_variation(): void {
+		global $mock_wc_products, $mock_wc;
+		$mock_wc               = new MockWooCommerce();
+		$mock_wc_products[10]  = new MockWCProduct( 10, true, true, 'variable' );
+		$mock_wc_products[101] = new MockWCProduct( 101, true, true, 'variation', 10 );
+
+		$_REQUEST['product_id']   = 10;
+		$_REQUEST['variation_id'] = 101;
+		$_REQUEST['quantity']     = 1;
+
+		try {
+			$this->cart->ajax_add_to_cart();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertTrue( $e->success );
+			$this->assertEquals( 1, $e->data['cart_count'] );
+			$cart_items = $mock_wc->get_persisted_cart()->get_cart();
+			$item       = array_values( $cart_items )[0];
+			$this->assertEquals( 101, $item['variation_id'] );
+		}
+	}
+
 	protected function tearDown(): void {
 		parent::tearDown();
-		unset( $_REQUEST['product_id'], $_REQUEST['quantity'] );
+		unset( $_REQUEST['product_id'], $_REQUEST['quantity'], $_REQUEST['variation_id'] );
 	}
 }

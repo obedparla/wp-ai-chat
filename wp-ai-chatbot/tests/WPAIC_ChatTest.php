@@ -6,8 +6,10 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-tools.php';
+require_once __DIR__ . '/../includes/class-wpaic-product-tools.php';
 require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-page-context.php';
+require_once __DIR__ . '/../includes/class-wpaic-system-prompt.php';
 require_once __DIR__ . '/../includes/class-wpaic-chat.php';
 
 class WPAIC_ChatTest extends TestCase {
@@ -117,10 +119,11 @@ class WPAIC_ChatTest extends TestCase {
 
 		$tools = $method->invoke( $chat );
 
-		$this->assertCount( 11, $tools );
+		$this->assertCount( 12, $tools );
 
 		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
 		$this->assertContains( 'search_products', $tool_names );
+		$this->assertContains( 'add_to_cart', $tool_names );
 		$this->assertContains( 'get_popular_products', $tool_names );
 		$this->assertContains( 'get_product_details', $tool_names );
 		$this->assertContains( 'get_categories', $tool_names );
@@ -1156,7 +1159,7 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'offer to help them find something to add first', $prompt );
 	}
 
-	public function test_system_prompt_instructs_add_to_cart_via_card_button(): void {
+	public function test_system_prompt_instructs_add_to_cart_via_tool(): void {
 		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
@@ -1174,9 +1177,10 @@ class WPAIC_ChatTest extends TestCase {
 		$prompt = $method->invoke( $chat );
 
 		$this->assertStringContainsString( 'ADD-TO-CART INTENT', $prompt );
-		$this->assertStringContainsString( 'do NOT say you are unable to add items', $prompt );
-		$this->assertStringContainsString( 'tap the ADD button on the product card', $prompt );
-		$this->assertStringContainsString( 'Do NOT type out any add-to-cart or cart URL', $prompt );
+		$this->assertStringContainsString( 'use the add_to_cart tool', $prompt );
+		$this->assertStringContainsString( 'you MUST pass the chosen variation_id', $prompt );
+		$this->assertStringContainsString( 'do NOT guess and do NOT call add_to_cart', $prompt );
+		$this->assertStringContainsString( 'never type out any add-to-cart or cart URL', $prompt );
 	}
 
 	public function test_system_prompt_preserves_strict_shipping_grounding(): void {
@@ -2297,22 +2301,19 @@ class WPAIC_ChatTest extends TestCase {
 	}
 
 	public function test_handoff_instruction_includes_selected_optional_fields(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'openai_api_key'  => '',
-				'model'           => 'gpt-5-mini',
-				'handoff_enabled' => true,
-				'handoff_fields'  => array( 'phone_number', 'request_message' ),
-			)
+		$settings = array(
+			'openai_api_key'  => '',
+			'model'           => 'gpt-5-mini',
+			'handoff_enabled' => true,
+			'handoff_fields'  => array( 'phone_number', 'request_message' ),
 		);
 
-		$chat       = new WPAIC_Chat();
-		$reflection = new ReflectionClass( $chat );
-		$method     = $reflection->getMethod( 'get_handoff_instruction' );
+		$system_prompt = new WPAIC_System_Prompt( $settings );
+		$reflection    = new ReflectionClass( $system_prompt );
+		$method        = $reflection->getMethod( 'get_handoff_instruction' );
 		$method->setAccessible( true );
 
-		$instruction = $method->invoke( $chat );
+		$instruction = $method->invoke( $system_prompt );
 
 		$this->assertStringContainsString( 'phone number', $instruction );
 		$this->assertStringContainsString( 'describing their issue', $instruction );
@@ -2321,22 +2322,19 @@ class WPAIC_ChatTest extends TestCase {
 	}
 
 	public function test_handoff_instruction_only_name_email_when_no_optional_fields(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'openai_api_key'  => '',
-				'model'           => 'gpt-5-mini',
-				'handoff_enabled' => true,
-				'handoff_fields'  => array(),
-			)
+		$settings = array(
+			'openai_api_key'  => '',
+			'model'           => 'gpt-5-mini',
+			'handoff_enabled' => true,
+			'handoff_fields'  => array(),
 		);
 
-		$chat       = new WPAIC_Chat();
-		$reflection = new ReflectionClass( $chat );
-		$method     = $reflection->getMethod( 'get_handoff_instruction' );
+		$system_prompt = new WPAIC_System_Prompt( $settings );
+		$reflection    = new ReflectionClass( $system_prompt );
+		$method        = $reflection->getMethod( 'get_handoff_instruction' );
 		$method->setAccessible( true );
 
-		$instruction = $method->invoke( $chat );
+		$instruction = $method->invoke( $system_prompt );
 
 		$this->assertStringContainsString( 'name', $instruction );
 		$this->assertStringContainsString( 'email', $instruction );

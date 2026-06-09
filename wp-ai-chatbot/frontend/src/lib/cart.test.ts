@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { applyCartUpdate, hasCartUpdateError } from './cart'
+import { applyCartUpdate, hasCartUpdateError, requestAddToCart } from './cart'
 
 describe('cart helpers', () => {
   afterEach(() => {
@@ -43,5 +43,60 @@ describe('cart helpers', () => {
     expect(hasCartUpdateError({ success: false })).toBe(true)
     expect(hasCartUpdateError({ error: true })).toBe(true)
     expect(hasCartUpdateError({ success: true })).toBe(false)
+  })
+})
+
+describe('requestAddToCart', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('posts product_id and quantity to the WooCommerce AJAX endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, fragments: {} }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const data = await requestAddToCart({ productId: 7, quantity: 2 }, 'https://shop.test/admin-ajax.php')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('action=woocommerce_ajax_add_to_cart')
+    expect(url).toContain('product_id=7')
+    expect(url).toContain('quantity=2')
+    expect(url).not.toContain('variation_id')
+    expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin' })
+    expect(data).toEqual({ success: true, fragments: {} })
+  })
+
+  it('includes variation_id when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestAddToCart({ productId: 7, variationId: 42 }, 'https://shop.test/admin-ajax.php')
+
+    expect(fetchMock.mock.calls[0][0]).toContain('variation_id=42')
+  })
+
+  it('throws when the HTTP response is not ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }))
+
+    await expect(
+      requestAddToCart({ productId: 7 }, 'https://shop.test/admin-ajax.php')
+    ).rejects.toThrow()
+  })
+
+  it('throws when WooCommerce returns an error payload', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: false }) })
+    )
+
+    await expect(
+      requestAddToCart({ productId: 7 }, 'https://shop.test/admin-ajax.php')
+    ).rejects.toThrow()
   })
 })

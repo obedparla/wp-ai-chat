@@ -363,12 +363,80 @@ class WPAICTestHelper {
 			}
 		}
 
-		$limit = $query_args['posts_per_page'] ?? 10;
 		$posts = array_values( $posts );
+
+		if ( isset( $query_args['orderby'] ) ) {
+			$posts = self::apply_orderby( $posts, $query_args );
+		}
+
+		$limit = $query_args['posts_per_page'] ?? 10;
 		if ( -1 === $limit ) {
 			return $posts;
 		}
 		return array_slice( $posts, 0, $limit );
+	}
+
+	/**
+	 * Honor a recognized `orderby` on already-filtered posts. Only the forms the
+	 * plugin actually uses are supported; anything else preserves insertion order.
+	 *
+	 * Supported:
+	 *  - 'post__in'                          → preserve the `post__in` array order
+	 *  - array( '<clause>' => 'ASC'|'DESC' ) → sort by that meta_query clause's numeric meta value
+	 *  - 'date'                              → sort by post_date
+	 *
+	 * @param array<int, WP_Post> $posts
+	 * @param array<string, mixed> $query_args
+	 * @return array<int, WP_Post>
+	 */
+	private static function apply_orderby( array $posts, array $query_args ): array {
+		$orderby = $query_args['orderby'];
+
+		if ( 'post__in' === $orderby ) {
+			$order = array();
+			foreach ( (array) ( $query_args['post__in'] ?? array() ) as $position => $id ) {
+				$order[ (int) $id ] = $position;
+			}
+			usort(
+				$posts,
+				fn( $a, $b ) => ( $order[ $a->ID ] ?? PHP_INT_MAX ) <=> ( $order[ $b->ID ] ?? PHP_INT_MAX )
+			);
+			return $posts;
+		}
+
+		if ( is_array( $orderby ) ) {
+			$clause     = array_key_first( $orderby );
+			$direction  = strtoupper( (string) $orderby[ $clause ] );
+			$meta_query = $query_args['meta_query'] ?? array();
+			$meta_key   = is_array( $meta_query ) && isset( $meta_query[ $clause ]['key'] ) ? $meta_query[ $clause ]['key'] : null;
+			if ( null === $meta_key ) {
+				return $posts;
+			}
+			usort(
+				$posts,
+				function ( $a, $b ) use ( $meta_key, $direction ) {
+					$av = (float) self::get_post_meta( $a->ID, $meta_key, true );
+					$bv = (float) self::get_post_meta( $b->ID, $meta_key, true );
+					return 'ASC' === $direction ? $av <=> $bv : $bv <=> $av;
+				}
+			);
+			return $posts;
+		}
+
+		if ( 'date' === $orderby ) {
+			$direction = strtoupper( (string) ( $query_args['order'] ?? 'DESC' ) );
+			usort(
+				$posts,
+				function ( $a, $b ) use ( $direction ) {
+					$av = $a->post_date ?? '';
+					$bv = $b->post_date ?? '';
+					return 'ASC' === $direction ? $av <=> $bv : $bv <=> $av;
+				}
+			);
+			return $posts;
+		}
+
+		return $posts;
 	}
 
 	/**
@@ -1734,16 +1802,22 @@ if ( ! class_exists( 'MockWCProduct' ) ) {
 		private string $type      = 'simple';
 		private string $external_url = '';
 		private string $button_text  = '';
+		private int $parent_id    = 0;
 
-		public function __construct( int $id, bool $purchasable = true, bool $in_stock = true, string $type = 'simple' ) {
+		public function __construct( int $id, bool $purchasable = true, bool $in_stock = true, string $type = 'simple', int $parent_id = 0 ) {
 			$this->id          = $id;
 			$this->purchasable = $purchasable;
 			$this->in_stock    = $in_stock;
 			$this->type        = $type;
+			$this->parent_id   = $parent_id;
 		}
 
 		public function get_id(): int {
 			return $this->id;
+		}
+
+		public function get_parent_id(): int {
+			return $this->parent_id;
 		}
 
 		public function is_purchasable(): bool {
@@ -1811,14 +1885,18 @@ if ( ! class_exists( 'MockWCCart' ) ) {
 		/**
 		 * @param int $product_id
 		 * @param int $quantity
+		 * @param int $variation_id
+		 * @param array<string, string> $variation
 		 * @return string|false
 		 */
-		public function add_to_cart( int $product_id, int $quantity = 1 ): string|false {
-			$key                = 'cart_item_' . $product_id;
+		public function add_to_cart( int $product_id, int $quantity = 1, int $variation_id = 0, array $variation = array() ): string|false {
+			$key                = 'cart_item_' . $product_id . ( $variation_id > 0 ? '_' . $variation_id : '' );
 			$this->cart[ $key ] = array(
-				'product_id' => $product_id,
-				'quantity'   => $quantity,
-				'data'       => wc_get_product( $product_id ),
+				'product_id'   => $product_id,
+				'variation_id' => $variation_id,
+				'variation'    => $variation,
+				'quantity'     => $quantity,
+				'data'         => wc_get_product( $variation_id > 0 ? $variation_id : $product_id ),
 			);
 			return $key;
 		}

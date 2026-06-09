@@ -68,6 +68,7 @@ WooCommerce:
 - `get_categories` — category list with product counts
 - `compare_products` — side-by-side comparison of 2–4 products
 - `get_cart_contents` — current cart items + totals
+- `add_to_cart` — add a product (or a specified variation) to the shopper's cart; validates stock/purchasability, asks for the variation when one is needed, and signals the widget to add it over WooCommerce AJAX
 - `get_checkout_action` — real checkout/cart URLs for the CTA button
 - `get_order_status` — order lookup by number + email, with tracking link if available
 - `get_shipping_info` — real shipping zones, methods, and costs from store config
@@ -87,7 +88,7 @@ Support:
 - Best-seller intent ("most popular", "top products", "what sells best") → popular products shown as cards (not a category list)
 - Budget-aware: passes price filters to search when the shopper states a budget
 - Cross-language search: translates the shopper's product keywords into the store's catalog language for tool calls while replying in the shopper's language (brand names/model numbers/SKUs kept verbatim)
-- Add-to-cart intent → re-shows the product and directs the shopper to tap the on-card ADD button
+- Add-to-cart intent → the bot adds the item to the cart via the `add_to_cart` tool; the widget fires it over WooCommerce AJAX and shows an "Added to cart" confirmation. For variable products it resolves the chosen variation from context or asks which option, never guessing
 - Empty-cart checkout intent → tells the shopper their cart is empty and offers help instead of rendering a checkout button
 - Pairs gift/category suggestions with actual product picks
 - Grounding rules: states only facts present in tool output; no invented specs/materials/shipping times
@@ -152,7 +153,6 @@ Licensing tab:
 
 Good ideas surfaced while improving conversational UX (2026-06-08), deferred to keep changes focused:
 
-- **Server-side add-to-cart tool** — let the bot add items conversationally (deferred: chat REST cart-session vs storefront cart sync, variable-product/variation selection, and frontend badge updates all need care).
 - **Keyword filter on `get_popular_products`** — support "most popular running shoes" by combining a search keyword with popularity ordering; today it takes only a category slug.
 - **In-stock-first best sellers** — optionally rank in-stock items ahead of sold-out top sellers.
 - **Multilingual search robustness** — auto-broaden / synonym-expand when a translated query returns nothing (e.g. "running shoes" → "shoes"/"sneakers"); and a configurable or data-detected catalog language instead of the `get_locale()` heuristic for multi-language stores.
