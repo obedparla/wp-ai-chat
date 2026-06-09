@@ -68,8 +68,9 @@ class WPAIC_Cart {
 	 * Remove items from the cart, or empty it entirely. Mirrors ajax_add_to_cart: the
 	 * actual cart mutation happens here (after the shopper confirmed in the chat UI),
 	 * then mini-cart fragments are returned so the page updates. Pass an `items` JSON
-	 * array of {id, qty} to remove qty units of each product (lines are reduced, only
-	 * fully removed when qty reaches the line total); omit `items` to clear everything.
+	 * array of {product_id, quantity} to remove that many units of each product (lines
+	 * are reduced, only fully removed when quantity reaches the line total); omit
+	 * `items` to clear everything.
 	 */
 	public function ajax_clear_cart(): void {
 		if ( ! wpaic_is_woocommerce_active() ) {
@@ -115,8 +116,8 @@ class WPAIC_Cart {
 	}
 
 	/**
-	 * Parse the `items` request param (JSON array of {id, qty}) into a map of
-	 * product_id => units to remove. Empty means clear the whole cart.
+	 * Parse the `items` request param (JSON array of {product_id, quantity}) into a map
+	 * of product_id => units to remove. Empty means clear the whole cart.
 	 *
 	 * @return array<int, int>
 	 */
@@ -137,8 +138,8 @@ class WPAIC_Cart {
 			if ( ! is_array( $entry ) ) {
 				continue;
 			}
-			$product_id = isset( $entry['id'] ) ? absint( $entry['id'] ) : 0;
-			$quantity   = isset( $entry['qty'] ) ? absint( $entry['qty'] ) : 0;
+			$product_id = isset( $entry['product_id'] ) ? absint( $entry['product_id'] ) : 0;
+			$quantity   = isset( $entry['quantity'] ) ? absint( $entry['quantity'] ) : 0;
 			if ( $product_id > 0 && $quantity > 0 ) {
 				$items[ $product_id ] = ( $items[ $product_id ] ?? 0 ) + $quantity;
 			}

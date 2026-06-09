@@ -42,7 +42,7 @@ Everything currently implemented.
 - Jump-to-latest pill appears when scrolled up in long conversations
 - Conversation starter pills on empty chat (custom or auto-generated)
 - New conversation button (with confirm), close (X), and Escape-to-close
-- Cart-mutating tools (add/clear/remove) confirm destructive actions via the same popup pattern as new-chat; clear/remove shows an inline result badge afterward
+- Clear/remove confirm via the same popup pattern as new-chat (add fires immediately, no confirm); clear/remove shows an inline result badge afterward
 - Human-readable tool progress labels for every tool ("Adding to cart…", "Updating your cart…", etc.) — never the raw tool name
 - Email transcript: send the full conversation to an email address from the widget
 - Debounced multi-message sending (batches rapid messages before sending)

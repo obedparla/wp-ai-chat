@@ -389,6 +389,10 @@ class WPAIC_Tools {
 	 * cart. Each returned item carries remove_quantity and remove_all so the UI can
 	 * describe exactly what will be removed and the AJAX call knows how much to take.
 	 *
+	 * Cart lines are keyed by product_id only: variations of the same product are
+	 * collapsed into one aggregate quantity, so a partial removal takes units from those
+	 * lines in cart order rather than targeting a specific variation.
+	 *
 	 * @param array<string, mixed> $args
 	 * @return array<string, mixed>
 	 */

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { Message, ActiveTool, ClearCartIntent } from '../hooks/useChat'
+import type { Message, ActiveTool } from '../hooks/useChat'
 import { useClearCart } from '../hooks/useClearCart'
 import ChatWidgetUI from './ChatWidgetUI'
 import SendTranscriptDialog from './SendTranscriptDialog'
@@ -26,35 +26,6 @@ interface ChatWidgetProps {
 
 function getToolProgressMessage(tool: ActiveTool): string {
   return TOOL_PROGRESS_LABELS[tool.toolName] ?? 'Working on it…'
-}
-
-function buildClearCartDialog(intent: ClearCartIntent): {
-  title: string
-  description: string
-  confirmLabel: string
-} {
-  if (intent.clearAll) {
-    const totalQuantity = intent.items.reduce((sum, item) => sum + item.removeQuantity, 0)
-    const itemsLabel =
-      totalQuantity > 0 ? `all ${totalQuantity} item${totalQuantity === 1 ? '' : 's'}` : 'everything'
-    return {
-      title: 'Clear your cart?',
-      description: `This removes ${itemsLabel} from your cart.`,
-      confirmLabel: 'Clear cart',
-    }
-  }
-
-  const names = intent.items
-    .map((item) => {
-      const name = item.name || 'item'
-      return item.removeAll ? name : `${item.removeQuantity} × ${name}`
-    })
-    .join(', ')
-  return {
-    title: intent.items.length === 1 ? 'Remove from cart?' : 'Remove items from cart?',
-    description: names ? `This removes ${names} from your cart.` : 'This removes the selected items from your cart.',
-    confirmLabel: 'Remove',
-  }
 }
 
 export default function ChatWidget({
@@ -198,19 +169,16 @@ export default function ChatWidget({
           onCancel={() => setShowNewConversationDialog(false)}
         />
       )}
-      {clearCart.pending && (() => {
-        const dialog = buildClearCartDialog(clearCart.pending)
-        return (
-          <ConfirmDialog
-            title={dialog.title}
-            description={dialog.description}
-            confirmLabel={dialog.confirmLabel}
-            onConfirm={clearCart.confirm}
-            onCancel={clearCart.cancel}
-            destructive
-          />
-        )
-      })()}
+      {clearCart.pendingDialog && (
+        <ConfirmDialog
+          title={clearCart.pendingDialog.title}
+          description={clearCart.pendingDialog.description}
+          confirmLabel={clearCart.pendingDialog.confirmLabel}
+          onConfirm={clearCart.confirm}
+          onCancel={clearCart.cancel}
+          destructive
+        />
+      )}
       <ChatWidgetUI
         messages={messages}
         chatbotName={chatbotName}

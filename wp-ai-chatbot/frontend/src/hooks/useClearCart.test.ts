@@ -100,6 +100,56 @@ describe('useClearCart', () => {
     expect(result.current.statuses['cc-4']).toBe('cleared')
   })
 
+  it('does not re-open the popup when a reload interrupts an in-flight clear', () => {
+    // A 'clearing' status must survive reload so a non-idempotent partial removal is
+    // never re-confirmed and applied twice.
+    sessionStorage.setItem('wpaic_clear_cart_status', JSON.stringify({ 'cc-6': 'clearing' }))
+
+    const { result } = renderHook(() => useClearCart([messageWithIntent('cc-6', false)]))
+
+    expect(result.current.pending).toBeNull()
+    expect(result.current.pendingDialog).toBeNull()
+    expect(result.current.statuses['cc-6']).toBe('clearing')
+  })
+
+  it('persists an in-flight clearing status (so it survives reload)', () => {
+    mockRequest.mockReturnValue(new Promise(() => {})) // never resolves
+    const { result } = renderHook(() => useClearCart([messageWithIntent('cc-7', true)]))
+
+    act(() => result.current.confirm())
+
+    expect(JSON.parse(sessionStorage.getItem('wpaic_clear_cart_status') as string)).toMatchObject({
+      'cc-7': 'clearing',
+    })
+  })
+
+  it('builds clear-all and partial dialog copy', () => {
+    const clearAll = renderHook(() =>
+      useClearCart([
+        messageWithIntent('d-1', true, [
+          { productId: 1, name: 'Water', removeQuantity: 2, removeAll: true },
+          { productId: 2, name: 'Soda', removeQuantity: 1, removeAll: true },
+        ]),
+      ])
+    )
+    expect(clearAll.result.current.pendingDialog).toMatchObject({
+      title: 'Clear your cart?',
+      description: 'This removes all 3 items from your cart.',
+      confirmLabel: 'Clear cart',
+    })
+
+    const partial = renderHook(() =>
+      useClearCart([
+        messageWithIntent('d-2', false, [{ productId: 1, name: 'Water', removeQuantity: 2, removeAll: false }]),
+      ])
+    )
+    expect(partial.result.current.pendingDialog).toMatchObject({
+      title: 'Remove from cart?',
+      description: 'This removes 2 × Water from your cart.',
+      confirmLabel: 'Remove',
+    })
+  })
+
   it('errors when no WooCommerce AJAX url is configured', () => {
     window.wpaicConfig = { apiUrl: '/x', nonce: 'n', greeting: 'hi' }
     const { result } = renderHook(() => useClearCart([messageWithIntent('cc-5', true)]))

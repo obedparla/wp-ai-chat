@@ -99,7 +99,10 @@ export async function requestClearCart(
   const search = new URLSearchParams({ action: 'wpaic_clear_cart' })
 
   if (items && items.length > 0) {
-    search.set('items', JSON.stringify(items.map((item) => ({ id: item.productId, qty: item.quantity }))))
+    search.set(
+      'items',
+      JSON.stringify(items.map((item) => ({ product_id: item.productId, quantity: item.quantity })))
+    )
   }
 
   const response = await fetch(`${wcAjaxUrl}?${search.toString()}`, {

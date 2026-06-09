@@ -6,6 +6,7 @@ import { Product } from '../components/ProductCard'
 import { ComparisonData, ComparisonProduct } from '../components/ComparisonTable'
 import { CheckoutAction } from '../components/CheckoutButton'
 import { isProductTool } from './tools'
+import { clearStoredClearCartStatuses } from './useClearCart'
 
 export interface AddToCartIntent {
   toolCallId: string
@@ -654,6 +655,7 @@ export function useChat() {
     stop()
     clearStoredMessages()
     clearStoredTimestamps()
+    clearStoredClearCartStatuses()
     timestampsRef.current = {}
     setTimestampsVersion((v) => v + 1)
     setPendingMessages([])

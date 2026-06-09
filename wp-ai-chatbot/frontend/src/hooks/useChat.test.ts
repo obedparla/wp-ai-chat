@@ -1193,5 +1193,17 @@ describe('useChat', () => {
 
       expect(sessionStorage.getItem('wpaic_chat_history')).toBeNull()
     })
+
+    it('startNewConversation clears stored clear-cart statuses', async () => {
+      sessionStorage.setItem('wpaic_clear_cart_status', JSON.stringify({ 'cc-1': 'cleared' }))
+
+      const { result } = renderHook(() => useChat())
+
+      act(() => {
+        result.current.startNewConversation()
+      })
+
+      expect(sessionStorage.getItem('wpaic_clear_cart_status')).toBeNull()
+    })
   })
 })

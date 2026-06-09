@@ -215,7 +215,7 @@ class WPAIC_CartTest extends TestCase {
 		$mock_wc->get_persisted_cart()->add_to_cart( 1, 1 );
 		$mock_wc->get_persisted_cart()->add_to_cart( 2, 2 );
 
-		$_REQUEST['items'] = wp_json_encode( array( array( 'id' => 2, 'qty' => 2 ) ) );
+		$_REQUEST['items'] = wp_json_encode( array( array( 'product_id' => 2, 'quantity' => 2 ) ) );
 
 		try {
 			$this->cart->ajax_clear_cart();
@@ -234,7 +234,7 @@ class WPAIC_CartTest extends TestCase {
 		$mock_wc             = new MockWooCommerce();
 		$mock_wc->get_persisted_cart()->add_to_cart( 1, 5 );
 
-		$_REQUEST['items'] = wp_json_encode( array( array( 'id' => 1, 'qty' => 2 ) ) );
+		$_REQUEST['items'] = wp_json_encode( array( array( 'product_id' => 1, 'quantity' => 2 ) ) );
 
 		try {
 			$this->cart->ajax_clear_cart();

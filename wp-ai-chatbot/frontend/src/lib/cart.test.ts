@@ -140,8 +140,8 @@ describe('requestClearCart', () => {
     const url = new URL(fetchMock.mock.calls[0][0] as string)
     const items = JSON.parse(url.searchParams.get('items') as string)
     expect(items).toEqual([
-      { id: 3, qty: 2 },
-      { id: 9, qty: 1 },
+      { product_id: 3, quantity: 2 },
+      { product_id: 9, quantity: 1 },
     ])
   })
 
