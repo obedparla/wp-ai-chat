@@ -483,6 +483,12 @@ class WPAIC_ToolsTest extends TestCase {
 
 		$this->assertFalse( $result['has_shipping_configured'] );
 		$this->assertArrayHasKey( 'message', $result );
+		// Message must stay shopper-safe (no "configured" dev-speak) and the hint
+		// must steer the model to the shipping policy page instead of a denial.
+		$this->assertStringNotContainsString( 'configured', $result['message'] );
+		$this->assertArrayHasKey( 'hint', $result );
+		$this->assertStringContainsString( 'search_site_content', $result['hint'] );
+		$this->assertStringContainsString( 'shipping policy page', $result['hint'] );
 	}
 
 	public function test_get_shipping_info_returns_zones_with_methods(): void {
@@ -626,6 +632,7 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertTrue( $result['has_shipping_configured'] );
 		$this->assertCount( 1, $result['zones'] );
 		$this->assertSame( 0, $result['zones'][0]['zone_id'] );
+		$this->assertSame( 'Everywhere else (all destinations not covered by the zones above)', $result['zones'][0]['zone_name'] );
 		$this->assertSame( 'International flat rate', $result['zones'][0]['methods'][0]['title'] );
 	}
 
@@ -651,6 +658,31 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertArrayHasKey( 'notes', $result );
 		$this->assertNotEmpty( $result['notes'] );
 		$this->assertStringContainsString( 'processing time', $result['notes'][0] );
+	}
+
+	public function test_get_shipping_info_notes_redirect_uncovered_destinations_to_policy_page(): void {
+		WPAICTestHelper::set_option(
+			'test_shipping_zones',
+			array(
+				array(
+					'zone_id'                 => 1,
+					'zone_name'               => 'US',
+					'formatted_zone_location' => 'United States',
+					'zone_locations'          => array(),
+					'shipping_methods'        => array(
+						new MockShippingMethod( array( 'id' => 'flat_rate', 'title' => 'Flat rate', 'cost' => '5.00' ) ),
+					),
+				),
+			)
+		);
+		WPAICTestHelper::set_option( 'test_shipping_rest_of_world_methods', array() );
+
+		$result = $this->tools->get_shipping_info();
+
+		$notes_text = implode( ' ', $result['notes'] );
+		$this->assertStringContainsString( 'destination not covered', $notes_text );
+		$this->assertStringContainsString( 'search_site_content', $notes_text );
+		$this->assertStringContainsString( 'do not say the store cannot ship there', $notes_text );
 	}
 
 	/**

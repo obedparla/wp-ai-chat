@@ -1,12 +1,29 @@
-@import 'tailwindcss';
+/*
+  This stylesheet is enqueued document-wide on customer storefronts, so nothing
+  here may style elements outside the widget roots. Tailwind preflight is NOT
+  imported globally — a copy scoped under the widget roots lives in the
+  `@layer base` block below. Keep every element rule scoped under
+  `:where(#wpaic-chatbot-root, #wpaic-admin-preview)`.
+*/
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
+/* Runtime overrides set these inline on document.documentElement (App.tsx),
+   so the fallbacks must stay on :root — a scoped rule on the widget root
+   would beat the inherited inline values. */
 :root {
   --wpaic-primary: #0073aa;
   --wpaic-primary-hover: #005a87;
+}
+
+#wpaic-chatbot-root,
+#wpaic-admin-preview {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -114,7 +131,10 @@
   --animate-shimmer: shimmer 2s ease-in-out infinite;
 }
 
-.dark {
+.dark #wpaic-chatbot-root,
+.dark #wpaic-admin-preview,
+#wpaic-chatbot-root.dark,
+#wpaic-admin-preview.dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -148,20 +168,238 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/*
+  Tailwind preflight (v4.1), scoped under the widget roots so it cannot reset
+  host-theme styles. `:where()` keeps the original zero/element specificity.
+  Font-family and line-height are intentionally NOT set on the roots: host
+  body styles always beat preflight's `html` rule, so the widget has always
+  inherited the host font — keep that behavior.
+*/
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview),
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) *,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) *::after,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) *::before,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) *::backdrop,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::file-selector-button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) {
+    -webkit-text-size-adjust: 100%;
+    tab-size: 4;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) hr {
+    height: 0;
+    color: inherit;
+    border-top-width: 1px;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) abbr:where([title]) {
+    -webkit-text-decoration: underline dotted;
+    text-decoration: underline dotted;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :is(h1, h2, h3, h4, h5, h6) {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) a {
+    color: inherit;
+    -webkit-text-decoration: inherit;
+    text-decoration: inherit;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :is(b, strong) {
+    font-weight: bolder;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :is(code, kbd, samp, pre) {
+    font-family: var(
+      --default-mono-font-family,
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      'Liberation Mono',
+      'Courier New',
+      monospace
+    );
+    font-feature-settings: var(--default-mono-font-feature-settings, normal);
+    font-variation-settings: var(--default-mono-font-variation-settings, normal);
+    font-size: 1em;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) small {
+    font-size: 80%;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :is(sub, sup) {
+    font-size: 75%;
+    line-height: 0;
+    position: relative;
+    vertical-align: baseline;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) sub {
+    bottom: -0.25em;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) sup {
+    top: -0.5em;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) table {
+    text-indent: 0;
+    border-color: inherit;
+    border-collapse: collapse;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :-moz-focusring {
+    outline: auto;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) progress {
+    vertical-align: baseline;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) summary {
+    display: list-item;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :is(ol, ul, menu) {
+    list-style: none;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview)
+    :is(img, svg, video, canvas, audio, iframe, embed, object) {
+    display: block;
+    vertical-align: middle;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :is(img, video) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :is(button, input, select, optgroup, textarea),
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::file-selector-button {
+    font: inherit;
+    font-feature-settings: inherit;
+    font-variation-settings: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    border-radius: 0;
+    background-color: transparent;
+    opacity: 1;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview)
+    :where(select:is([multiple], [size]))
+    optgroup {
+    font-weight: bolder;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview)
+    :where(select:is([multiple], [size]))
+    optgroup
+    option {
+    padding-inline-start: 20px;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::file-selector-button {
+    margin-inline-end: 4px;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::placeholder {
+    opacity: 1;
+  }
+
+  @supports (not (-webkit-appearance: -apple-pay-button)) /* Not Safari */ or
+    (contain-intrinsic-size: 1px) /* Safari 17+ */ {
+    :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::placeholder {
+      color: color-mix(in oklab, currentcolor 50%, transparent);
+    }
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) textarea {
+    resize: vertical;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-search-decoration {
+    -webkit-appearance: none;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-date-and-time-value {
+    min-height: 1lh;
+    text-align: inherit;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit {
+    display: inline-flex;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-fields-wrapper {
+    padding: 0;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-year-field,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-month-field,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-day-field,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-hour-field,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-minute-field,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-second-field,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-millisecond-field,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-datetime-edit-meridiem-field {
+    padding-block: 0;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-calendar-picker-indicator {
+    line-height: 1;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) :-moz-ui-invalid {
+    box-shadow: none;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview)
+    :is(button, input:where([type='button'], [type='reset'], [type='submit'])),
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::file-selector-button {
+    appearance: button;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-inner-spin-button,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) ::-webkit-outer-spin-button {
+    height: auto;
+  }
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview)
+    [hidden]:where(:not([hidden='until-found'])) {
+    display: none !important;
+  }
+
+  /* End of scoped preflight */
+
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview),
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) * {
+    @apply border-border outline-ring/50;
   }
 }
 
-/* Accessibility: reduce motion */
+/* Accessibility: reduce motion (scoped — must not disable host animations) */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview),
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) *,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) *::before,
+  :where(#wpaic-chatbot-root, #wpaic-admin-preview) *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

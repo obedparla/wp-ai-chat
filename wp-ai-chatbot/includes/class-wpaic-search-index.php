@@ -8,6 +8,17 @@ use TeamTNT\TNTSearch\TNTSearch;
 
 class WPAIC_Search_Index {
 
+	/**
+	 * Small synonym groups used to broaden zero-result searches. Members are
+	 * singular, normalized (lowercase, hyphens already collapsed to spaces by
+	 * normalize_query_text), so "t-shirt" appears here as "t shirt".
+	 */
+	private const SYNONYM_GROUPS = array(
+		array( 'perfume', 'fragrance' ),
+		array( 'shoe', 'sneaker' ),
+		array( 't shirt', 'tshirt', 'tee' ),
+	);
+
 	private ?TNTSearch $tnt = null;
 	private string $index_path;
 	private string $index_name = 'products.index';
@@ -185,7 +196,11 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Search products using fuzzy matching.
+	 * Search products using fuzzy matching, auto-retrying broader query and
+	 * filter variants on zero results so a single keyword miss never reads as
+	 * "the store does not sell this": plural/hyphen normalization, a small
+	 * synonym map, individual tokens alone (brand-only matches like "chanel"),
+	 * then the parent category and finally no category filter.
 	 *
 	 * @param string              $query Search query.
 	 * @param array<string,mixed> $filters Optional filters (category, min_price, max_price).
@@ -193,6 +208,30 @@ class WPAIC_Search_Index {
 	 * @return array<int> Array of product IDs.
 	 */
 	public function search( string $query, array $filters = array(), int $limit = 20 ): array {
+		$queries = array_merge( array( $query ), $this->expand_query_variants( $query ) );
+
+		foreach ( $this->filter_fallbacks( $filters ) as $candidate_filters ) {
+			foreach ( $queries as $candidate_query ) {
+				$product_ids = $this->search_single( $candidate_query, $candidate_filters, $limit );
+				if ( ! empty( $product_ids ) ) {
+					return $product_ids;
+				}
+			}
+		}
+
+		return array();
+	}
+
+	/**
+	 * Run one search pass (TNT index when available, WP_Query fallback otherwise)
+	 * for an exact query and filter set, with relevance filtering.
+	 *
+	 * @param string              $query Search query.
+	 * @param array<string,mixed> $filters Optional filters (category, min_price, max_price).
+	 * @param int                 $limit Max results.
+	 * @return array<int> Array of product IDs.
+	 */
+	private function search_single( string $query, array $filters, int $limit ): array {
 		$index_file = $this->index_path . $this->index_name;
 
 		if ( ! file_exists( $index_file ) ) {
@@ -219,6 +258,164 @@ class WPAIC_Search_Index {
 		$product_ids = $this->filter_by_relevance( $product_ids, $query );
 
 		return array_slice( $product_ids, 0, $limit );
+	}
+
+	/**
+	 * Generate broader retry queries for a zero-result search, in priority order:
+	 * 1. plural/hyphen-normalized full query ("t-shirts" → "t shirt")
+	 * 2. synonym substitutions, one group member swapped at a time
+	 *    ("chanel perfume" → "chanel fragrance")
+	 * 3. each significant token alone, raw then singular, plus its synonyms
+	 *    (catches brand-only matches: "chanel perfume" → "chanel")
+	 * The original query is never included.
+	 *
+	 * @return array<string>
+	 */
+	private function expand_query_variants( string $query ): array {
+		$normalized = $this->normalize_query_text( $query );
+		if ( '' === $normalized ) {
+			return array();
+		}
+
+		$singular = implode(
+			' ',
+			array_map(
+				array( $this, 'singularize_token' ),
+				explode( ' ', $normalized )
+			)
+		);
+
+		$variants = array( $normalized, $singular );
+
+		foreach ( self::SYNONYM_GROUPS as $group ) {
+			foreach ( $group as $member ) {
+				$member_pattern = '/\b' . preg_quote( $member, '/' ) . '\b/';
+				if ( ! preg_match( $member_pattern, $singular ) ) {
+					continue;
+				}
+				foreach ( $group as $replacement ) {
+					if ( $replacement === $member ) {
+						continue;
+					}
+					$substituted = preg_replace( $member_pattern, $replacement, $singular );
+					if ( is_string( $substituted ) ) {
+						$variants[] = $substituted;
+					}
+				}
+			}
+		}
+
+		// Single-token retries, only when there is more than one significant token.
+		$tokens = $this->significant_query_tokens( $query );
+		if ( count( $tokens ) > 1 ) {
+			foreach ( $tokens as $token ) {
+				$singular_token = $this->singularize_token( $token );
+				$variants[]     = $token;
+				$variants[]     = $singular_token;
+				foreach ( self::SYNONYM_GROUPS as $group ) {
+					if ( in_array( $singular_token, $group, true ) ) {
+						foreach ( $group as $replacement ) {
+							if ( $replacement !== $singular_token ) {
+								$variants[] = $replacement;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		$already_searched = strtolower( trim( $query ) );
+
+		$unique = array();
+		foreach ( $variants as $variant ) {
+			$variant = trim( $variant );
+			if ( '' === $variant || $variant === $already_searched ) {
+				continue;
+			}
+			$unique[ $variant ] = true;
+		}
+
+		return array_keys( $unique );
+	}
+
+	/**
+	 * Lowercase, collapse non-alphanumerics (hyphens included) to single spaces.
+	 */
+	private function normalize_query_text( string $query ): string {
+		$normalized = preg_replace( '/[^a-z0-9]+/', ' ', strtolower( $query ) );
+		return is_string( $normalized ) ? trim( $normalized ) : '';
+	}
+
+	/**
+	 * Reduce a simple English plural to its singular form ("shirts" → "shirt",
+	 * "watches" → "watch", "accessories" → "accessory"). Applied identically to
+	 * query tokens and haystack tokens, so even imperfect stems stay consistent.
+	 */
+	private function singularize_token( string $token ): string {
+		$length = strlen( $token );
+		if ( $length <= 3 ) {
+			return $token;
+		}
+		if ( $length > 4 && str_ends_with( $token, 'ies' ) ) {
+			return substr( $token, 0, -3 ) . 'y';
+		}
+		if ( preg_match( '/(ss|sh|ch|x|z)es$/', $token ) ) {
+			return substr( $token, 0, -2 );
+		}
+		if ( str_ends_with( $token, 's' )
+			&& ! str_ends_with( $token, 'ss' )
+			&& ! str_ends_with( $token, 'us' )
+			&& ! str_ends_with( $token, 'is' ) ) {
+			return substr( $token, 0, -1 );
+		}
+		return $token;
+	}
+
+	/**
+	 * Filter sets to try in order: as given; with the category swapped for its
+	 * parent (when one exists); with no category at all so close matches from
+	 * sibling categories still surface. Price filters are always preserved.
+	 *
+	 * @param array<string,mixed> $filters
+	 * @return array<int, array<string,mixed>>
+	 */
+	private function filter_fallbacks( array $filters ): array {
+		$fallbacks = array( $filters );
+
+		if ( empty( $filters['category'] ) || ! is_string( $filters['category'] ) ) {
+			return $fallbacks;
+		}
+
+		$parent_slug = $this->get_parent_category_slug( $filters['category'] );
+		if ( null !== $parent_slug && $parent_slug !== $filters['category'] ) {
+			$parent_filters             = $filters;
+			$parent_filters['category'] = $parent_slug;
+			$fallbacks[]                = $parent_filters;
+		}
+
+		$no_category_filters = $filters;
+		unset( $no_category_filters['category'] );
+		$fallbacks[] = $no_category_filters;
+
+		return $fallbacks;
+	}
+
+	private function get_parent_category_slug( string $slug ): ?string {
+		if ( ! function_exists( 'get_term_by' ) || ! function_exists( 'get_term' ) ) {
+			return null;
+		}
+
+		$term = get_term_by( 'slug', $slug, 'product_cat' );
+		if ( ! $term instanceof WP_Term || empty( $term->parent ) ) {
+			return null;
+		}
+
+		$parent = get_term( (int) $term->parent, 'product_cat' );
+		if ( ! $parent instanceof WP_Term || '' === $parent->slug ) {
+			return null;
+		}
+
+		return $parent->slug;
 	}
 
 	/**
@@ -293,11 +490,13 @@ class WPAIC_Search_Index {
 		$matched_strong = 0;
 		$matched_any    = 0;
 		foreach ( $tokens as $token ) {
-			$in_strong = isset( $strong_tokens[ $token ] );
+			$singular  = $this->singularize_token( $token );
+			$in_strong = isset( $strong_tokens[ $token ] ) || isset( $strong_tokens[ $singular ] );
+			$in_weak   = isset( $weak_tokens[ $token ] ) || isset( $weak_tokens[ $singular ] );
 			if ( $in_strong ) {
 				++$matched_strong;
 			}
-			if ( $in_strong || isset( $weak_tokens[ $token ] ) ) {
+			if ( $in_strong || $in_weak ) {
 				++$matched_any;
 			}
 		}
@@ -309,7 +508,9 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Normalize text to a set of lowercased alphanumeric tokens.
+	 * Normalize text to a set of lowercased alphanumeric tokens, including each
+	 * token's singular form so plural queries match singular product fields
+	 * ("t-shirts" matches "V-Neck T-Shirt") and vice versa.
 	 * Mirrors the normalization used by significant_query_tokens().
 	 *
 	 * @return array<string,int> token => 1 map for O(1) lookups.
@@ -319,7 +520,16 @@ class WPAIC_Search_Index {
 		if ( ! is_string( $normalized ) ) {
 			return array();
 		}
-		return array_flip( preg_split( '/\s+/', trim( $normalized ) ) ?: array() );
+
+		$tokens = array();
+		foreach ( preg_split( '/\s+/', trim( $normalized ) ) ?: array() as $token ) {
+			if ( '' === $token ) {
+				continue;
+			}
+			$tokens[ $token ]                             = 1;
+			$tokens[ $this->singularize_token( $token ) ] = 1;
+		}
+		return $tokens;
 	}
 
 	/**

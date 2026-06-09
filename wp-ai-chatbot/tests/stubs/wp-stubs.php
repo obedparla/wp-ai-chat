@@ -39,6 +39,7 @@ if ( ! class_exists( 'WP_Term' ) ) {
 		public string $slug = '';
 		public string $taxonomy = '';
 		public int $count = 0;
+		public int $parent = 0;
 
 		/**
 		 * @param array<string, mixed> $data
@@ -209,6 +210,9 @@ class WPAICTestHelper {
 	/** @var array<string, mixed>|null */
 	private static ?array $last_query_vars = null;
 
+	/** @var array<string, array<int, callable>> */
+	private static array $mock_filters = array();
+
 	public static function reset(): void {
 		self::$mock_posts      = array();
 		self::$mock_post_meta  = array();
@@ -221,6 +225,7 @@ class WPAICTestHelper {
 		self::$queried_object  = null;
 		self::$wc_page_ids     = array();
 		self::$last_query_vars = null;
+		self::$mock_filters    = array();
 		unset( $_SERVER['REQUEST_URI'] );
 
 		if ( isset( $GLOBALS['wpdb'] ) && $GLOBALS['wpdb'] instanceof MockWpdb ) {
@@ -303,11 +308,20 @@ class WPAICTestHelper {
 		}
 
 		if ( ! empty( $query_args['s'] ) ) {
-			$search = strtolower( $query_args['s'] );
-			$posts  = array_filter(
+			// Mirror WP_Query: split the search into whitespace-separated terms,
+			// every term must appear (LIKE %term%) in the title or content.
+			$search_terms = preg_split( '/\s+/', strtolower( trim( $query_args['s'] ) ) ) ?: array();
+			$posts        = array_filter(
 				$posts,
-				fn( $p ) => str_contains( strtolower( $p->post_title ), $search ) ||
-							str_contains( strtolower( $p->post_content ), $search )
+				function ( $p ) use ( $search_terms ) {
+					$haystack = strtolower( $p->post_title . ' ' . $p->post_content );
+					foreach ( $search_terms as $term ) {
+						if ( '' !== $term && ! str_contains( $haystack, $term ) ) {
+							return false;
+						}
+					}
+					return true;
+				}
 			);
 		}
 
@@ -521,6 +535,20 @@ class WPAICTestHelper {
 		return self::$mock_transients[ $name ] ?? $default;
 	}
 
+	public static function add_filter( string $hook_name, callable $callback ): void {
+		self::$mock_filters[ $hook_name ][] = $callback;
+	}
+
+	/**
+	 * @param mixed ...$args
+	 */
+	public static function apply_filters( string $hook_name, mixed $value, ...$args ): mixed {
+		foreach ( self::$mock_filters[ $hook_name ] ?? array() as $callback ) {
+			$value = $callback( $value, ...$args );
+		}
+		return $value;
+	}
+
 	public static function set_conditional( string $name, bool $value ): void {
 		self::$conditionals[ $name ] = $value;
 	}
@@ -672,6 +700,37 @@ if ( ! function_exists( 'get_terms' ) ) {
 	 */
 	function get_terms( array $args ): array {
 		return WPAICTestHelper::get_mock_terms();
+	}
+}
+
+if ( ! function_exists( 'get_term_by' ) ) {
+	function get_term_by( string $field, string|int $value, string $taxonomy = '' ): WP_Term|false {
+		foreach ( WPAICTestHelper::get_mock_terms() as $term ) {
+			if ( '' !== $taxonomy && $term->taxonomy !== $taxonomy ) {
+				continue;
+			}
+			$matches = match ( $field ) {
+				'slug' => $term->slug === $value,
+				'name' => $term->name === $value,
+				'id', 'term_id' => $term->term_id === (int) $value,
+				default => false,
+			};
+			if ( $matches ) {
+				return $term;
+			}
+		}
+		return false;
+	}
+}
+
+if ( ! function_exists( 'get_term' ) ) {
+	function get_term( int $term_id, string $taxonomy = '' ): ?WP_Term {
+		foreach ( WPAICTestHelper::get_mock_terms() as $term ) {
+			if ( $term->term_id === $term_id ) {
+				return $term;
+			}
+		}
+		return null;
 	}
 }
 
@@ -911,6 +970,12 @@ if ( ! function_exists( 'sanitize_textarea_field' ) ) {
 	}
 }
 
+if ( ! function_exists( 'sanitize_title' ) ) {
+	function sanitize_title( string $title ): string {
+		return trim( preg_replace( '/[^a-z0-9_]+/', '-', strtolower( $title ) ), '-' );
+	}
+}
+
 if ( ! function_exists( 'sanitize_hex_color' ) ) {
 	function sanitize_hex_color( string $color ): ?string {
 		if ( '' === $color ) {
@@ -951,6 +1016,25 @@ if ( ! function_exists( 'wp_generate_uuid4' ) ) {
 			mt_rand( 0, 0xffff ),
 			mt_rand( 0, 0xffff )
 		);
+	}
+}
+
+if ( ! function_exists( 'wp_is_uuid' ) ) {
+	function wp_is_uuid( mixed $uuid, ?int $version = null ): bool {
+		if ( ! is_string( $uuid ) ) {
+			return false;
+		}
+
+		if ( is_numeric( $version ) ) {
+			if ( 4 !== (int) $version ) {
+				return false;
+			}
+			$regex = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/';
+		} else {
+			$regex = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
+		}
+
+		return (bool) preg_match( $regex, $uuid );
 	}
 }
 
@@ -1133,6 +1217,9 @@ class MockWpdb {
 			$results = array();
 			foreach ( $this->tables['wp_wpaic_faqs'] as $row ) {
 				$results[] = (object) $row;
+			}
+			if ( preg_match( '/LIMIT\s+(\d+)/i', $query, $limit_match ) ) {
+				$results = array_slice( $results, 0, (int) $limit_match[1] );
 			}
 			return $results;
 		}
@@ -1631,6 +1718,16 @@ if ( ! function_exists( 'wc_get_cart_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wc_attribute_label' ) ) {
+	/**
+	 * @param string $name
+	 * @param mixed $product
+	 */
+	function wc_attribute_label( string $name, $product = null ): string {
+		return ucfirst( preg_replace( '/^pa_/', '', $name ) );
+	}
+}
+
 if ( ! class_exists( 'WC_DateTime' ) ) {
 	class WC_DateTime extends DateTime {
 		public function date( string $format ): string {
@@ -1790,7 +1887,21 @@ if ( ! function_exists( 'apply_filters' ) ) {
 	 * @return mixed
 	 */
 	function apply_filters( string $hook_name, mixed $value, ...$args ): mixed {
-		return $value;
+		return WPAICTestHelper::apply_filters( $hook_name, $value, ...$args );
+	}
+}
+
+if ( ! function_exists( 'add_filter' ) ) {
+	/**
+	 * @param string $hook_name
+	 * @param callable $callback
+	 * @param int $priority
+	 * @param int $accepted_args
+	 * @return true
+	 */
+	function add_filter( string $hook_name, callable $callback, int $priority = 10, int $accepted_args = 1 ): bool {
+		WPAICTestHelper::add_filter( $hook_name, $callback );
+		return true;
 	}
 }
 
@@ -1870,6 +1981,48 @@ if ( ! class_exists( 'MockWCProduct' ) ) {
 
 		public function is_type( string $type ): bool {
 			return $this->type === $type;
+		}
+	}
+}
+
+if ( ! class_exists( 'WC_Product_Variable' ) ) {
+	class WC_Product_Variable extends MockWCProduct {
+		/** @var array<string, array<int, string>> */
+		private array $variation_attributes = array();
+
+		/** @var array<int, array<string, mixed>> */
+		private array $available_variations = array();
+
+		public function __construct( int $id, bool $purchasable = true, bool $in_stock = true ) {
+			parent::__construct( $id, $purchasable, $in_stock, 'variable' );
+		}
+
+		/**
+		 * @param array<string, array<int, string>> $variation_attributes Attribute name => options.
+		 */
+		public function set_variation_attributes( array $variation_attributes ): void {
+			$this->variation_attributes = $variation_attributes;
+		}
+
+		/**
+		 * @return array<string, array<int, string>>
+		 */
+		public function get_variation_attributes(): array {
+			return $this->variation_attributes;
+		}
+
+		/**
+		 * @param array<int, array<string, mixed>> $available_variations
+		 */
+		public function set_available_variations( array $available_variations ): void {
+			$this->available_variations = $available_variations;
+		}
+
+		/**
+		 * @return array<int, array<string, mixed>>
+		 */
+		public function get_available_variations(): array {
+			return $this->available_variations;
 		}
 	}
 }

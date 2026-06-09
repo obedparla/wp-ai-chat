@@ -134,6 +134,42 @@ class WPAIC_ContentIndexTest extends TestCase {
 		$this->assertStringContainsString( 'text', $result['content'] );
 	}
 
+	public function test_get_page_content_truncates_very_long_content(): void {
+		WPAICTestHelper::add_mock_post(
+			array(
+				'ID'           => 1,
+				'post_title'   => 'Long Page',
+				'post_content' => str_repeat( 'a', 6000 ),
+				'post_type'    => 'page',
+				'post_status'  => 'publish',
+			)
+		);
+
+		$result = $this->index->get_page_content( 1 );
+
+		$this->assertNotNull( $result );
+		$this->assertStringEndsWith( '[content truncated]', $result['content'] );
+		$this->assertLessThanOrEqual( 5000 + mb_strlen( '… [content truncated]' ), mb_strlen( $result['content'] ) );
+	}
+
+	public function test_get_page_content_leaves_short_content_untruncated(): void {
+		WPAICTestHelper::add_mock_post(
+			array(
+				'ID'           => 1,
+				'post_title'   => 'Short Page',
+				'post_content' => str_repeat( 'b', 4000 ),
+				'post_type'    => 'page',
+				'post_status'  => 'publish',
+			)
+		);
+
+		$result = $this->index->get_page_content( 1 );
+
+		$this->assertNotNull( $result );
+		$this->assertSame( 4000, mb_strlen( $result['content'] ) );
+		$this->assertStringNotContainsString( '[content truncated]', $result['content'] );
+	}
+
 	public function test_get_index_status_returns_defaults_when_no_meta(): void {
 		$result = $this->index->get_index_status();
 

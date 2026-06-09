@@ -256,14 +256,23 @@ class WPAIC_Chat {
 	}
 
 	/**
+	 * Cap on conversation history sent to the model. Older turns are re-billed on
+	 * every loop iteration and rarely change the answer; the frontend keeps the
+	 * full transcript for display.
+	 */
+	private const MAX_INPUT_MESSAGES = 20;
+
+	/**
 	 * Convert conversation history into Responses API `input` items. The system
 	 * prompt is sent separately as `instructions`, so it is not included here.
+	 * Only the most recent MAX_INPUT_MESSAGES messages are forwarded.
 	 *
 	 * @param array<int, array<string, mixed>> $messages
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function build_responses_input( array $messages ): array {
-		$input = array();
+		$messages = array_slice( $messages, -self::MAX_INPUT_MESSAGES );
+		$input    = array();
 		foreach ( $messages as $msg ) {
 			$role = isset( $msg['role'] ) && is_string( $msg['role'] ) ? $msg['role'] : 'user';
 			if ( 'assistant' !== $role ) {
@@ -384,7 +393,7 @@ class WPAIC_Chat {
 				$input[] = array(
 					'type'    => 'function_call_output',
 					'call_id' => $tc['call_id'],
-					'output'  => (string) wp_json_encode( $tool_result ),
+					'output'  => (string) wp_json_encode( $this->to_model_payload( $tc['name'], $tool_result ) ),
 				);
 			}
 
@@ -1062,7 +1071,7 @@ class WPAIC_Chat {
 			$messages[] = array(
 				'role'         => 'tool',
 				'tool_call_id' => $tc['id'],
-				'content'      => (string) wp_json_encode( $result ),
+				'content'      => (string) wp_json_encode( $this->to_model_payload( $tc['function']['name'], $result ) ),
 			);
 		}
 
@@ -1140,7 +1149,7 @@ class WPAIC_Chat {
 			$messages[] = array(
 				'role'         => 'tool',
 				'tool_call_id' => $tc['id'] ?? '',
-				'content'      => (string) wp_json_encode( $result ),
+				'content'      => (string) wp_json_encode( $this->to_model_payload( $tc['function']['name'], $result ) ),
 			);
 		}
 
@@ -1219,5 +1228,94 @@ class WPAIC_Chat {
 			'get_shipping_info' => $this->tools->get_shipping_info(),
 			default => array( 'error' => 'Unknown tool' ),
 		};
+	}
+
+	/**
+	 * Build the model-facing copy of a tool result. The same result also feeds the
+	 * frontend (tool_output_available), which renders cards and needs URLs and
+	 * images — that copy must stay untouched. The model never needs them: they
+	 * waste tokens on every loop iteration and tempt it to type out links the UI
+	 * already renders. Product payloads lose url/add_to_cart_url/image/external_url
+	 * and full variation objects collapse to the essentials; checkout payloads
+	 * lose their URLs.
+	 *
+	 * @param string $tool_name
+	 * @param array<string, mixed>|array<int, array<string, mixed>>|null $tool_result
+	 * @return array<string, mixed>|array<int, array<string, mixed>>|null
+	 */
+	private function to_model_payload( string $tool_name, array|null $tool_result ): array|null {
+		if ( null === $tool_result ) {
+			return null;
+		}
+
+		switch ( $tool_name ) {
+			case 'search_products':
+			case 'get_popular_products':
+				return array_map(
+					fn( $product ) => is_array( $product ) ? $this->slim_product_for_model( $product ) : $product,
+					$tool_result
+				);
+
+			case 'get_product_details':
+				return $this->slim_product_for_model( $tool_result );
+
+			case 'compare_products':
+				if ( isset( $tool_result['products'] ) && is_array( $tool_result['products'] ) ) {
+					$tool_result['products'] = array_map(
+						fn( $product ) => is_array( $product ) ? $this->slim_product_for_model( $product ) : $product,
+						$tool_result['products']
+					);
+				}
+				return $tool_result;
+
+			case 'get_checkout_action':
+				unset( $tool_result['checkout_url'], $tool_result['cart_url'] );
+				return $tool_result;
+
+			default:
+				return $tool_result;
+		}
+	}
+
+	/**
+	 * @param array<string, mixed> $product
+	 * @return array<string, mixed>
+	 */
+	private function slim_product_for_model( array $product ): array {
+		unset( $product['url'], $product['add_to_cart_url'], $product['image'], $product['external_url'] );
+
+		if ( isset( $product['variations'] ) && is_array( $product['variations'] ) ) {
+			$product['variations'] = array_map(
+				fn( $variation ) => is_array( $variation ) ? $this->slim_variation_for_model( $variation ) : $variation,
+				$product['variations']
+			);
+		}
+
+		return $product;
+	}
+
+	/**
+	 * Collapse a full variation object to what the model needs to resolve and
+	 * confirm a choice: variation_id, a short attribute summary, price, and
+	 * stock. Variation images and regular prices stay frontend-only.
+	 *
+	 * @param array<string, mixed> $variation
+	 * @return array<string, mixed>
+	 */
+	private function slim_variation_for_model( array $variation ): array {
+		$attribute_parts = array();
+		if ( isset( $variation['attributes'] ) && is_array( $variation['attributes'] ) ) {
+			foreach ( $variation['attributes'] as $attribute_name => $attribute_value ) {
+				$label             = str_replace( array( 'attribute_pa_', 'attribute_' ), '', (string) $attribute_name );
+				$attribute_parts[] = $label . ': ' . (string) $attribute_value;
+			}
+		}
+
+		return array(
+			'variation_id' => $variation['variation_id'] ?? null,
+			'attributes'   => implode( ', ', $attribute_parts ),
+			'price'        => $variation['price'] ?? null,
+			'is_in_stock'  => $variation['is_in_stock'] ?? null,
+		);
 	}
 }

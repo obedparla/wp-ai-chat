@@ -141,6 +141,12 @@ class WPAIC_Content_Index {
 		return $output;
 	}
 
+	/**
+	 * Page content is fed to the model verbatim; cap it so one long page cannot
+	 * blow up the token budget of every subsequent loop iteration.
+	 */
+	private const MAX_PAGE_CONTENT_LENGTH = 5000;
+
 	public function get_page_content( int $post_id ): ?array {
 		$post = get_post( $post_id );
 		if ( ! $post || 'publish' !== $post->post_status || '' !== $post->post_password ) {
@@ -151,6 +157,9 @@ class WPAIC_Content_Index {
 		}
 
 		$content = wp_strip_all_tags( strip_shortcodes( $post->post_content ) );
+		if ( mb_strlen( $content ) > self::MAX_PAGE_CONTENT_LENGTH ) {
+			$content = mb_substr( $content, 0, self::MAX_PAGE_CONTENT_LENGTH ) . '… [content truncated]';
+		}
 
 		return array(
 			'post_id' => $post->ID,

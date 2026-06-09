@@ -2126,13 +2126,7 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 			wp_send_json_error( array( 'message' => __( 'Only CSV files are allowed.', 'wp-ai-chatbot' ) ) );
 		}
 
-		global $wpdb;
-		$sources_table = $wpdb->prefix . 'wpaic_data_sources';
-		$data_table    = $wpdb->prefix . 'wpaic_training_data';
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $sources_table WHERE name = %s", $name ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-
+		// Parse the entire file before touching the database so a bad upload cannot destroy existing data.
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 		$handle = fopen( $file['tmp_name'], 'r' );
 		if ( ! $handle ) {
@@ -2148,34 +2142,8 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 
 		$headers = array_map( 'sanitize_text_field', $headers );
 
-		if ( $existing ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$wpdb->delete( $data_table, array( 'source_id' => $existing ), array( '%d' ) );
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$wpdb->delete( $sources_table, array( 'id' => $existing ), array( '%d' ) );
-		}
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-		$wpdb->insert(
-			$sources_table,
-			array(
-				'name'        => $name,
-				'label'       => $label,
-				'description' => $description,
-				'columns'     => wp_json_encode( $headers ),
-				'row_count'   => 0,
-			),
-			array( '%s', '%s', '%s', '%s', '%d' )
-		);
-		$source_id = $wpdb->insert_id;
-
-		if ( ! $source_id ) {
-			fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
-			wp_send_json_error( array( 'message' => __( 'Failed to create data source.', 'wp-ai-chatbot' ) ) );
-		}
-
-		$row_count = 0;
-		$preview   = array();
+		$encoded_rows = array();
+		$preview      = array();
 
 		// phpcs:ignore WordPress.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition
 		while ( ( $row = fgetcsv( $handle ) ) !== false ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fgetcsv
@@ -2184,26 +2152,86 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 				$row_data[ $header ] = isset( $row[ $i ] ) ? sanitize_text_field( $row[ $i ] ) : '';
 			}
 
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-			$wpdb->insert(
-				$data_table,
-				array(
-					'source_id' => $source_id,
-					'row_data'  => wp_json_encode( $row_data ),
-				),
-				array( '%d', '%s' )
-			);
-			++$row_count;
+			$encoded_rows[] = wp_json_encode( $row_data );
 
-			if ( $row_count <= 3 ) {
+			if ( count( $preview ) < 3 ) {
 				$preview[] = $row_data;
 			}
 		}
 
 		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 
+		$row_count = count( $encoded_rows );
+
+		global $wpdb;
+		$sources_table = $wpdb->prefix . 'wpaic_data_sources';
+		$data_table    = $wpdb->prefix . 'wpaic_training_data';
+
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->update( $sources_table, array( 'row_count' => $row_count ), array( 'id' => $source_id ), array( '%d' ), array( '%d' ) );
+		$existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $sources_table WHERE name = %s", $name ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		if ( $existing ) {
+			// Stage new rows next to the old ones; old rows are removed only after staging succeeds.
+			$source_id = (int) $existing;
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$staging_boundary_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT MAX(id) FROM $data_table WHERE source_id = %d", $source_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			$wpdb->insert(
+				$sources_table,
+				array(
+					'name'        => $name,
+					'label'       => $label,
+					'description' => $description,
+					'columns'     => wp_json_encode( $headers ),
+					'row_count'   => 0,
+				),
+				array( '%s', '%s', '%s', '%s', '%d' )
+			);
+			$source_id = (int) $wpdb->insert_id;
+
+			if ( ! $source_id ) {
+				wp_send_json_error( array( 'message' => __( 'Failed to create data source.', 'wp-ai-chatbot' ) ) );
+			}
+
+			$staging_boundary_id = 0;
+		}
+
+		if ( ! self::batch_insert_training_rows( $source_id, $encoded_rows ) ) {
+			// Roll back the staged rows; pre-existing data is untouched.
+			if ( $existing ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+				$wpdb->query( $wpdb->prepare( "DELETE FROM $data_table WHERE source_id = %d AND id > %d", $source_id, $staging_boundary_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			} else {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+				$wpdb->delete( $data_table, array( 'source_id' => $source_id ), array( '%d' ) );
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+				$wpdb->delete( $sources_table, array( 'id' => $source_id ), array( '%d' ) );
+			}
+			wp_send_json_error( array( 'message' => __( 'Import failed while saving rows. Existing data was left unchanged.', 'wp-ai-chatbot' ) ) );
+		}
+
+		// Swap: the new rows are fully imported, so drop the old ones and update the source metadata.
+		if ( $existing ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->query( $wpdb->prepare( "DELETE FROM $data_table WHERE source_id = %d AND id <= %d", $source_id, $staging_boundary_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->update(
+				$sources_table,
+				array(
+					'label'       => $label,
+					'description' => $description,
+					'columns'     => wp_json_encode( $headers ),
+					'row_count'   => $row_count,
+				),
+				array( 'id' => $source_id ),
+				array( '%s', '%s', '%s', '%d' ),
+				array( '%d' )
+			);
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->update( $sources_table, array( 'row_count' => $row_count ), array( 'id' => $source_id ), array( '%d' ), array( '%d' ) );
+		}
 
 		wp_send_json_success(
 			array(
@@ -2215,6 +2243,40 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 				'preview' => $preview,
 			)
 		);
+	}
+
+	/**
+	 * Insert training rows in batched multi-row INSERT statements.
+	 *
+	 * @param int                $source_id    Data source ID the rows belong to.
+	 * @param array<int, string> $encoded_rows JSON-encoded row data.
+	 * @return bool True when every batch succeeded, false on the first failure.
+	 */
+	private static function batch_insert_training_rows( int $source_id, array $encoded_rows ): bool {
+		global $wpdb;
+		$data_table = $wpdb->prefix . 'wpaic_training_data';
+
+		foreach ( array_chunk( $encoded_rows, 100 ) as $batch ) {
+			$placeholders = array();
+			$values       = array();
+			foreach ( $batch as $encoded_row ) {
+				$placeholders[] = '(%d, %s)';
+				$values[]       = $source_id;
+				$values[]       = $encoded_row;
+			}
+
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$result = $wpdb->query(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+				$wpdb->prepare( "INSERT INTO $data_table (source_id, row_data) VALUES " . implode( ', ', $placeholders ), ...$values )
+			);
+
+			if ( false === $result ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	public function ajax_delete_data_source(): void {
@@ -2267,58 +2329,107 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 			wpaic_create_training_tables();
 		}
 
-		// Clear existing FAQs.
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->query( "TRUNCATE TABLE $faqs_table" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-
 		if ( '' === trim( $content ) ) {
+			// Clearing is intentional on an explicitly empty save.
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->query( "TRUNCATE TABLE $faqs_table" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			wp_send_json_success( array( 'message' => __( 'FAQs cleared.', 'wp-ai-chatbot' ) ) );
 		}
 
-		$pairs  = preg_split( '/\n\s*\n/', $content );
-		$count  = 0;
+		// Parse before touching the database so a malformed paste cannot wipe existing FAQs.
+		$parsed = self::parse_faq_content( $content );
 
-		foreach ( $pairs as $pair ) {
-			$pair = trim( $pair );
-			if ( '' === $pair ) {
+		if ( empty( $parsed['pairs'] ) ) {
+			wp_send_json_error(
+				array( 'message' => __( 'No FAQs could be parsed, so the existing FAQs were left unchanged. Check the format: "Q: question" then "A: answer" on the next line, with a blank line between each pair.', 'wp-ai-chatbot' ) )
+			);
+		}
+
+		// Replace existing FAQs only after parsing succeeded.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->query( "TRUNCATE TABLE $faqs_table" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		$count = 0;
+		foreach ( $parsed['pairs'] as $pair ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			$result = $wpdb->insert(
+				$faqs_table,
+				array(
+					'question' => $pair['question'],
+					'answer'   => $pair['answer'],
+				),
+				array( '%s', '%s' )
+			);
+			if ( false !== $result ) {
+				++$count;
+			}
+		}
+
+		$message = sprintf(
+			/* translators: %d: number of FAQs saved */
+			__( '%d FAQ(s) saved.', 'wp-ai-chatbot' ),
+			$count
+		);
+
+		if ( ! empty( $parsed['failed'] ) ) {
+			$message .= ' ' . sprintf(
+				/* translators: %s: quoted previews of entries that could not be parsed */
+				__( 'Skipped entries that could not be parsed: %s. Each pair needs "Q:" and "A:" with no blank line between them.', 'wp-ai-chatbot' ),
+				'"' . implode( '", "', $parsed['failed'] ) . '"'
+			);
+		}
+
+		wp_send_json_success( array( 'message' => $message ) );
+	}
+
+	/**
+	 * Parse Q:/A: formatted FAQ text into pairs without touching the database.
+	 *
+	 * Blocks are separated by blank lines. Blocks that do not match the
+	 * "Q: ... / A: ..." format (e.g. a blank line between question and answer)
+	 * are reported in 'failed' instead of being dropped silently.
+	 *
+	 * @param string $content Raw FAQ textarea content.
+	 * @return array{pairs: array<int, array{question: string, answer: string}>, failed: array<int, string>}
+	 */
+	public static function parse_faq_content( string $content ): array {
+		$pairs  = array();
+		$failed = array();
+
+		$blocks = preg_split( '/\n\s*\n/', $content );
+		if ( false === $blocks ) {
+			$blocks = array();
+		}
+
+		foreach ( $blocks as $block ) {
+			$block = trim( $block );
+			if ( '' === $block ) {
 				continue;
 			}
 
-			if ( preg_match( '/^Q:\s*(.+?)\s*\nA:\s*(.+)$/si', $pair, $matches ) ) {
+			if ( preg_match( '/^Q:\s*(.+?)\s*\nA:\s*(.+)$/si', $block, $matches ) ) {
 				$question = trim( $matches[1] );
 				$answer   = trim( $matches[2] );
 
 				if ( '' !== $question && '' !== $answer ) {
-					// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-					$result = $wpdb->insert(
-						$faqs_table,
-						array(
-							'question' => $question,
-							'answer'   => $answer,
-						),
-						array( '%s', '%s' )
+					$pairs[] = array(
+						'question' => $question,
+						'answer'   => $answer,
 					);
-					if ( false !== $result ) {
-						++$count;
-					}
+					continue;
 				}
 			}
+
+			$first_line = trim( strtok( $block, "\n" ) );
+			if ( mb_strlen( $first_line ) > 60 ) {
+				$first_line = mb_substr( $first_line, 0, 57 ) . '...';
+			}
+			$failed[] = $first_line;
 		}
 
-		if ( 0 === $count && '' !== trim( $content ) ) {
-			wp_send_json_error(
-				array( 'message' => __( 'No FAQs could be saved. Check the format: "Q: question" then "A: answer", separated by blank lines.', 'wp-ai-chatbot' ) )
-			);
-		}
-
-		wp_send_json_success(
-			array(
-				'message' => sprintf(
-					/* translators: %d: number of FAQs saved */
-					__( '%d FAQ(s) saved.', 'wp-ai-chatbot' ),
-					$count
-				),
-			)
+		return array(
+			'pairs'  => $pairs,
+			'failed' => $failed,
 		);
 	}
 }

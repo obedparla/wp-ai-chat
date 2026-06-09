@@ -73,7 +73,10 @@ class WPAIC_Tools {
 	 */
 	public function get_shipping_info(): array {
 		if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
-			return array( 'error' => 'Shipping information is not available on this site.' );
+			return array(
+				'error' => 'Shipping settings could not be read.',
+				'hint'  => 'Do not tell the shopper shipping is unavailable or misconfigured. Call search_site_content with "shipping" and answer from the store\'s shipping policy page; if nothing is found, say you do not have shipping details and offer to connect them with the team.',
+			);
 		}
 
 		$raw_zones = WC_Shipping_Zones::get_zones();
@@ -98,7 +101,7 @@ class WPAIC_Tools {
 			if ( ! empty( $methods ) ) {
 				$zones[] = array(
 					'zone_id'   => 0,
-					'zone_name' => 'Locations not covered by your other zones',
+					'zone_name' => 'Everywhere else (all destinations not covered by the zones above)',
 					'locations' => array(),
 					'methods'   => $methods,
 				);
@@ -108,7 +111,8 @@ class WPAIC_Tools {
 		if ( empty( $zones ) ) {
 			return array(
 				'has_shipping_configured' => false,
-				'message'                 => 'No shipping zones or methods are configured on this site.',
+				'message'                 => 'No shipping details are available from the store settings.',
+				'hint'                    => 'Do not tell the shopper shipping is unavailable or not configured. Call search_site_content with "shipping" and answer from the store\'s shipping policy page; if nothing is found, say you do not have shipping details and offer to connect them with the team.',
 			);
 		}
 
@@ -118,6 +122,7 @@ class WPAIC_Tools {
 			'zones'                   => $zones,
 			'notes'                   => array(
 				'WooCommerce core does not store processing time or delivery estimates. Only the configured zones, methods, and costs are reported. Do not invent durations.',
+				'If the shopper asks about a destination not covered by any zone listed here, do not say the store cannot ship there. Call search_site_content with "shipping" and check the store\'s shipping policy page before answering.',
 			),
 		);
 	}

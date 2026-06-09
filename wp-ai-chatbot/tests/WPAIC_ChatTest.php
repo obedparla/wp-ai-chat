@@ -1227,6 +1227,33 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'first call get_shipping_info for site-wide policy', $prompt );
 		$this->assertStringContainsString( 'NEVER invent delivery durations like "3 to 7 business days"', $prompt );
 		$this->assertStringContainsString( 'has_shipping_configured=false', $prompt );
+		// Uncovered destinations must route to the shipping policy page, never to
+		// "isn't configured" dev-speak or a flat denial.
+		$this->assertStringContainsString( 'no listed zone covers the shopper\'s destination', $prompt );
+		$this->assertStringContainsString( 'call search_site_content with "shipping"', $prompt );
+	}
+
+	public function test_system_prompt_forbids_asserting_catalog_absence_on_zero_results(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'ZERO-RESULT HANDLING', $prompt );
+		$this->assertStringContainsString( 'NEVER tell the shopper the store does not carry', $prompt );
+		$this->assertStringContainsString( 'closest matches', $prompt );
+		$this->assertStringContainsString( 'one keyword miss is not proof of absence', $prompt );
 	}
 
 	public function test_system_prompt_enforces_strict_product_grounding(): void {
@@ -2363,5 +2390,283 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'email', $instruction );
 		$this->assertStringNotContainsString( 'phone', $instruction );
 		$this->assertStringNotContainsString( 'company', $instruction );
+	}
+
+	public function test_build_responses_input_trims_to_last_twenty_messages(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'build_responses_input' );
+		$method->setAccessible( true );
+
+		$messages = array();
+		for ( $i = 1; $i <= 25; $i++ ) {
+			$messages[] = array( 'role' => 'user', 'content' => "Message {$i}" );
+		}
+
+		$input = $method->invoke( $chat, $messages );
+
+		$this->assertCount( 20, $input );
+		$this->assertSame( 'Message 6', $input[0]['content'] );
+		$this->assertSame( 'Message 25', $input[19]['content'] );
+	}
+
+	public function test_to_model_payload_strips_urls_and_image_from_product_lists(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			array(
+				'id'              => 1,
+				'name'            => 'Test Product',
+				'url'             => 'http://example.com/product/test/',
+				'add_to_cart_url' => 'http://example.com/cart/?add-to-cart=1',
+				'image'           => 'http://example.com/image.jpg',
+				'external_url'    => 'http://other-site.example.com/buy',
+				'price'           => '19.99',
+			),
+		);
+
+		$model_payload = $method->invoke( $chat, 'search_products', $tool_result );
+
+		$this->assertArrayNotHasKey( 'url', $model_payload[0] );
+		$this->assertArrayNotHasKey( 'add_to_cart_url', $model_payload[0] );
+		$this->assertArrayNotHasKey( 'image', $model_payload[0] );
+		$this->assertArrayNotHasKey( 'external_url', $model_payload[0] );
+		$this->assertSame( 'Test Product', $model_payload[0]['name'] );
+		$this->assertSame( '19.99', $model_payload[0]['price'] );
+	}
+
+	public function test_to_model_payload_leaves_frontend_tool_result_untouched(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			array(
+				'id'    => 1,
+				'name'  => 'Test Product',
+				'url'   => 'http://example.com/product/test/',
+				'image' => 'http://example.com/image.jpg',
+			),
+		);
+
+		$frontend_json = wp_json_encode( $tool_result );
+
+		$method->invoke( $chat, 'search_products', $tool_result );
+
+		$this->assertSame( $frontend_json, wp_json_encode( $tool_result ) );
+	}
+
+	public function test_to_model_payload_collapses_variations_for_product_details(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			'id'         => 5,
+			'name'       => 'Hoodie',
+			'url'        => 'http://example.com/product/hoodie/',
+			'variations' => array(
+				array(
+					'variation_id'  => 51,
+					'attributes'    => array(
+						'attribute_pa_color' => 'blue',
+						'attribute_size'     => 'L',
+					),
+					'price'         => 45.0,
+					'regular_price' => 50.0,
+					'is_in_stock'   => true,
+					'image'         => 'http://example.com/hoodie-blue.jpg',
+				),
+			),
+		);
+
+		$model_payload = $method->invoke( $chat, 'get_product_details', $tool_result );
+
+		$this->assertArrayNotHasKey( 'url', $model_payload );
+		$this->assertSame(
+			array(
+				'variation_id' => 51,
+				'attributes'   => 'color: blue, size: L',
+				'price'        => 45.0,
+				'is_in_stock'  => true,
+			),
+			$model_payload['variations'][0]
+		);
+	}
+
+	public function test_to_model_payload_slims_compare_products_entries(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			'products'   => array(
+				array(
+					'id'              => 1,
+					'name'            => 'Product A',
+					'url'             => 'http://example.com/product/a/',
+					'add_to_cart_url' => 'http://example.com/cart/?add-to-cart=1',
+					'image'           => 'http://example.com/a.jpg',
+					'rating'          => 4.0,
+				),
+			),
+			'attributes' => array( 'price' ),
+		);
+
+		$model_payload = $method->invoke( $chat, 'compare_products', $tool_result );
+
+		$this->assertArrayNotHasKey( 'url', $model_payload['products'][0] );
+		$this->assertArrayNotHasKey( 'add_to_cart_url', $model_payload['products'][0] );
+		$this->assertArrayNotHasKey( 'image', $model_payload['products'][0] );
+		$this->assertSame( 4.0, $model_payload['products'][0]['rating'] );
+		$this->assertSame( array( 'price' ), $model_payload['attributes'] );
+	}
+
+	public function test_to_model_payload_strips_checkout_and_cart_urls(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			'checkout_url' => 'http://example.com/checkout/',
+			'cart_url'     => 'http://example.com/cart/',
+			'has_cart'     => true,
+			'item_count'   => 2,
+		);
+
+		$model_payload = $method->invoke( $chat, 'get_checkout_action', $tool_result );
+
+		$this->assertArrayNotHasKey( 'checkout_url', $model_payload );
+		$this->assertArrayNotHasKey( 'cart_url', $model_payload );
+		$this->assertTrue( $model_payload['has_cart'] );
+		$this->assertSame( 2, $model_payload['item_count'] );
+	}
+
+	public function test_to_model_payload_keeps_site_content_urls_for_citation(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$tool_result = array(
+			array(
+				'post_id' => 3,
+				'title'   => 'Shipping Policy',
+				'url'     => 'http://example.com/shipping/',
+				'snippet' => 'We ship worldwide.',
+			),
+		);
+
+		$model_payload = $method->invoke( $chat, 'search_site_content', $tool_result );
+
+		$this->assertSame( $tool_result, $model_payload );
+	}
+
+	public function test_to_model_payload_passes_null_through(): void {
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'to_model_payload' );
+		$method->setAccessible( true );
+
+		$this->assertNull( $method->invoke( $chat, 'get_product_details', null ) );
+	}
+
+	public function test_handle_tool_calls_stream_frontend_output_keeps_card_urls(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		WPAICTestHelper::add_mock_post(
+			array(
+				'ID'           => 1,
+				'post_title'   => 'Test Product',
+				'post_content' => '',
+				'post_excerpt' => '',
+				'post_type'    => 'product',
+				'post_status'  => 'publish',
+			)
+		);
+		WPAICTestHelper::set_post_meta( 1, '_price', '19.99' );
+		WPAICTestHelper::set_post_meta( 1, '_regular_price', '19.99' );
+		WPAICTestHelper::set_post_meta( 1, '_sale_price', '' );
+		WPAICTestHelper::set_post_meta( 1, '_stock_status', 'instock' );
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'handle_tool_calls_stream' );
+		$method->setAccessible( true );
+
+		$collected_events = array();
+		$callback         = function ( $data ) use ( &$collected_events ) {
+			$collected_events[] = $data;
+		};
+
+		$messages   = array( array( 'role' => 'user', 'content' => 'Show products' ) );
+		$tool_calls = array(
+			array(
+				'id'       => 'call_urls',
+				'type'     => 'function',
+				'function' => array(
+					'name'      => 'search_products',
+					'arguments' => '{}',
+				),
+			),
+		);
+
+		$method->invoke( $chat, $messages, $tool_calls, $callback );
+
+		$tool_output_events = array_values(
+			array_filter( $collected_events, fn( $e ) => isset( $e['tool_output_available'] ) )
+		);
+		$this->assertNotEmpty( $tool_output_events );
+
+		// The frontend copy must keep the card URLs; only the model copy is slimmed.
+		$frontend_product = $tool_output_events[0]['tool_output_available']['output'][0];
+		$this->assertArrayHasKey( 'url', $frontend_product );
+		$this->assertArrayHasKey( 'add_to_cart_url', $frontend_product );
+	}
+
+	public function test_system_prompt_caps_faq_injection_at_thirty_pairs(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'openai_api_key' => '',
+				'model'          => 'gpt-5-mini',
+			)
+		);
+
+		global $wpdb;
+		for ( $i = 1; $i <= 35; $i++ ) {
+			$wpdb->insert(
+				'wp_wpaic_faqs',
+				array(
+					'question' => "Question {$i}?",
+					'answer'   => "Answer {$i}.",
+				)
+			);
+		}
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'Question 1?', $prompt );
+		$this->assertStringContainsString( 'Question 30?', $prompt );
+		$this->assertStringNotContainsString( 'Question 31?', $prompt );
+		$this->assertStringNotContainsString( 'Question 35?', $prompt );
 	}
 }

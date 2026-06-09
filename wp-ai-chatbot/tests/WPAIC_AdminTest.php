@@ -1124,6 +1124,89 @@ class WPAIC_AdminTest extends TestCase {
 		$_POST = array();
 	}
 
+	public function test_ajax_save_faqs_preserves_existing_faqs_on_malformed_content(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		global $wpdb;
+		$wpdb->insert( 'wp_wpaic_faqs', array( 'question' => 'Old Q', 'answer' => 'Old A' ) );
+
+		$_POST = array( 'faq_content' => 'This paste has no question or answer markers at all.' );
+
+		$this->admin = new WPAIC_Admin();
+
+		try {
+			$this->admin->ajax_save_faqs();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertFalse( $e->success );
+			$this->assertStringContainsString( 'left unchanged', $e->data['message'] );
+		}
+
+		$faqs = $wpdb->get_results( "SELECT question, answer FROM wp_wpaic_faqs" );
+		$this->assertCount( 1, $faqs );
+		$this->assertEquals( 'Old Q', $faqs[0]->question );
+		$this->assertEquals( 'Old A', $faqs[0]->answer );
+
+		$_POST = array();
+	}
+
+	public function test_ajax_save_faqs_reports_skipped_entries(): void {
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$_POST = array(
+			'faq_content' => "Q: Valid question?\nA: Valid answer.\n\nQ: Question separated from its answer by a blank line\n\nA: Orphaned answer.",
+		);
+
+		$this->admin = new WPAIC_Admin();
+
+		try {
+			$this->admin->ajax_save_faqs();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $e ) {
+			$this->assertTrue( $e->success );
+			$this->assertStringContainsString( '1 FAQ(s) saved', $e->data['message'] );
+			$this->assertStringContainsString( 'could not be parsed', $e->data['message'] );
+			$this->assertStringContainsString( 'Orphaned answer', $e->data['message'] );
+		}
+
+		global $wpdb;
+		$faqs = $wpdb->get_results( "SELECT question, answer FROM wp_wpaic_faqs" );
+		$this->assertCount( 1, $faqs );
+		$this->assertEquals( 'Valid question?', $faqs[0]->question );
+
+		$_POST = array();
+	}
+
+	public function test_parse_faq_content_parses_valid_pairs(): void {
+		$parsed = WPAIC_Admin::parse_faq_content( "Q: First?\nA: One.\n\nQ: Second?\nA: Two\nspanning lines." );
+
+		$this->assertSame( array(), $parsed['failed'] );
+		$this->assertCount( 2, $parsed['pairs'] );
+		$this->assertSame( 'First?', $parsed['pairs'][0]['question'] );
+		$this->assertSame( 'One.', $parsed['pairs'][0]['answer'] );
+		$this->assertSame( 'Second?', $parsed['pairs'][1]['question'] );
+		$this->assertSame( "Two\nspanning lines.", $parsed['pairs'][1]['answer'] );
+	}
+
+	public function test_parse_faq_content_reports_blank_line_separated_answer(): void {
+		$parsed = WPAIC_Admin::parse_faq_content( "Q: Where is my order?\n\nA: Check your email." );
+
+		$this->assertCount( 0, $parsed['pairs'] );
+		$this->assertCount( 2, $parsed['failed'] );
+		$this->assertSame( 'Q: Where is my order?', $parsed['failed'][0] );
+		$this->assertSame( 'A: Check your email.', $parsed['failed'][1] );
+	}
+
+	public function test_parse_faq_content_truncates_long_failed_previews(): void {
+		$long_line = 'X' . str_repeat( 'y', 100 );
+		$parsed    = WPAIC_Admin::parse_faq_content( $long_line );
+
+		$this->assertCount( 0, $parsed['pairs'] );
+		$this->assertCount( 1, $parsed['failed'] );
+		$this->assertSame( 60, mb_strlen( $parsed['failed'][0] ) );
+		$this->assertStringEndsWith( '...', $parsed['failed'][0] );
+	}
+
 	public function test_ajax_upload_csv_returns_error_when_files_not_set(): void {
 		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
 

@@ -375,10 +375,9 @@ class WPAIC_Product_Tools {
 		}
 
 		if ( $detailed ) {
-			$product_data['description']       = $post->post_content;
-			$product_data['short_description'] = $post->post_excerpt;
-			$product_data['sku']               = get_post_meta( $post->ID, '_sku', true );
-			$product_data['stock_quantity']    = get_post_meta( $post->ID, '_stock', true );
+			$product_data['description']    = wp_strip_all_tags( strip_shortcodes( $post->post_content ) );
+			$product_data['sku']            = get_post_meta( $post->ID, '_sku', true );
+			$product_data['stock_quantity'] = get_post_meta( $post->ID, '_stock', true );
 		}
 
 		return $product_data;
@@ -403,7 +402,10 @@ class WPAIC_Product_Tools {
 		foreach ( $variation_attrs as $attr_name => $options ) {
 			$attr_label = wc_attribute_label( $attr_name, $product );
 			$attributes[] = array(
-				'name'    => $attr_name,
+				// sanitize_title() matches WooCommerce's attribute_* keys in
+				// get_available_variations() and add-to-cart requests — custom
+				// attribute names like "Logo" otherwise never match attribute_logo.
+				'name'    => sanitize_title( $attr_name ),
 				'label'   => $attr_label,
 				'options' => array_values( $options ),
 			);

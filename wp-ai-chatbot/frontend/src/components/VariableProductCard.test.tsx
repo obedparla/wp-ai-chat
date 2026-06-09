@@ -137,6 +137,95 @@ describe('VariableProductCard', () => {
     })
   })
 
+  it('fires the WC AJAX request with attribute params for a custom-attribute variation (Hoodie regression)', async () => {
+    // Mirrors the backend payload: custom attribute "Logo" is sanitized to
+    // name "logo" so it matches the variation's attribute_logo key.
+    const hoodie: Product = {
+      id: 2,
+      name: 'Hoodie',
+      url: 'https://example.com/product/hoodie',
+      price: '42.00',
+      product_type: 'variable',
+      is_complex: false,
+      variation_count: 2,
+      attributes: [
+        { name: 'pa_color', label: 'Color', options: ['blue', 'green'] },
+        { name: 'logo', label: 'Logo', options: ['Yes', 'No'] },
+      ],
+      variations: [
+        {
+          variation_id: 201,
+          attributes: { attribute_pa_color: 'blue', attribute_logo: 'Yes' },
+          price: 45,
+          regular_price: 45,
+          is_in_stock: true,
+        },
+        {
+          variation_id: 202,
+          attributes: { attribute_pa_color: 'blue', attribute_logo: 'No' },
+          price: 42,
+          regular_price: 45,
+          is_in_stock: true,
+        },
+      ],
+    }
+
+    window.wpaicConfig = {
+      apiUrl: 'https://example.com/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello',
+      wcAjaxUrl: 'https://example.com/wp-admin/admin-ajax.php',
+    }
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true }),
+    })
+
+    render(<VariableProductCard product={hoodie} />)
+
+    fireEvent.change(screen.getByLabelText('Color'), { target: { value: 'blue' } })
+    fireEvent.change(screen.getByLabelText('Logo'), { target: { value: 'Yes' } })
+
+    // Matched variation price replaces the product-level price.
+    expect(screen.getByText('$45.00')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    const requestUrl = vi.mocked(global.fetch).mock.calls[0][0] as string
+    expect(requestUrl).toContain('variation_id=201')
+    expect(requestUrl).toContain('attribute_pa_color=blue')
+    expect(requestUrl).toContain('attribute_logo=Yes')
+  })
+
+  it('disables Add with an unavailable hint when the combination matches no variation', () => {
+    const productWithGap: Product = {
+      ...mockVariableProduct,
+      variations: mockVariableProduct.variations!.filter(
+        (variation) => variation.variation_id !== 102
+      ),
+    }
+
+    global.fetch = vi.fn()
+
+    render(<VariableProductCard product={productWithGap} />)
+
+    fireEvent.change(screen.getByLabelText('Color'), { target: { value: 'Red' } })
+    fireEvent.change(screen.getByLabelText('Size'), { target: { value: 'M' } })
+
+    const button = screen.getByRole('button')
+    expect(button).toBeDisabled()
+    expect(button).toHaveTextContent('UNAVAILABLE')
+    expect(screen.getByRole('alert')).toHaveTextContent(/combination isn't available/i)
+
+    fireEvent.click(button)
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
   it('shows success state after adding to cart', async () => {
     window.wpaicConfig = {
       apiUrl: 'https://example.com/wp-json/wpaic/v1',

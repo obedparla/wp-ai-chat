@@ -41,6 +41,7 @@ export default function VariableProductCard({ product }: VariableProductCardProp
   const isOutOfStock = selectedVariation && !selectedVariation.is_in_stock
   const allAttributesSelected =
     product.attributes && Object.keys(selectedAttributes).length === product.attributes.length
+  const combinationUnavailable = Boolean(allAttributesSelected) && !selectedVariation
 
   const handleAttributeChange = (attrName: string, value: string) => {
     setSelectedAttributes((prev) => ({
@@ -113,6 +114,11 @@ export default function VariableProductCard({ product }: VariableProductCardProp
           </select>
         </div>
       ))}
+      {combinationUnavailable && (
+        <p className="text-[11px] text-red-600 leading-snug m-0" role="alert">
+          This combination isn&apos;t available.
+        </p>
+      )}
     </div>
   )
 
@@ -123,6 +129,14 @@ export default function VariableProductCard({ product }: VariableProductCardProp
       disabled
     >
       SOLD OUT
+    </button>
+  ) : combinationUnavailable ? (
+    <button
+      type="button"
+      className="inline-flex items-center rounded-full bg-slate-200 text-slate-500 border-0 px-3.5 py-2 font-semibold text-xs cursor-not-allowed tracking-wider"
+      disabled
+    >
+      UNAVAILABLE
     </button>
   ) : (
     <button
