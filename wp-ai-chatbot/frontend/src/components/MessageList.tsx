@@ -4,7 +4,9 @@ import ProductGrid from './ProductGrid'
 import ComparisonTable from './ComparisonTable'
 import CheckoutButton from './CheckoutButton'
 import AddToCartTrigger from './AddToCartTrigger'
+import ClearCartTrigger from './ClearCartTrigger'
 import MarkdownContent from './MarkdownContent'
+import type { ClearCartStatus } from '../hooks/useClearCart'
 import { cn } from '@/lib/utils'
 
 const JUMP_BUTTON_THRESHOLD = 100
@@ -12,6 +14,7 @@ const JUMP_BUTTON_THRESHOLD = 100
 interface MessageListProps {
   messages: Message[]
   onRetry?: () => void
+  clearCartStatuses?: Record<string, ClearCartStatus>
   children?: ReactNode
 }
 
@@ -52,7 +55,7 @@ function shouldShowSeparator(current: Message, previous: Message | undefined): b
   return current.createdAt - previous.createdAt > CLUSTER_GAP_MS
 }
 
-export default function MessageList({ messages, onRetry, children }: MessageListProps) {
+export default function MessageList({ messages, onRetry, clearCartStatuses, children }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
   const [showJumpButton, setShowJumpButton] = useState(false)
@@ -101,11 +104,13 @@ export default function MessageList({ messages, onRetry, children }: MessageList
         const comparison = msg.comparison
         const checkoutAction = msg.checkoutAction
         const addToCartIntents = msg.addToCartIntents ?? []
+        const clearCartIntents = msg.clearCartIntents ?? []
         const hasProducts = products.length > 0
         const hasComparison = comparison !== undefined
         const hasCheckoutAction = checkoutAction !== undefined
         const hasAddToCart = addToCartIntents.length > 0
-        const hasToolUI = hasProducts || hasComparison || hasCheckoutAction || hasAddToCart
+        const hasClearCart = clearCartIntents.length > 0
+        const hasToolUI = hasProducts || hasComparison || hasCheckoutAction || hasAddToCart || hasClearCart
         const hasTextContent = msg.content && msg.content.trim().length > 0
         const showSeparator = shouldShowSeparator(msg, messages[i - 1])
 
@@ -181,6 +186,17 @@ export default function MessageList({ messages, onRetry, children }: MessageList
               <div className="flex w-full flex-col gap-1.5">
                 {addToCartIntents.map((intent) => (
                   <AddToCartTrigger key={intent.toolCallId} intent={intent} />
+                ))}
+              </div>
+            )}
+            {hasClearCart && (
+              <div className="flex w-full flex-col gap-1.5">
+                {clearCartIntents.map((intent) => (
+                  <ClearCartTrigger
+                    key={intent.toolCallId}
+                    intent={intent}
+                    status={clearCartStatuses?.[intent.toolCallId]}
+                  />
                 ))}
               </div>
             )}

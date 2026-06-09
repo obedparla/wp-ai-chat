@@ -82,6 +82,47 @@ export async function requestAddToCart(
   return data
 }
 
+export interface ClearCartRequestItem {
+  productId: number
+  quantity: number
+}
+
+/**
+ * Remove items from the cart, or empty it entirely when `items` is omitted/empty.
+ * Each item's `quantity` is how many units to remove. Hits the wpaic_clear_cart
+ * admin-ajax handler and returns the mini-cart fragments.
+ */
+export async function requestClearCart(
+  items: ClearCartRequestItem[] | undefined,
+  wcAjaxUrl: string
+): Promise<CartUpdateResponse> {
+  const search = new URLSearchParams({ action: 'wpaic_clear_cart' })
+
+  if (items && items.length > 0) {
+    search.set(
+      'items',
+      JSON.stringify(items.map((item) => ({ product_id: item.productId, quantity: item.quantity })))
+    )
+  }
+
+  const response = await fetch(`${wcAjaxUrl}?${search.toString()}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Clear cart failed with status ${response.status}`)
+  }
+
+  const data = (await response.json()) as CartUpdateResponse
+
+  if (hasCartUpdateError(data)) {
+    throw new Error('Clear cart was rejected')
+  }
+
+  return data
+}
+
 export function applyCartUpdate(response: CartUpdateResponse): void {
   const fragments = response.fragments ?? {}
 

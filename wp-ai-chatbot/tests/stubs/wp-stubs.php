@@ -1916,6 +1916,30 @@ if ( ! class_exists( 'MockWCCart' ) ) {
 			return $count;
 		}
 
+		public function remove_cart_item( string $cart_item_key ): bool {
+			if ( ! isset( $this->cart[ $cart_item_key ] ) ) {
+				return false;
+			}
+			unset( $this->cart[ $cart_item_key ] );
+			return true;
+		}
+
+		public function set_quantity( string $cart_item_key, int $quantity = 1 ): bool {
+			if ( ! isset( $this->cart[ $cart_item_key ] ) ) {
+				return false;
+			}
+			if ( $quantity <= 0 ) {
+				unset( $this->cart[ $cart_item_key ] );
+				return true;
+			}
+			$this->cart[ $cart_item_key ]['quantity'] = $quantity;
+			return true;
+		}
+
+		public function empty_cart(): void {
+			$this->cart = array();
+		}
+
 		public function get_cart_total(): string {
 			if ( null !== $this->cart_total_override ) {
 				return $this->cart_total_override;

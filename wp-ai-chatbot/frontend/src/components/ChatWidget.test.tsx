@@ -474,14 +474,35 @@ describe('ChatWidget tool progress', () => {
     expect(screen.getByText('Loading categories...')).toBeInTheDocument()
   })
 
-  it('shows generic message for unknown tool', () => {
+  it('shows a friendly generic message for an unknown tool, never the raw tool name', () => {
     const mockChat = createMockChat({
       messages: [],
       isLoading: true,
       activeTools: [{ toolName: 'custom_tool', state: 'executing' }],
     })
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
-    expect(screen.getByText('Running custom_tool...')).toBeInTheDocument()
+    expect(screen.getByText('Working on it…')).toBeInTheDocument()
+    expect(screen.queryByText(/custom_tool/)).not.toBeInTheDocument()
+  })
+
+  it('shows a human-readable label for add_to_cart', () => {
+    const mockChat = createMockChat({
+      messages: [],
+      isLoading: true,
+      activeTools: [{ toolName: 'add_to_cart', state: 'executing' }],
+    })
+    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
+    expect(screen.getByText('Adding to cart...')).toBeInTheDocument()
+  })
+
+  it('shows a human-readable label for clear_cart', () => {
+    const mockChat = createMockChat({
+      messages: [],
+      isLoading: true,
+      activeTools: [{ toolName: 'clear_cart', state: 'executing' }],
+    })
+    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
+    expect(screen.getByText('Updating your cart...')).toBeInTheDocument()
   })
 
   it('shows typing indicator when loading with no active tools', () => {

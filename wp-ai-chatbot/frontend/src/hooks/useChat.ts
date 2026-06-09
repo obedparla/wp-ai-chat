@@ -6,12 +6,26 @@ import { Product } from '../components/ProductCard'
 import { ComparisonData, ComparisonProduct } from '../components/ComparisonTable'
 import { CheckoutAction } from '../components/CheckoutButton'
 import { isProductTool } from './tools'
+import { clearStoredClearCartStatuses } from './useClearCart'
 
 export interface AddToCartIntent {
   toolCallId: string
   productId: number
   variationId?: number
   quantity: number
+}
+
+export interface ClearCartItem {
+  productId: number
+  name: string
+  removeQuantity: number
+  removeAll: boolean
+}
+
+export interface ClearCartIntent {
+  toolCallId: string
+  clearAll: boolean
+  items: ClearCartItem[]
 }
 
 export interface Message {
@@ -23,6 +37,7 @@ export interface Message {
   comparison?: ComparisonData
   checkoutAction?: CheckoutAction
   addToCartIntents?: AddToCartIntent[]
+  clearCartIntents?: ClearCartIntent[]
   createdAt?: number
 }
 
@@ -249,6 +264,43 @@ function extractAddToCartIntents(uiMessage: UIMessage): AddToCartIntent[] {
   return intents
 }
 
+function extractClearCartIntents(uiMessage: UIMessage): ClearCartIntent[] {
+  const intents: ClearCartIntent[] = []
+
+  for (const part of uiMessage.parts) {
+    if (part.type !== 'dynamic-tool') continue
+    const toolPart = part as DynamicToolPart
+    if (toolPart.state !== 'output-available' || toolPart.toolName !== 'clear_cart') continue
+
+    const output = toolPart.output as
+      | { success?: boolean; clear_all?: boolean; items?: unknown }
+      | undefined
+    if (!output || output.success !== true) continue
+
+    const items: ClearCartItem[] = Array.isArray(output.items)
+      ? output.items
+          .filter(
+            (item): item is { product_id: number; name?: string; remove_quantity?: number; remove_all?: boolean } =>
+              typeof item === 'object' && item !== null && typeof (item as { product_id?: unknown }).product_id === 'number'
+          )
+          .map((item) => ({
+            productId: item.product_id,
+            name: typeof item.name === 'string' ? item.name : '',
+            removeQuantity: typeof item.remove_quantity === 'number' && item.remove_quantity > 0 ? item.remove_quantity : 1,
+            removeAll: item.remove_all === true,
+          }))
+      : []
+
+    intents.push({
+      toolCallId: toolPart.toolCallId,
+      clearAll: output.clear_all === true,
+      items,
+    })
+  }
+
+  return intents
+}
+
 function extractComparisonFromMessage(uiMessage: UIMessage): ComparisonData | undefined {
   for (const part of uiMessage.parts) {
     if (part.type === 'dynamic-tool') {
@@ -456,6 +508,7 @@ export function useChat() {
       const comparison = msg.role === 'assistant' ? extractComparisonFromMessage(msg) : undefined
       const checkoutAction = msg.role === 'assistant' ? extractCheckoutActionFromMessage(msg) : undefined
       const addToCartIntents = msg.role === 'assistant' ? extractAddToCartIntents(msg) : undefined
+      const clearCartIntents = msg.role === 'assistant' ? extractClearCartIntents(msg) : undefined
       return {
         role: msg.role as 'user' | 'assistant',
         content: extractTextContent(msg),
@@ -465,6 +518,7 @@ export function useChat() {
         comparison,
         checkoutAction,
         addToCartIntents: addToCartIntents && addToCartIntents.length > 0 ? addToCartIntents : undefined,
+        clearCartIntents: clearCartIntents && clearCartIntents.length > 0 ? clearCartIntents : undefined,
         createdAt: msg.id ? timestamps[msg.id] : undefined,
       }
     })
@@ -601,6 +655,7 @@ export function useChat() {
     stop()
     clearStoredMessages()
     clearStoredTimestamps()
+    clearStoredClearCartStatuses()
     timestampsRef.current = {}
     setTimestampsVersion((v) => v + 1)
     setPendingMessages([])

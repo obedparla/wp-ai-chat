@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Message, ActiveTool } from '../hooks/useChat'
+import { useClearCart } from '../hooks/useClearCart'
 import ChatWidgetUI from './ChatWidgetUI'
 import SendTranscriptDialog from './SendTranscriptDialog'
 import ConfirmDialog from './ConfirmDialog'
@@ -24,7 +25,7 @@ interface ChatWidgetProps {
 }
 
 function getToolProgressMessage(tool: ActiveTool): string {
-  return TOOL_PROGRESS_LABELS[tool.toolName] ?? `Running ${tool.toolName}...`
+  return TOOL_PROGRESS_LABELS[tool.toolName] ?? 'Working on it…'
 }
 
 export default function ChatWidget({
@@ -40,6 +41,7 @@ export default function ChatWidget({
   const [input, setInput] = useState('')
   const [showTranscriptDialog, setShowTranscriptDialog] = useState(false)
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false)
+  const clearCart = useClearCart(messages)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const isGreetingOnly =
@@ -59,9 +61,13 @@ export default function ChatWidget({
         setShowNewConversationDialog(false)
         return
       }
+      if (clearCart.pending) {
+        clearCart.cancel()
+        return
+      }
       onClose()
     },
-    [onClose, showTranscriptDialog, showNewConversationDialog]
+    [onClose, showTranscriptDialog, showNewConversationDialog, clearCart]
   )
 
   useEffect(() => {
@@ -163,6 +169,16 @@ export default function ChatWidget({
           onCancel={() => setShowNewConversationDialog(false)}
         />
       )}
+      {clearCart.pendingDialog && (
+        <ConfirmDialog
+          title={clearCart.pendingDialog.title}
+          description={clearCart.pendingDialog.description}
+          confirmLabel={clearCart.pendingDialog.confirmLabel}
+          onConfirm={clearCart.confirm}
+          onCancel={clearCart.cancel}
+          destructive
+        />
+      )}
       <ChatWidgetUI
         messages={messages}
         chatbotName={chatbotName}
@@ -172,6 +188,7 @@ export default function ChatWidget({
         onInputChange={setInput}
         onSubmit={handleSubmit}
         onRetry={retry}
+        clearCartStatuses={clearCart.statuses}
         inputRef={inputRef}
         headerActions={headerActions}
         loadingIndicator={

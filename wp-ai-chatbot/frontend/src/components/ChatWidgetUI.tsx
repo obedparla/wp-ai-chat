@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { Message } from '../hooks/useChat'
+import type { ClearCartStatus } from '../hooks/useClearCart'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 
@@ -12,6 +13,7 @@ interface ChatWidgetUIProps {
   onInputChange: (value: string) => void
   onSubmit: (e: React.FormEvent) => void
   onRetry?: () => void
+  clearCartStatuses?: Record<string, ClearCartStatus>
   inputRef?: React.Ref<HTMLTextAreaElement>
   placeholder?: string
   headerActions?: ReactNode
@@ -28,6 +30,7 @@ export default function ChatWidgetUI({
   onInputChange,
   onSubmit,
   onRetry,
+  clearCartStatuses,
   inputRef,
   placeholder,
   headerActions,
@@ -76,7 +79,7 @@ export default function ChatWidgetUI({
           </div>
         )}
       </div>
-      <MessageList messages={messages} onRetry={onRetry}>
+      <MessageList messages={messages} onRetry={onRetry} clearCartStatuses={clearCartStatuses}>
         {children}
       </MessageList>
       {loadingIndicator}
