@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Message } from '../hooks/useChat'
 import { getOrCreateSessionId } from '../hooks/useChat'
-import { useFocusTrap } from '../hooks/useFocusTrap'
+import DialogShell from './DialogShell'
 
 interface SendTranscriptDialogProps {
   messages: Message[]
@@ -25,7 +25,6 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
   const [dialogState, setDialogState] = useState<DialogState>('input')
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const dialogRef = useFocusTrap<HTMLDivElement>()
   const config = window.wpaicConfig
 
   useEffect(() => {
@@ -79,26 +78,15 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
       e.preventDefault()
       handleSend()
     }
-    if (e.key === 'Escape') {
-      e.stopPropagation()
-      onClose()
-    }
   }
 
   return (
-    <div
-      ref={dialogRef}
-      className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 rounded-2xl animate-wpaic-fadeIn"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="wpaic-transcript-title"
+    <DialogShell
+      onClose={onClose}
+      panelClassName="mx-5 w-full max-w-[360px] p-6"
+      ariaLabelledby="wpaic-transcript-title"
     >
-      <div
-        className="bg-white rounded-2xl shadow-2xl mx-5 w-full max-w-[360px] p-6"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
-      >
+      <div onKeyDown={handleKeyDown}>
         {dialogState === 'success' ? (
           <div className="text-center py-2">
             <div className="text-[var(--wpaic-primary)] mb-2">
@@ -151,6 +139,6 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
           </>
         )}
       </div>
-    </div>
+    </DialogShell>
   )
 }

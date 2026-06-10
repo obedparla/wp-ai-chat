@@ -85,8 +85,11 @@ export default function ProductCardShell({
         {content}
       </a>
       {middleSlot}
-      <div className="flex items-center justify-between gap-2 px-3.5 pb-3.5 pt-2 mt-auto max-[480px]:px-3 max-[480px]:pb-3">
-        {showPrice ? (
+      {/* flex-wrap + ml-auto: long prices (e.g. $13,999.99 $13,292.99) push the
+          button onto its own right-aligned line instead of clipping it off the
+          card edge. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3.5 pb-3.5 pt-2 mt-auto max-[480px]:px-3 max-[480px]:pb-3">
+        {showPrice && (
           <div className="text-base font-bold text-slate-900 max-[480px]:text-[15px]">
             {hasDiscount ? (
               <>
@@ -99,10 +102,8 @@ export default function ProductCardShell({
               <span>{formatPrice(displayCurrent)}</span>
             )}
           </div>
-        ) : (
-          <div />
         )}
-        {bottomSlot}
+        <div className="ml-auto">{bottomSlot}</div>
       </div>
     </div>
   )

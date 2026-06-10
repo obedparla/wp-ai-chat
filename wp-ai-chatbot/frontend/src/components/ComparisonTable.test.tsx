@@ -297,4 +297,45 @@ describe('ComparisonTable', () => {
     expect(screen.queryByText('Weight')).not.toBeInTheDocument()
     expect(screen.queryByText('Dimensions')).not.toBeInTheDocument()
   })
+
+  describe('expanded dialog', () => {
+    it('opens the fullscreen dialog from the expand button and focuses the close button', () => {
+      render(<ComparisonTable data={mockData} />)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand comparison' }))
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      // Both grids render: product names appear twice.
+      expect(screen.getAllByText('Product A')).toHaveLength(2)
+      // The dialog grid has no expand button of its own.
+      expect(screen.getAllByRole('button', { name: 'Expand comparison' })).toHaveLength(1)
+      // Focus moves into the dialog so the focus trap is active immediately.
+      expect(screen.getByRole('button', { name: 'Close comparison' })).toHaveFocus()
+    })
+
+    it('closes on Escape without the event reaching document-level bubble listeners', () => {
+      const bubbleListener = vi.fn()
+      document.addEventListener('keydown', bubbleListener)
+      render(<ComparisonTable data={mockData} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Expand comparison' }))
+
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Close comparison' }), { key: 'Escape' })
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(bubbleListener).not.toHaveBeenCalled()
+      document.removeEventListener('keydown', bubbleListener)
+    })
+
+    it('closes on backdrop click but not on clicks inside the panel', () => {
+      render(<ComparisonTable data={mockData} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Expand comparison' }))
+
+      fireEvent.click(screen.getAllByText('Product A')[1])
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('dialog'))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
 })

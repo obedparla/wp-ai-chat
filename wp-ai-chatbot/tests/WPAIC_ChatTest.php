@@ -1211,7 +1211,27 @@ class WPAIC_ChatTest extends TestCase {
 
 		$this->assertStringContainsString( 'CLEAR-CART AND REMOVE-ITEM INTENT', $prompt );
 		$this->assertStringContainsString( 'use the clear_cart tool', $prompt );
-		$this->assertStringContainsString( 'do NOT claim the cart was cleared', $prompt );
+		$this->assertStringContainsString( 'NOTHING has been removed yet', $prompt );
+	}
+
+	public function test_system_prompt_includes_superlative_single_pick_rule(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'model' => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'SUPERLATIVE AND SINGLE-PICK ANSWERS', $prompt );
+		$this->assertStringContainsString( 'call get_product_details with its product_id so its card renders', $prompt );
 	}
 
 	public function test_system_prompt_preserves_strict_shipping_grounding(): void {

@@ -37,7 +37,7 @@ Everything currently implemented.
 - Lazy loading: a ~6KB stub renders the launcher + proactive teaser and dynamic-imports the full React app on first interaction (or idle) — storefront pageviews don't pay the full bundle cost
 - Proactive teaser bubble: dismissible message-preview next to the launcher after the configured delay (never auto-opens the full widget); expands to full chat on click
 - Scoped styles: no Tailwind preflight bleed into the host theme; reduced-motion rules scoped to the widget root
-- Real-time streaming responses over SSE
+- Real-time streaming responses over SSE; failed replies (including requests that die before any reply) show an error bubble with a retry icon that resends from the last user message
 - Skeleton product cards shimmer in-thread while product tools (search / popular / compare) run
 - Header with circular avatar (logo or initials), green online dot, name + role subtitle
 - Flat gray assistant bubbles / themed user bubbles, 85% max width
@@ -45,7 +45,7 @@ Everything currently implemented.
 - Cluster-based time separators (TODAY / YESTERDAY / day name · HH:MM) on >5min gaps
 - Pill input with auto-growing textarea and internal circular up-arrow send button
 - Enter to send, Shift+Enter for newline; input auto-focus on open and after send
-- Jump-to-latest pill appears when scrolled up in long conversations
+- Jump-to-latest pill appears when scrolled up in long conversations; reopening the widget lands instantly at the bottom of the conversation (no scroll animation)
 - Conversation starter pills on empty chat (custom or auto-generated)
 - New conversation button (with confirm), close (X), and Escape-to-close
 - Clear/remove confirm via the same popup pattern as new-chat (add fires immediately, no confirm); clear/remove shows an inline result badge afterward
@@ -58,7 +58,7 @@ Everything currently implemented.
 
 ### Product Display
 - Product cards: image, name, short description, humanized category caption, price, SALE badge with strikethrough
-- 2-column grid for 1–2 products; carousel for 3+ ("N PICKS" header, hover-revealed desktop arrows, swipe hint on touch)
+- 2-column grid for 1–2 products; carousel for 3+ ("N PICKS" header, always-visible prev/next arrows in the header row above the cards on desktop, swipe hint on touch)
 - Card discipline: cards deduped by product ID, picks capped at 6, redundant carousels suppressed when a comparison table shows the same products, only the added product's card after an add-to-cart
 - Add-to-cart button with state machine (ADD → loading → ADDED; inline error state with auto-reset — failures never navigate away; SOLD OUT disabled)
 - Zero-price guard: $0.00-priced products hide the price and swap ADD for a "View product" link
@@ -69,7 +69,7 @@ Everything currently implemented.
   - Out-of-stock simple → disabled "Sold out"
   - Subscriptions → render as simple/variable
   - Unknown types → "View product" fallback
-- Comparison table: side-by-side of 2–4 products with per-product add-to-cart; renders attribute, weight, and dimension rows when present
+- Comparison table: side-by-side of 2–4 products with per-product add-to-cart; renders attribute, weight, and dimension rows when present; expand icon in the top-left cell opens a larger fullscreen popup of the same table (Escape/backdrop closes it without closing the chat)
 - Checkout CTA button (themed CHECKOUT, with "view cart" fallback) rendered inline on checkout intent
 
 ### AI Tools (function calls the model can invoke)

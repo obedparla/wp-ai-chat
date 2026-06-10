@@ -55,6 +55,11 @@ interface PendingUserMessage {
 
 const MESSAGE_DEBOUNCE_MS = 400
 
+const ERROR_REPLY_TEXT = 'Sorry, something went wrong. Please try again.'
+// Stable React key for the synthetic error message appended when a request
+// fails before any assistant reply exists; not consumed anywhere else.
+const SYNTHETIC_ERROR_MESSAGE_ID = 'wpaic-error-retry'
+
 function generateSessionId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0
@@ -206,26 +211,31 @@ interface DynamicToolPart {
 
 function extractProductsFromMessage(uiMessage: UIMessage): Product[] {
   const products: Product[] = []
+  const detailProducts: Product[] = []
 
   for (const part of uiMessage.parts) {
     if (part.type === 'dynamic-tool') {
       const toolPart = part as DynamicToolPart
       if (toolPart.state === 'output-available' && isProductTool(toolPart.toolName)) {
         const output = toolPart.output
+        // get_product_details is a deliberate single-product focus (for example a
+        // superlative answer naming one product) — render it ahead of list
+        // results so the rendered-cards cap can never cut it.
+        const target = toolPart.toolName === 'get_product_details' ? detailProducts : products
         if (Array.isArray(output)) {
           for (const item of output) {
             if (isProduct(item)) {
-              products.push(item)
+              target.push(item)
             }
           }
         } else if (isProduct(output)) {
-          products.push(output)
+          target.push(output)
         }
       }
     }
   }
 
-  return products
+  return [...detailProducts, ...products]
 }
 
 function isProduct(obj: unknown): obj is Product {
@@ -548,31 +558,25 @@ export function useChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiMessages, timestampsVersion])
 
+  // Ensure a conversation with an active error always ends in an assistant
+  // message marked isError, so MessageList renders the error bubble + retry
+  // icon: mark the last assistant message (filling in text if it streamed
+  // nothing), or append a synthetic one when the request died before any
+  // reply arrived.
   const messagesWithError = useMemo(() => {
-    if (error && messages.length > 0) {
-      const lastMsg = messages[messages.length - 1]
-      if (lastMsg.role === 'assistant' && lastMsg.content === '') {
-        return [
-          ...messages.slice(0, -1),
-          {
-            ...lastMsg,
-            content: 'Sorry, something went wrong. Please try again.',
-            isError: true,
-          },
-        ]
-      }
-      // If there's an error but assistant has partial content, mark it as error
-      if (lastMsg.role === 'assistant') {
-        return [
-          ...messages.slice(0, -1),
-          {
-            ...lastMsg,
-            isError: true,
-          },
-        ]
-      }
-    }
-    return messages
+    if (!error || messages.length === 0) return messages
+    const lastMsg = messages[messages.length - 1]
+    const isAssistant = lastMsg.role === 'assistant'
+    const errorMessage: Message = isAssistant
+      ? { ...lastMsg, content: lastMsg.content || ERROR_REPLY_TEXT, isError: true }
+      : {
+          role: 'assistant',
+          content: ERROR_REPLY_TEXT,
+          isError: true,
+          id: SYNTHETIC_ERROR_MESSAGE_ID,
+          createdAt: lastMsg.createdAt,
+        }
+    return [...(isAssistant ? messages.slice(0, -1) : messages), errorMessage]
   }, [messages, error])
 
   const activeTools = useMemo(() => extractActiveTools(uiMessages), [uiMessages])

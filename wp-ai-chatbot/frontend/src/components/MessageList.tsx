@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState, Fragment, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useCallback, useState, Fragment, type ReactNode } from 'react'
 import { Message } from '../hooks/useChat'
 import ProductGrid from './ProductGrid'
 import type { Product } from './ProductCard'
@@ -66,6 +66,22 @@ function formatDayLabel(timestamp: number): string {
   return date.toLocaleDateString([], { weekday: 'long' }).toUpperCase()
 }
 
+function RetryButton({ onRetry, className }: { onRetry?: () => void; className?: string }) {
+  return (
+    <button
+      className={cn(
+        'inline-flex items-center justify-center w-7 h-7 p-0 bg-red-50 border border-red-200 rounded-full text-red-600 text-sm cursor-pointer transition-all duration-200 hover:bg-red-600 hover:border-red-600 hover:text-white hover:rotate-180',
+        className
+      )}
+      onClick={onRetry}
+      aria-label="Retry"
+      title="Retry"
+    >
+      ↻
+    </button>
+  )
+}
+
 function shouldShowSeparator(current: Message, previous: Message | undefined): boolean {
   if (!current.createdAt) return false
   if (!previous) return true
@@ -103,7 +119,12 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
     container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
   }, [])
 
-  useEffect(() => {
+  // Layout effect so the list is already at the bottom on the very first paint
+  // after the widget (re)opens — no visible scrolling. The container must not
+  // have the scroll-smooth class: that CSS animates even programmatic
+  // scrollTop assignments. Only the jump button scrolls smoothly (explicit
+  // behavior above).
+  useLayoutEffect(() => {
     if (containerRef.current && isUserAtBottomRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
       setShowJumpButton(false)
@@ -113,7 +134,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
   return (
     <div className="flex-1 relative flex min-h-0">
     <div
-      className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 bg-white scroll-smooth overscroll-contain max-[480px]:p-4 max-[480px]:gap-2.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300"
+      className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 bg-white overscroll-contain max-[480px]:p-4 max-[480px]:gap-2.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300"
       ref={containerRef}
       onScroll={handleScroll}
       role="log"
@@ -183,16 +204,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
                 <div className="prose prose-sm prose-slate max-w-none prose-p:my-2 prose-p:last:mb-0 prose-a:text-[var(--wpaic-primary)] prose-a:no-underline hover:prose-a:underline">
                   <MarkdownContent content={msg.content} />
                 </div>
-                {showRetry && !hasToolUI && (
-                  <button
-                    className="inline-flex items-center justify-center ml-2.5 w-7 h-7 p-0 bg-red-50 border border-red-200 rounded-full text-red-600 text-sm cursor-pointer transition-all duration-200 align-middle hover:bg-red-600 hover:border-red-600 hover:text-white hover:rotate-180"
-                    onClick={onRetry}
-                    aria-label="Retry"
-                    title="Retry"
-                  >
-                    ↻
-                  </button>
-                )}
+                {showRetry && !hasToolUI && <RetryButton onRetry={onRetry} className="ml-2.5 align-middle" />}
               </div>
             )}
             {hasProducts && (
@@ -224,16 +236,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
                 ))}
               </div>
             )}
-            {showRetry && hasToolUI && (
-              <button
-                className="inline-flex items-center justify-center w-7 h-7 p-0 bg-red-50 border border-red-200 rounded-full text-red-600 text-sm cursor-pointer transition-all duration-200 self-start -mt-2 hover:bg-red-600 hover:border-red-600 hover:text-white hover:rotate-180"
-                onClick={onRetry}
-                aria-label="Retry"
-                title="Retry"
-              >
-                ↻
-              </button>
-            )}
+            {showRetry && hasToolUI && <RetryButton onRetry={onRetry} className="self-start -mt-2" />}
           </Fragment>
         )
       })}
