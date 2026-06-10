@@ -2031,6 +2031,17 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 		$this->assertArrayNotHasKey( 'wpaic-admin', $GLOBALS['wpaic_test_enqueued_scripts'] );
 	}
 
+	public function test_enqueue_admin_scripts_matches_badge_polluted_submenu_hooks(): void {
+		// The support-count badge in the parent menu title changes the
+		// title-derived submenu hook (e.g. "AI Chatbot 3" instead of
+		// "AI Chatbot") — the slug suffix must still match.
+		$GLOBALS['wpaic_test_enqueued_scripts'] = array();
+
+		$this->admin->enqueue_admin_scripts( 'ai-chatbot-33-new-support-requests_page_wp-ai-chatbot-logs' );
+
+		$this->assertArrayHasKey( 'wpaic-admin', $GLOBALS['wpaic_test_enqueued_scripts'] );
+	}
+
 	// ---- Honest index freshness wording (P2-27b) ----
 
 	public function test_knowledge_tab_describes_index_freshness_honestly(): void {

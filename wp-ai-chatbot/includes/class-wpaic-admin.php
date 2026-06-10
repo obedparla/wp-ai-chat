@@ -54,12 +54,22 @@ class WPAIC_Admin {
 	}
 
 	public function enqueue_admin_scripts( string $hook ): void {
-		$allowed_hooks = array(
+		// Submenu hooks derive from the parent menu TITLE, which includes the
+		// support-count badge markup when new requests exist — match on the
+		// stable page-slug suffix instead of the full title-derived hook.
+		$allowed_hook_suffixes = array(
 			'toplevel_page_wp-ai-chatbot',
-			'ai-chatbot_page_wp-ai-chatbot-logs',
-			'ai-chatbot_page_wp-ai-chatbot-support',
+			'_page_wp-ai-chatbot-logs',
+			'_page_wp-ai-chatbot-support',
 		);
-		if ( ! in_array( $hook, $allowed_hooks, true ) ) {
+		$is_plugin_page = false;
+		foreach ( $allowed_hook_suffixes as $suffix ) {
+			if ( str_ends_with( $hook, $suffix ) ) {
+				$is_plugin_page = true;
+				break;
+			}
+		}
+		if ( ! $is_plugin_page ) {
 			return;
 		}
 
