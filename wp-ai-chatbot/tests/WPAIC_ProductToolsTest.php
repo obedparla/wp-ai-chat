@@ -219,6 +219,59 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertEquals( 'Mid Item', $result[0]['name'] );
 	}
 
+	public function test_search_products_max_price_drops_item_whose_sale_price_exceeds_cap(): void {
+		// Stale `_price` meta (9.50) slips through the meta query, but the
+		// effective (sale) price 10.82 is over the $10 cap and must not ship.
+		$this->create_mock_product( 1, 'Kitchen Rolling Pin', '9.50', '12.99', '10.82' );
+		$this->create_mock_product( 2, 'Kitchen Spoon', '4.91', '4.99', '4.91' );
+
+		$result = $this->tools->search_products(
+			array(
+				'search'    => 'kitchen',
+				'max_price' => 10,
+			)
+		);
+
+		$names = array_map( fn( $p ) => $p['name'], $result );
+		$this->assertNotContains( 'Kitchen Rolling Pin', $names );
+		$this->assertContains( 'Kitchen Spoon', $names );
+	}
+
+	public function test_search_products_category_path_enforces_effective_price_cap(): void {
+		$this->create_mock_product( 1, 'Rolling Pin', '9.50', '12.99', '10.82' );
+		$this->create_mock_product( 2, 'Peeler', '5.24', '5.99', '5.24' );
+
+		WPAICTestHelper::set_post_terms( 1, 'product_cat', array( 'kitchen-accessories' ) );
+		WPAICTestHelper::set_post_terms( 2, 'product_cat', array( 'kitchen-accessories' ) );
+
+		$result = $this->tools->search_products(
+			array(
+				'category'  => 'kitchen-accessories',
+				'max_price' => 10,
+			)
+		);
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Peeler', $result[0]['name'] );
+	}
+
+	public function test_search_products_min_price_enforced_against_effective_price(): void {
+		// Stale `_price` 9.00 passes the >= 8 meta query, but the shopper pays
+		// the sale price 5.00, which is below the requested minimum.
+		$this->create_mock_product( 1, 'Discounted Mug', '9.00', '9.00', '5.00' );
+		$this->create_mock_product( 2, 'Premium Mug', '15.00' );
+
+		$result = $this->tools->search_products(
+			array(
+				'search'    => 'mug',
+				'min_price' => 8,
+			)
+		);
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Premium Mug', $result[0]['name'] );
+	}
+
 	public function test_search_products_combines_category_and_price_filter(): void {
 		$this->create_mock_product( 1, 'Cheap Shirt', '10' );
 		$this->create_mock_product( 2, 'Expensive Shirt', '100' );

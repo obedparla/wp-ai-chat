@@ -29,6 +29,7 @@ class WPAIC_Loader {
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-logs.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-events.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-cart.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-singular-stemmer.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-search-index.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-content-index.php';
 	}

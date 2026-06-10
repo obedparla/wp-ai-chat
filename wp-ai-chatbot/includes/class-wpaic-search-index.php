@@ -6,6 +6,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use TeamTNT\TNTSearch\TNTSearch;
 
+require_once __DIR__ . '/class-wpaic-singular-stemmer.php';
+
 class WPAIC_Search_Index {
 
 	/**
@@ -171,7 +173,13 @@ class WPAIC_Search_Index {
 
 		$tnt     = $this->get_tnt();
 		$indexer = $tnt->createIndex( $this->index_name );
-		$indexer->setLanguage( 'no' );
+		// Singularize tokens at index time; TNT persists the stemmer class in the
+		// index and applies it to query tokens too, so plural product titles
+		// ("Sports Sneakers") and singular queries ("sneaker") meet on the same
+		// canonical term. Without this, TNT's fuzzy expansion — which only runs
+		// when a query term has NO exact wordlist match — never reaches the
+		// plural form once any product carries the singular one.
+		$indexer->setStemmer( new WPAIC_Singular_Stemmer() );
 
 		$products = $this->get_products_data();
 
@@ -570,27 +578,11 @@ class WPAIC_Search_Index {
 
 	/**
 	 * Reduce a simple English plural to its singular form ("shirts" → "shirt",
-	 * "watches" → "watch", "accessories" → "accessory"). Applied identically to
-	 * query tokens and haystack tokens, so even imperfect stems stay consistent.
+	 * "watches" → "watch", "accessories" → "accessory"). Delegates to the TNT
+	 * stemmer so query/haystack tokenization and the index share one rule set.
 	 */
 	private function singularize_token( string $token ): string {
-		$length = strlen( $token );
-		if ( $length <= 3 ) {
-			return $token;
-		}
-		if ( $length > 4 && str_ends_with( $token, 'ies' ) ) {
-			return substr( $token, 0, -3 ) . 'y';
-		}
-		if ( preg_match( '/(ss|sh|ch|x|z)es$/', $token ) ) {
-			return substr( $token, 0, -2 );
-		}
-		if ( str_ends_with( $token, 's' )
-			&& ! str_ends_with( $token, 'ss' )
-			&& ! str_ends_with( $token, 'us' )
-			&& ! str_ends_with( $token, 'is' ) ) {
-			return substr( $token, 0, -1 );
-		}
-		return $token;
+		return WPAIC_Singular_Stemmer::stem( $token );
 	}
 
 	/**
@@ -772,7 +764,7 @@ class WPAIC_Search_Index {
 			'a', 'an', 'the', 'and', 'or', 'but', 'of', 'for', 'with', 'to', 'in', 'on',
 			'at', 'by', 'is', 'are', 'be', 'this', 'that', 'these', 'those', 'i', 'me',
 			'my', 'we', 'our', 'you', 'your', 'show', 'find', 'list', 'give', 'me',
-			'some', 'any', 'please', 'looking', 'need', 'want', 'have', 'has', 'do',
+			'some', 'any', 'please', 'looking', 'need', 'want', 'have', 'hav', 'has', 'do',
 			'does', 'can', 'could', 'would', 'should', 'product', 'products', 'item',
 			'items', 'price', 'prices', 'picture', 'pictures', 'image', 'images',
 			'actual', 'really', 'real',

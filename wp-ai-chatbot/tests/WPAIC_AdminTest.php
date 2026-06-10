@@ -1931,6 +1931,25 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 		$this->assertStringContainsString( 'hasUnsavedChanges', $output );
 	}
 
+	public function test_unsaved_changes_guard_is_value_based(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array() );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		// Snapshot of saved values taken on load, compared on every edit so
+		// reverting to the saved values clears the dirty state again.
+		$this->assertStringContainsString( 'var savedSnapshot = $form.serialize();', $output );
+		$this->assertStringContainsString( "hasUnsavedChanges = \$form.serialize() !== savedSnapshot;", $output );
+		$this->assertStringContainsString( "toggleClass('hidden', !hasUnsavedChanges)", $output );
+		// Snapshot resets on submit so a save without a reload starts clean:
+		// one serialize() snapshot on load, one inside the submit handler.
+		$this->assertSame( 2, substr_count( $output, 'savedSnapshot = $form.serialize();' ) );
+	}
+
 	// ---- Honest index freshness wording (P2-27b) ----
 
 	public function test_knowledge_tab_describes_index_freshness_honestly(): void {

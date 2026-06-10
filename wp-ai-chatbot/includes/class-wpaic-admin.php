@@ -534,14 +534,20 @@ class WPAIC_Admin {
 					// were silently lost on navigation before this prompt existed.
 					var $form = $('.wpaic-admin-wrap form[action="options.php"]');
 					if (!$form.length) return;
+					// Value-based dirty tracking: compare against a snapshot of the
+					// saved values so reverting an edit clears the dirty state.
+					// serialize() covers text/hidden/textarea/select values and
+					// checkbox presence, so toggles and reverts both register.
+					var savedSnapshot = $form.serialize();
 					var hasUnsavedChanges = false;
 					$form.on('input change', ':input', function() {
-						if (hasUnsavedChanges) return;
-						hasUnsavedChanges = true;
-						$('#wpaic-unsaved-indicator').removeClass('hidden');
+						hasUnsavedChanges = $form.serialize() !== savedSnapshot;
+						$('#wpaic-unsaved-indicator').toggleClass('hidden', !hasUnsavedChanges);
 					});
 					$form.on('submit', function() {
+						savedSnapshot = $form.serialize();
 						hasUnsavedChanges = false;
+						$('#wpaic-unsaved-indicator').addClass('hidden');
 					});
 					window.addEventListener('beforeunload', function(event) {
 						if (!hasUnsavedChanges) return;

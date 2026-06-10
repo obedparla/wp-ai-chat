@@ -63,6 +63,7 @@ class WPAIC_Product_Tools {
 					}
 				}
 			}
+			$products = $this->filter_within_price_bounds( $products, $args );
 			return $this->down_rank_zero_priced( $products );
 		}
 
@@ -121,7 +122,61 @@ class WPAIC_Product_Tools {
 			}
 		}
 
+		$products = $this->filter_within_price_bounds( $products, $args );
 		return $this->down_rank_zero_priced( $products );
+	}
+
+	/**
+	 * Enforce min_price/max_price against each card's EFFECTIVE price — the
+	 * sale price when one is set — so a shopper asking "under $10" never sees
+	 * a $10.82 sale item. The upstream `_price` meta queries usually handle
+	 * this, but stale meta and variable-product min/max rows can leak
+	 * out-of-budget products through; this is the final gate on what ships.
+	 *
+	 * @param array<int, array<string, mixed>> $products Formatted product cards.
+	 * @param array<string, mixed>             $args Tool arguments.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function filter_within_price_bounds( array $products, array $args ): array {
+		$min_price = ! empty( $args['min_price'] ) && is_numeric( $args['min_price'] ) ? (float) $args['min_price'] : null;
+		$max_price = ! empty( $args['max_price'] ) && is_numeric( $args['max_price'] ) ? (float) $args['max_price'] : null;
+
+		if ( null === $min_price && null === $max_price ) {
+			return $products;
+		}
+
+		$within_bounds = array();
+		foreach ( $products as $product ) {
+			$effective_price = $this->effective_price( $product );
+			if ( null === $effective_price ) {
+				continue;
+			}
+			if ( null !== $min_price && $effective_price < $min_price ) {
+				continue;
+			}
+			if ( null !== $max_price && $effective_price > $max_price ) {
+				continue;
+			}
+			$within_bounds[] = $product;
+		}
+
+		return $within_bounds;
+	}
+
+	/**
+	 * The price the shopper actually pays: the sale price when one is set,
+	 * otherwise the current price, otherwise the regular price.
+	 *
+	 * @param array<string, mixed> $product Formatted product card.
+	 */
+	private function effective_price( array $product ): ?float {
+		foreach ( array( 'sale_price', 'price', 'regular_price' ) as $field ) {
+			$value = $product[ $field ] ?? '';
+			if ( '' !== $value && is_numeric( $value ) ) {
+				return (float) $value;
+			}
+		}
+		return null;
 	}
 
 	/**
