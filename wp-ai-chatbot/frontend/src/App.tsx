@@ -44,6 +44,15 @@ declare global {
 }
 
 const PROACTIVE_DISMISSED_KEY = 'wpaic_proactive_dismissed'
+// Mirrors the storage key in useChat.ts; the loader stub also reads it.
+const CHAT_HISTORY_KEY = 'wpaic_chat_history'
+
+interface AppProps {
+  // Set by the loader stub when the visitor clicked the launcher/teaser before
+  // the React bundle was loaded, so the widget opens immediately on mount.
+  openOnMount?: boolean
+  viaProactiveTeaser?: boolean
+}
 
 function hexToHoverColor(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16)
@@ -53,15 +62,18 @@ function hexToHoverColor(hex: string): string {
   return `#${darken(r).toString(16).padStart(2, '0')}${darken(g).toString(16).padStart(2, '0')}${darken(b).toString(16).padStart(2, '0')}`
 }
 
-export default function App() {
-  const [isOpen, setIsOpen] = useState(false)
-  const [hasInteracted, setHasInteracted] = useState(false)
-  const [autoFocusInput, setAutoFocusInput] = useState(false)
+export default function App({ openOnMount = false, viaProactiveTeaser = false }: AppProps = {}) {
+  const [isOpen, setIsOpen] = useState(openOnMount)
+  const [hasInteracted, setHasInteracted] = useState(openOnMount)
+  const [autoFocusInput, setAutoFocusInput] = useState(openOnMount)
   const [showTeaser, setShowTeaser] = useState(false)
   const [hasUnread, setHasUnread] = useState(false)
   const chat = useChat()
   const { showProactiveGreeting, isLoading } = chat
   const previousIsLoadingRef = useRef(isLoading)
+  const previousIsOpenRef = useRef(false)
+  const proactiveGreetingSeededRef = useRef(false)
+  const launcherRef = useRef<HTMLButtonElement>(null)
   const themeColor = window.wpaicConfig?.themeColor || '#2545B8'
   const config = window.wpaicConfig
 
@@ -70,6 +82,31 @@ export default function App() {
     root.style.setProperty('--wpaic-primary', themeColor)
     root.style.setProperty('--wpaic-primary-hover', hexToHoverColor(themeColor))
   }, [themeColor])
+
+  // The loader stub mounts the app when its teaser is clicked; seed the
+  // proactive greeting once, mirroring handleTeaserOpen below. Skipped when a
+  // stored conversation exists — the restore in useChat must win, and on the
+  // first render showProactiveGreeting still closes over the empty message
+  // list, so its own guard cannot see the restored history yet.
+  useEffect(() => {
+    if (!viaProactiveTeaser || proactiveGreetingSeededRef.current) return
+    proactiveGreetingSeededRef.current = true
+    try {
+      if (sessionStorage.getItem(CHAT_HISTORY_KEY)) return
+    } catch {
+      // Storage unavailable — fall through to the greeting.
+    }
+    showProactiveGreeting()
+  }, [viaProactiveTeaser, showProactiveGreeting])
+
+  // Return keyboard focus to the launcher after the widget closes so screen
+  // reader / keyboard users are not dropped at the top of the page.
+  useEffect(() => {
+    if (previousIsOpenRef.current && !isOpen) {
+      launcherRef.current?.focus()
+    }
+    previousIsOpenRef.current = isOpen
+  }, [isOpen])
 
   // A response finished streaming while the widget was closed — surface an
   // unread badge on the launcher until the visitor opens the chat.
@@ -152,7 +189,9 @@ export default function App() {
           onDismiss={dismissProactiveForSession}
         />
       )}
-      {!isOpen && <ChatButton onClick={handleToggle} isOpen={isOpen} hasUnread={hasUnread} />}
+      {!isOpen && (
+        <ChatButton ref={launcherRef} onClick={handleToggle} isOpen={isOpen} hasUnread={hasUnread} />
+      )}
     </>
   )
 }

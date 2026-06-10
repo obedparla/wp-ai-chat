@@ -25,16 +25,6 @@ class WPAIC_API {
 	public function register_routes(): void {
 		register_rest_route(
 			'wpaic/v1',
-			'/chat',
-			array(
-				'methods'             => 'POST',
-				'callback'            => array( $this, 'handle_chat' ),
-				'permission_callback' => array( $this, 'verify_nonce' ),
-			)
-		);
-
-		register_rest_route(
-			'wpaic/v1',
 			'/chat/stream',
 			array(
 				'methods'             => 'POST',
@@ -98,14 +88,22 @@ class WPAIC_API {
 
 	/**
 	 * Transform AI SDK UIMessage format to OpenAI format. Text parts are
-	 * concatenated; product-bearing tool parts become a compact "Products shown
-	 * (display order)" line so ordinal references survive across turns.
+	 * concatenated into `content`; product-bearing tool parts become a compact
+	 * "Products shown (display order)" summary stored under `product_context`.
+	 * The summary is forwarded to the model as a system-role input item (see
+	 * WPAIC_Chat::build_responses_input), never as assistant text, so ordinal
+	 * references survive across turns without the model echoing the list into
+	 * shopper-visible replies.
 	 *
 	 * @param array<int, array<string, mixed>> $messages
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function transform_messages( array $messages ): array {
 		foreach ( $messages as &$msg ) {
+			if ( is_array( $msg ) ) {
+				// product_context is server-generated only; never trust a client-supplied value.
+				unset( $msg['product_context'] );
+			}
 			if ( isset( $msg['parts'] ) && is_array( $msg['parts'] ) ) {
 				$content           = '';
 				$product_summaries = array();
@@ -123,7 +121,7 @@ class WPAIC_API {
 					}
 				}
 				if ( ! empty( $product_summaries ) ) {
-					$content = trim( $content . "\n\n" . implode( "\n", $product_summaries ) );
+					$msg['product_context'] = implode( "\n", $product_summaries );
 				}
 				$msg['content'] = $content;
 				unset( $msg['parts'] );
@@ -180,34 +178,6 @@ class WPAIC_API {
 
 		$label = 'compare_products' === $tool_name ? 'Products compared (display order): ' : 'Products shown (display order): ';
 		return $label . implode( ' ', $entries );
-	}
-
-	/**
-	 * @param WP_REST_Request<array<string, mixed>> $request
-	 * @return WP_REST_Response|WP_Error
-	 */
-	public function handle_chat( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		$availability_error = $this->ensure_chat_is_available();
-		if ( is_wp_error( $availability_error ) ) {
-			return $availability_error;
-		}
-
-		$messages     = $request->get_param( 'messages' );
-		$page_context = $this->sanitize_page_context( $request->get_param( 'page_context' ) );
-
-		if ( empty( $messages ) || ! is_array( $messages ) ) {
-			return new WP_Error( 'no_messages', 'Messages are required', array( 'status' => 400 ) );
-		}
-
-		$messages = $this->transform_messages( $messages );
-		$chat     = new WPAIC_Chat( $page_context );
-		$response = $chat->send( $messages );
-
-		if ( is_wp_error( $response ) ) {
-			return $response;
-		}
-
-		return rest_ensure_response( $response );
 	}
 
 	/**
@@ -535,7 +505,11 @@ class WPAIC_API {
 				return 'Some messages could not be read. Please refresh the page and try again.';
 			}
 
-			$total_content_length += strlen( $content );
+			// product_context is server-generated from client-supplied parts, so it
+			// must count toward the same total size cap as the content itself.
+			$product_context = $message['product_context'] ?? '';
+
+			$total_content_length += strlen( $content ) + ( is_string( $product_context ) ? strlen( $product_context ) : 0 );
 			if ( $total_content_length > self::MAX_TOTAL_CONTENT_LENGTH ) {
 				return 'This conversation has grown too large. Please start a new conversation.';
 			}

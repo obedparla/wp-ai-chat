@@ -166,6 +166,9 @@ function wpaic_is_woocommerce_active(): bool {
 
 function wpaic_init(): void {
 	wpaic_maybe_update_db();
+	if ( ! wp_next_scheduled( 'wpaic_daily_retention' ) ) {
+		wp_schedule_event( time(), 'daily', 'wpaic_daily_retention' );
+	}
 	$loader = new WPAIC_Loader();
 	$loader->init();
 }
@@ -187,7 +190,6 @@ function wpaic_activate(): void {
 	add_option(
 		'wpaic_settings',
 		array(
-			'openai_api_key'        => '',
 			'model'                 => 'gpt-5-mini',
 			'greeting_message'      => 'Hello! How can I help you today?',
 			'enabled'               => true,
@@ -196,11 +198,17 @@ function wpaic_activate(): void {
 			'chatbot_role'          => '',
 			'conversation_starters' => array(),
 			'provider_url_override' => '',
+			'retention_days'        => 0,
+			'anonymize_ip'          => true,
 		)
 	);
 
 	wpaic_create_tables();
 	flush_rewrite_rules();
+
+	if ( ! wp_next_scheduled( 'wpaic_daily_retention' ) ) {
+		wp_schedule_event( time(), 'daily', 'wpaic_daily_retention' );
+	}
 
 	require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-content-index.php';
 	$content_index = new WPAIC_Content_Index();
@@ -278,7 +286,27 @@ function wpaic_create_tables(): void {
 }
 
 function wpaic_deactivate(): void {
+	wp_clear_scheduled_hook( 'wpaic_daily_retention' );
 	flush_rewrite_rules();
+}
+
+add_action( 'wpaic_daily_retention', 'wpaic_run_retention_cleanup' );
+
+/**
+ * Daily cron: delete conversations (plus their messages and events) whose
+ * last activity is older than the configured retention window.
+ */
+function wpaic_run_retention_cleanup(): void {
+	$settings       = get_option( 'wpaic_settings', array() );
+	$retention_days = is_array( $settings ) ? (int) ( $settings['retention_days'] ?? 0 ) : 0;
+
+	if ( $retention_days < 1 ) {
+		return;
+	}
+
+	require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-logs.php';
+	$logs = new WPAIC_Logs();
+	$logs->delete_conversations_older_than( $retention_days );
 }
 
 function wpaic_create_training_tables(): void {

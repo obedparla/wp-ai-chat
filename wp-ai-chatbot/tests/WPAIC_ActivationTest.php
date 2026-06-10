@@ -28,14 +28,6 @@ class WPAIC_ActivationTest extends TestCase {
 		$this->assertIsArray( $settings );
 	}
 
-	public function test_activation_sets_empty_api_key(): void {
-		wpaic_activate();
-		$settings = get_option( 'wpaic_settings' );
-
-		$this->assertArrayHasKey( 'openai_api_key', $settings );
-		$this->assertEquals( '', $settings['openai_api_key'] );
-	}
-
 	public function test_activation_sets_default_model(): void {
 		wpaic_activate();
 		$settings = get_option( 'wpaic_settings' );
@@ -79,7 +71,6 @@ class WPAIC_ActivationTest extends TestCase {
 	public function test_activation_does_not_overwrite_existing_settings(): void {
 		// Set custom settings before activation
 		$custom_settings = array(
-			'openai_api_key'   => 'my-custom-key',
 			'model'            => 'gpt-5',
 			'greeting_message' => 'Welcome!',
 			'enabled'          => false,
@@ -92,7 +83,6 @@ class WPAIC_ActivationTest extends TestCase {
 
 		// Verify settings not overwritten
 		$settings = get_option( 'wpaic_settings' );
-		$this->assertEquals( 'my-custom-key', $settings['openai_api_key'] );
 		$this->assertEquals( 'gpt-5', $settings['model'] );
 		$this->assertEquals( 'Welcome!', $settings['greeting_message'] );
 		$this->assertFalse( $settings['enabled'] );
@@ -105,5 +95,23 @@ class WPAIC_ActivationTest extends TestCase {
 		wpaic_activate();
 
 		$this->assertTrue( (bool) get_transient( 'wpaic_activation_redirect' ) );
+	}
+
+	public function test_activation_sets_privacy_defaults(): void {
+		wpaic_activate();
+		$settings = get_option( 'wpaic_settings' );
+
+		$this->assertArrayHasKey( 'retention_days', $settings );
+		$this->assertSame( 0, $settings['retention_days'] );
+		$this->assertArrayHasKey( 'anonymize_ip', $settings );
+		$this->assertTrue( $settings['anonymize_ip'] );
+	}
+
+	public function test_activation_schedules_daily_retention_cron(): void {
+		$this->assertFalse( wp_next_scheduled( 'wpaic_daily_retention' ) );
+
+		wpaic_activate();
+
+		$this->assertNotFalse( wp_next_scheduled( 'wpaic_daily_retention' ) );
 	}
 }

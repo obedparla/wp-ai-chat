@@ -116,6 +116,9 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
       className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 bg-white scroll-smooth overscroll-contain max-[480px]:p-4 max-[480px]:gap-2.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300"
       ref={containerRef}
       onScroll={handleScroll}
+      role="log"
+      aria-live="polite"
+      aria-label="Chat messages"
     >
       {messages.map((msg, i) => {
         const isLastMessage = i === messages.length - 1

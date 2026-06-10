@@ -170,6 +170,47 @@ class WPAIP_AdminTest extends TestCase {
 		$this->assertStringContainsString( 'wpaip_settings[freemius_api_token]', $output );
 	}
 
+	// FIX-6: saved token must never be echoed into the page source.
+	public function test_freemius_api_token_field_does_not_echo_saved_token(): void {
+		update_option( 'wpaip_settings', array( 'freemius_api_token' => 'fs-secret-token-9876' ) );
+
+		ob_start();
+		$this->admin->render_freemius_api_token_field();
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'fs-secret-token-9876', $output );
+		$this->assertStringContainsString( 'value=""', $output );
+		$this->assertStringContainsString( '••••••••••••9876', $output );
+	}
+
+	public function test_freemius_api_token_field_renders_empty_placeholder_when_no_token_saved(): void {
+		ob_start();
+		$this->admin->render_freemius_api_token_field();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'placeholder=""', $output );
+		$this->assertStringNotContainsString( 'A token is saved', $output );
+	}
+
+	// FIX-6: blank submission keeps the saved token (placeholder pattern).
+	public function test_sanitize_settings_keeps_saved_freemius_api_token_when_blank(): void {
+		update_option( 'wpaip_settings', array( 'freemius_api_token' => 'fs-existing-token-4321' ) );
+
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => '' );
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 'fs-existing-token-4321', $sanitized['freemius_api_token'] );
+	}
+
+	public function test_sanitize_settings_replaces_saved_freemius_api_token_with_new_value(): void {
+		update_option( 'wpaip_settings', array( 'freemius_api_token' => 'fs-existing-token-4321' ) );
+
+		$input     = array( 'openai_api_key' => 'sk-test', 'model' => 'gpt-5-mini', 'freemius_product_id' => 1234, 'freemius_api_token' => 'fs-new-token-8765' );
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 'fs-new-token-8765', $sanitized['freemius_api_token'] );
+	}
+
 	public function test_freemius_product_id_field_displays_saved_value(): void {
 		update_option( 'wpaip_settings', array(
 			'freemius_product_id' => 4321,

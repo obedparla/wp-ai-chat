@@ -230,7 +230,7 @@ class WPAIC_CLI {
 			$product->set_review_count( count( $data['reviews'] ) );
 		}
 
-		$category_id = $this->ensure_term( (string) ( $data['category'] ?? '' ), 'product_cat' );
+		$category_id = $this->ensure_term( $this->humanize_category_name( (string) ( $data['category'] ?? '' ) ), 'product_cat' );
 		if ( $category_id > 0 ) {
 			$product->set_category_ids( array( $category_id ) );
 		}
@@ -270,6 +270,16 @@ class WPAIC_CLI {
 		}
 
 		return $product_id;
+	}
+
+	/**
+	 * DummyJSON category values are slugs ("kitchen-accessories"); store a
+	 * human-readable term name ("Kitchen Accessories") so storefront and
+	 * chatbot payloads never render raw slugs. wp_insert_term() still derives
+	 * the hyphenated slug from the name.
+	 */
+	private function humanize_category_name( string $category ): string {
+		return ucwords( str_replace( '-', ' ', trim( $category ) ) );
 	}
 
 	private function ensure_term( string $name, string $taxonomy ): int {

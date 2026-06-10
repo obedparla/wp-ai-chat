@@ -238,4 +238,67 @@ class WPAIC_EventsTest extends TestCase {
 	public function test_describe_unknown_event_type_falls_back_to_type(): void {
 		$this->assertEquals( 'mystery_event', WPAIC_Events::describe( 'mystery_event', array() ) );
 	}
+
+	public function test_describe_cart_confirmation_add_completed(): void {
+		$label = WPAIC_Events::describe(
+			WPAIC_Events::CART_CONFIRMATION,
+			array(
+				'action'  => 'add',
+				'outcome' => 'completed',
+				'name'    => 'Classic Tee',
+			)
+		);
+
+		$this->assertEquals( 'Cart updated — added Classic Tee', $label );
+	}
+
+	public function test_describe_cart_confirmation_add_failed(): void {
+		$label = WPAIC_Events::describe(
+			WPAIC_Events::CART_CONFIRMATION,
+			array(
+				'action'  => 'add',
+				'outcome' => 'failed',
+				'name'    => 'Classic Tee',
+			)
+		);
+
+		$this->assertEquals( 'Add to cart failed — Classic Tee', $label );
+	}
+
+	public function test_describe_cart_confirmation_clear_completed(): void {
+		$label = WPAIC_Events::describe(
+			WPAIC_Events::CART_CONFIRMATION,
+			array(
+				'action'  => 'clear',
+				'outcome' => 'completed',
+			)
+		);
+
+		$this->assertEquals( 'Cart emptied by shopper', $label );
+	}
+
+	public function test_describe_cart_confirmation_remove_completed_with_names(): void {
+		$label = WPAIC_Events::describe(
+			WPAIC_Events::CART_CONFIRMATION,
+			array(
+				'action'  => 'remove',
+				'outcome' => 'completed',
+				'name'    => 'Water, Soda',
+			)
+		);
+
+		$this->assertEquals( 'Cart updated — removed Water, Soda', $label );
+	}
+
+	public function test_describe_cart_confirmation_cancelled(): void {
+		$label = WPAIC_Events::describe(
+			WPAIC_Events::CART_CONFIRMATION,
+			array(
+				'action'  => 'clear',
+				'outcome' => 'cancelled',
+			)
+		);
+
+		$this->assertEquals( 'Cart change cancelled — shopper kept the cart', $label );
+	}
 }

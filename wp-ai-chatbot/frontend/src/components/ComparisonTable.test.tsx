@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import ComparisonTable, { ComparisonData, ComparisonProduct } from './ComparisonTable'
 
 describe('ComparisonTable', () => {
@@ -215,5 +215,86 @@ describe('ComparisonTable', () => {
     render(<ComparisonTable data={dataWithNoRating} />)
     const dashes = screen.getAllByText('—')
     expect(dashes.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('shows an inline error state on fetch failure and auto-resets without navigating', async () => {
+    vi.useFakeTimers()
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      value: { href: '' },
+      writable: true,
+    })
+
+    window.wpaicConfig = {
+      apiUrl: 'https://example.com/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello',
+      wcAjaxUrl: 'https://example.com/wp-admin/admin-ajax.php',
+    }
+
+    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'))
+
+    render(<ComparisonTable data={mockData} />)
+    const buttons = screen.getAllByRole('button', { name: /add to cart/i })
+    fireEvent.click(buttons[0])
+
+    await act(async () => {})
+    expect(screen.getByText('Error')).toBeInTheDocument()
+    expect(window.location.href).toBe('')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500)
+    })
+    expect(screen.queryByText('Error')).not.toBeInTheDocument()
+
+    Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
+    vi.useRealTimers()
+  })
+
+  it('uses the flat rounded-full CTA styling', () => {
+    render(<ComparisonTable data={mockData} />)
+    const buttons = screen.getAllByRole('button', { name: /add to cart/i })
+    expect(buttons[0].className).toContain('rounded-full')
+    expect(buttons[0].className).not.toContain('rounded-lg')
+    expect(buttons[0].className).not.toContain('gradient')
+  })
+
+  it('renders attribute, weight and dimension rows when the payload includes them', () => {
+    const richData: ComparisonData = {
+      products: [
+        {
+          ...mockProducts[0],
+          attributes: { Color: 'Blue, Red', Material: 'Cotton' },
+          weight: '1.5 kg',
+          dimensions: '10 x 20 x 5 cm',
+        },
+        {
+          ...mockProducts[1],
+          attributes: { Color: 'Green' },
+          weight: '2 kg',
+        },
+      ],
+      attributes: ['price'],
+    }
+    render(<ComparisonTable data={richData} />)
+
+    expect(screen.getByText('Color')).toBeInTheDocument()
+    expect(screen.getByText('Blue, Red')).toBeInTheDocument()
+    expect(screen.getByText('Green')).toBeInTheDocument()
+    expect(screen.getByText('Material')).toBeInTheDocument()
+    expect(screen.getByText('Cotton')).toBeInTheDocument()
+    expect(screen.getByText('Weight')).toBeInTheDocument()
+    expect(screen.getByText('1.5 kg')).toBeInTheDocument()
+    expect(screen.getByText('2 kg')).toBeInTheDocument()
+    expect(screen.getByText('Dimensions')).toBeInTheDocument()
+    expect(screen.getByText('10 x 20 x 5 cm')).toBeInTheDocument()
+    // Product B has no Material or dimensions: dashes fill the gaps.
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('renders no attribute, weight or dimension rows when the payload omits them', () => {
+    render(<ComparisonTable data={mockData} />)
+    expect(screen.queryByText('Weight')).not.toBeInTheDocument()
+    expect(screen.queryByText('Dimensions')).not.toBeInTheDocument()
   })
 })

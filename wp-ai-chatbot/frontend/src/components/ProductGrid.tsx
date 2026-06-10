@@ -130,8 +130,8 @@ export default function ProductGrid({ products }: ProductGridProps) {
               </CarouselItem>
             ))}
           </CarouselContent>
-          <CarouselPrevious className="-left-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 [@media(hover:none)]:hidden" />
-          <CarouselNext className="-right-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 [@media(hover:none)]:hidden" />
+          <CarouselPrevious className="-left-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:hidden" />
+          <CarouselNext className="-right-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:hidden" />
         </Carousel>
       </div>
     </div>

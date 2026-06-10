@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import VariableProductCard from './VariableProductCard'
 import { Product } from './ProductCard'
 
@@ -308,5 +308,42 @@ describe('VariableProductCard', () => {
     await waitFor(() => {
       expect(document.querySelector('.cart-count')?.textContent).toBe('2')
     })
+  })
+
+  it('shows an inline error state on fetch failure and auto-resets without navigating', async () => {
+    vi.useFakeTimers()
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      value: { href: '' },
+      writable: true,
+    })
+
+    window.wpaicConfig = {
+      apiUrl: 'https://example.com/wp-json/wpaic/v1',
+      nonce: 'test-nonce',
+      greeting: 'Hello',
+      wcAjaxUrl: 'https://example.com/wp-admin/admin-ajax.php',
+    }
+
+    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'))
+
+    render(<VariableProductCard product={mockVariableProduct} />)
+
+    fireEvent.change(screen.getByLabelText('Color'), { target: { value: 'Red' } })
+    fireEvent.change(screen.getByLabelText('Size'), { target: { value: 'S' } })
+    fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
+
+    await act(async () => {})
+    expect(screen.getByText('ERROR')).toBeInTheDocument()
+    expect(window.location.href).toBe('')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500)
+    })
+    expect(screen.queryByText('ERROR')).not.toBeInTheDocument()
+    expect(screen.getByText('ADD')).toBeInTheDocument()
+
+    Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
+    vi.useRealTimers()
   })
 })

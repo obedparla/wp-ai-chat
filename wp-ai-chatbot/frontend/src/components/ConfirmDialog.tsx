@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 interface ConfirmDialogProps {
   title: string
@@ -20,10 +21,12 @@ export default function ConfirmDialog({
   onCancel,
   destructive = false,
 }: ConfirmDialogProps) {
-  const confirmRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useFocusTrap<HTMLDivElement>()
 
+  // Default-focus the safe action, never the (potentially destructive) confirm.
   useEffect(() => {
-    confirmRef.current?.focus()
+    cancelRef.current?.focus()
   }, [])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -35,6 +38,7 @@ export default function ConfirmDialog({
 
   return (
     <div
+      ref={dialogRef}
       className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 rounded-2xl animate-wpaic-fadeIn"
       onClick={onCancel}
       onKeyDown={handleKeyDown}
@@ -55,6 +59,7 @@ export default function ConfirmDialog({
         <p className="text-sm text-slate-600 leading-relaxed mb-6">{description}</p>
         <div className="flex items-center justify-end gap-2">
           <button
+            ref={cancelRef}
             type="button"
             onClick={onCancel}
             className="rounded-full border border-slate-300 bg-white px-5 py-2.5 text-xs font-semibold tracking-[0.12em] text-slate-700 transition-colors duration-200 hover:border-slate-400 hover:bg-slate-50"
@@ -62,7 +67,6 @@ export default function ConfirmDialog({
             {cancelLabel.toUpperCase()}
           </button>
           <button
-            ref={confirmRef}
             type="button"
             onClick={onConfirm}
             className={cn(

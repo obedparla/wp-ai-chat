@@ -6,11 +6,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WPAIC_Product_Tools {
 	/**
+	 * Default and maximum result counts for product-list tools. The widget
+	 * renders at most 6 cards per message, so defaulting to 6 keeps the bot's
+	 * text aligned with what the shopper actually sees; the model may request
+	 * up to MAX_PRODUCT_LIMIT via the limit param.
+	 */
+	public const DEFAULT_PRODUCT_LIMIT = 6;
+	public const MAX_PRODUCT_LIMIT     = 10;
+
+	/**
 	 * @param array<string, mixed> $args
 	 * @return array<int, array<string, mixed>>
 	 */
 	public function search_products( array $args ): array {
-		$limit = isset( $args['limit'] ) && is_numeric( $args['limit'] ) ? (int) $args['limit'] : 10;
+		$limit = isset( $args['limit'] ) && is_numeric( $args['limit'] ) ? (int) $args['limit'] : self::DEFAULT_PRODUCT_LIMIT;
+		$limit = max( 1, min( self::MAX_PRODUCT_LIMIT, $limit ) );
 
 		// on_sale filter: restrict results to products WooCommerce reports on sale.
 		$on_sale_ids = null;
@@ -149,8 +159,8 @@ class WPAIC_Product_Tools {
 	 * @return array<int, array<string, mixed>>
 	 */
 	public function get_popular_products( array $args ): array {
-		$limit = isset( $args['limit'] ) && is_numeric( $args['limit'] ) ? (int) $args['limit'] : 10;
-		$limit = max( 1, min( 24, $limit ) );
+		$limit = isset( $args['limit'] ) && is_numeric( $args['limit'] ) ? (int) $args['limit'] : self::DEFAULT_PRODUCT_LIMIT;
+		$limit = max( 1, min( self::MAX_PRODUCT_LIMIT, $limit ) );
 
 		$base_args = array(
 			'post_type'      => 'product',
@@ -280,13 +290,47 @@ class WPAIC_Product_Tools {
 			if ( $term instanceof WP_Term ) {
 				$result[] = array(
 					'id'    => $term->term_id,
-					'name'  => $term->name,
+					'name'  => $this->category_display_name( $term ),
 					'slug'  => $term->slug,
 					'count' => $term->count,
 				);
 			}
 		}
 		return $result;
+	}
+
+	/**
+	 * Display name for a category term. Demo catalogs (e.g. DummyJSON imports)
+	 * store the name equal to the slug ("kitchen-accessories"); card captions
+	 * and comparison rows would render that verbatim, so slug-like names are
+	 * humanized for display. Tool parameters keep using the real slug.
+	 */
+	private function category_display_name( WP_Term $term ): string {
+		if ( $term->name === $term->slug && str_contains( $term->name, '-' ) ) {
+			return ucwords( str_replace( '-', ' ', $term->name ) );
+		}
+		return $term->name;
+	}
+
+	/**
+	 * Humanized category names for a product's payload `categories` field.
+	 *
+	 * @param int $post_id
+	 * @return array<int, string>
+	 */
+	private function get_category_display_names( int $post_id ): array {
+		$terms = wp_get_post_terms( $post_id, 'product_cat' );
+		if ( ! is_array( $terms ) ) {
+			return array();
+		}
+
+		$names = array();
+		foreach ( $terms as $term ) {
+			if ( $term instanceof WP_Term ) {
+				$names[] = $this->category_display_name( $term );
+			}
+		}
+		return $names;
 	}
 
 	/**
@@ -501,8 +545,7 @@ class WPAIC_Product_Tools {
 			}
 		}
 
-		$categories                 = wp_get_post_terms( $post->ID, 'product_cat', array( 'fields' => 'names' ) );
-		$product_data['categories'] = is_array( $categories ) ? $categories : array();
+		$product_data['categories'] = $this->get_category_display_names( $post->ID );
 
 		$wc_product = wc_get_product( $post->ID );
 		if ( $wc_product ) {
@@ -597,8 +640,7 @@ class WPAIC_Product_Tools {
 			}
 		}
 
-		$categories                 = wp_get_post_terms( $post->ID, 'product_cat', array( 'fields' => 'names' ) );
-		$product_data['categories'] = is_array( $categories ) ? $categories : array();
+		$product_data['categories'] = $this->get_category_display_names( $post->ID );
 
 		// Add variable product data
 		if ( 'variable' === $product_type && $wc_product instanceof WC_Product_Variable ) {

@@ -36,6 +36,19 @@ export function hasCartUpdateError(response: CartUpdateResponse): boolean {
   return response.error === true || response.success === false
 }
 
+/**
+ * Chat session id (set by useChat). Sent with cart requests so the backend can
+ * record the real outcome of a chat-initiated cart change in the conversation
+ * transcript. Null outside an active chat session.
+ */
+function getChatSessionId(): string | null {
+  try {
+    return sessionStorage.getItem('wpaic_session_id')
+  } catch {
+    return null
+  }
+}
+
 export interface AddToCartRequest {
   productId: number
   variationId?: number
@@ -62,6 +75,11 @@ export async function requestAddToCart(
     for (const [key, value] of Object.entries(params.attributes)) {
       search.set(key, value)
     }
+  }
+
+  const sessionId = getChatSessionId()
+  if (sessionId) {
+    search.set('wpaic_session_id', sessionId)
   }
 
   const response = await fetch(`${wcAjaxUrl}?${search.toString()}`, {
@@ -105,6 +123,11 @@ export async function requestClearCart(
     )
   }
 
+  const sessionId = getChatSessionId()
+  if (sessionId) {
+    search.set('wpaic_session_id', sessionId)
+  }
+
   const response = await fetch(`${wcAjaxUrl}?${search.toString()}`, {
     method: 'POST',
     credentials: 'same-origin',
@@ -121,6 +144,28 @@ export async function requestClearCart(
   }
 
   return data
+}
+
+/**
+ * Fire-and-forget: report that the shopper dismissed a clear/remove confirmation
+ * popup, so the admin transcript records the outcome. No-op without a session id.
+ */
+export function reportCartCancelled(action: 'clear' | 'remove', wcAjaxUrl: string): void {
+  const sessionId = getChatSessionId()
+  if (!sessionId) return
+
+  const search = new URLSearchParams({
+    action: 'wpaic_cart_cancelled',
+    cart_action: action,
+    wpaic_session_id: sessionId,
+  })
+
+  void fetch(`${wcAjaxUrl}?${search.toString()}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+  }).catch(() => {
+    // Outcome logging is best-effort; never surface errors to the shopper.
+  })
 }
 
 export function applyCartUpdate(response: CartUpdateResponse): void {

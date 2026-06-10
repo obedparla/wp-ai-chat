@@ -163,9 +163,24 @@ class WPAIC_Admin {
 	}
 
 	public function add_admin_menu(): void {
+		$new_support_request_count = $this->get_new_support_request_count();
+		$support_badge             = '';
+		if ( $new_support_request_count > 0 ) {
+			$support_badge = sprintf(
+				' <span class="awaiting-mod count-%1$d"><span class="pending-count" aria-hidden="true">%2$s</span><span class="screen-reader-text">%3$s</span></span>',
+				$new_support_request_count,
+				number_format_i18n( $new_support_request_count ),
+				sprintf(
+					/* translators: %s: number of new support requests */
+					_n( '%s new support request', '%s new support requests', $new_support_request_count, 'wp-ai-chatbot' ),
+					number_format_i18n( $new_support_request_count )
+				)
+			);
+		}
+
 		add_menu_page(
 			__( 'AI Chatbot', 'wp-ai-chatbot' ),
-			__( 'AI Chatbot', 'wp-ai-chatbot' ),
+			__( 'AI Chatbot', 'wp-ai-chatbot' ) . $support_badge,
 			'manage_options',
 			'wp-ai-chatbot',
 			array( $this, 'render_settings_page' ),
@@ -194,11 +209,23 @@ class WPAIC_Admin {
 		add_submenu_page(
 			'wp-ai-chatbot',
 			__( 'Support Requests', 'wp-ai-chatbot' ),
-			__( 'Support', 'wp-ai-chatbot' ),
+			__( 'Support', 'wp-ai-chatbot' ) . $support_badge,
 			'manage_options',
 			'wp-ai-chatbot-support',
 			array( $this, 'render_support_page' )
 		);
+	}
+
+	/**
+	 * Number of handoff requests still in the "new" status, shown as an
+	 * awaiting-mod count bubble on the admin menu.
+	 */
+	private function get_new_support_request_count(): int {
+		global $wpdb;
+		$table = $wpdb->prefix . 'wpaic_support_requests';
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE status = 'new'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	public function register_settings(): void {
@@ -209,109 +236,6 @@ class WPAIC_Admin {
 				'sanitize_callback' => array( $this, 'sanitize_settings' ),
 			)
 		);
-
-		add_settings_section(
-			'wpaic_main_section',
-			__( 'Chatbot Settings', 'wp-ai-chatbot' ),
-			'__return_null',
-			'wp-ai-chatbot'
-		);
-
-		add_settings_field(
-			'openai_api_key',
-			__( 'OpenAI API Key', 'wp-ai-chatbot' ),
-			array( $this, 'render_api_key_field' ),
-			'wp-ai-chatbot',
-			'wpaic_main_section'
-		);
-
-		add_settings_field(
-			'model',
-			__( 'Model', 'wp-ai-chatbot' ),
-			array( $this, 'render_model_field' ),
-			'wp-ai-chatbot',
-			'wpaic_main_section'
-		);
-
-		add_settings_field(
-			'greeting_message',
-			__( 'Greeting Message', 'wp-ai-chatbot' ),
-			array( $this, 'render_greeting_field' ),
-			'wp-ai-chatbot',
-			'wpaic_main_section'
-		);
-
-		add_settings_field(
-			'enabled',
-			__( 'Enable Chatbot', 'wp-ai-chatbot' ),
-			array( $this, 'render_enabled_field' ),
-			'wp-ai-chatbot',
-			'wpaic_main_section'
-		);
-
-		add_settings_field(
-			'system_prompt',
-			__( 'System Prompt', 'wp-ai-chatbot' ),
-			array( $this, 'render_system_prompt_field' ),
-			'wp-ai-chatbot',
-			'wpaic_main_section'
-		);
-
-		add_settings_field(
-			'theme_color',
-			__( 'Theme Color', 'wp-ai-chatbot' ),
-			array( $this, 'render_theme_color_field' ),
-			'wp-ai-chatbot',
-			'wpaic_main_section'
-		);
-
-		add_settings_field(
-			'language',
-			__( 'Language', 'wp-ai-chatbot' ),
-			array( $this, 'render_language_field' ),
-			'wp-ai-chatbot',
-			'wpaic_main_section'
-		);
-
-		add_settings_section(
-			'wpaic_proactive_section',
-			__( 'Proactive Engagement', 'wp-ai-chatbot' ),
-			'__return_null',
-			'wp-ai-chatbot'
-		);
-
-		add_settings_field(
-			'proactive_enabled',
-			__( 'Enable Proactive Popup', 'wp-ai-chatbot' ),
-			array( $this, 'render_proactive_enabled_field' ),
-			'wp-ai-chatbot',
-			'wpaic_proactive_section'
-		);
-
-		add_settings_field(
-			'proactive_delay',
-			__( 'Trigger Delay (seconds)', 'wp-ai-chatbot' ),
-			array( $this, 'render_proactive_delay_field' ),
-			'wp-ai-chatbot',
-			'wpaic_proactive_section'
-		);
-
-		add_settings_field(
-			'proactive_message',
-			__( 'Proactive Message', 'wp-ai-chatbot' ),
-			array( $this, 'render_proactive_message_field' ),
-			'wp-ai-chatbot',
-			'wpaic_proactive_section'
-		);
-
-		add_settings_field(
-			'proactive_pages',
-			__( 'Show On Pages', 'wp-ai-chatbot' ),
-			array( $this, 'render_proactive_pages_field' ),
-			'wp-ai-chatbot',
-			'wpaic_proactive_section'
-		);
-
 	}
 
 	/**
@@ -325,8 +249,8 @@ class WPAIC_Admin {
 		}
 
 		$tab_fields = array(
-			'general'    => array( 'enabled', 'greeting_message', 'language', 'tone_of_voice', 'system_prompt' ),
-			'api'        => array( 'openai_api_key', 'provider_url_override' ),
+			'general'    => array( 'enabled', 'greeting_message', 'language', 'tone_of_voice', 'system_prompt', 'retention_days', 'anonymize_ip' ),
+			'api'        => array( 'provider_url_override' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'chatbot_role', 'theme_color' ),
 			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages', 'conversation_starters' ),
 			'search'     => array( 'product_index_enabled', 'content_index_post_types' ),
@@ -343,7 +267,6 @@ class WPAIC_Admin {
 		}
 
 		$sanitized                     = array();
-		$sanitized['openai_api_key']   = sanitize_text_field( $merged['openai_api_key'] ?? '' );
 		$sanitized['model']            = 'gpt-5-mini';
 		$sanitized['greeting_message'] = sanitize_textarea_field( $merged['greeting_message'] ?? '' );
 		$sanitized['enabled']          = ! empty( $merged['enabled'] );
@@ -354,6 +277,10 @@ class WPAIC_Admin {
 		$tone_of_voice                 = sanitize_key( $merged['tone_of_voice'] ?? 'neutral' );
 		$valid_tones                   = array_keys( $this->get_tone_of_voice_options() );
 		$sanitized['tone_of_voice']    = in_array( $tone_of_voice, $valid_tones, true ) ? $tone_of_voice : 'neutral';
+
+		$sanitized['retention_days'] = isset( $merged['retention_days'] ) ? max( 0, (int) $merged['retention_days'] ) : 0;
+		// Anonymization defaults to on when never saved.
+		$sanitized['anonymize_ip'] = array_key_exists( 'anonymize_ip', $merged ) ? ! empty( $merged['anonymize_ip'] ) : true;
 
 		$sanitized['proactive_enabled'] = ! empty( $merged['proactive_enabled'] );
 		$sanitized['proactive_delay']   = max( 1, (int) ( $merged['proactive_delay'] ?? 10 ) );
@@ -386,69 +313,6 @@ class WPAIC_Admin {
 		return $sanitized;
 	}
 
-	public function render_api_key_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['openai_api_key'] ?? '' ) : '';
-		echo '<input type="password" name="wpaic_settings[openai_api_key]" value="' . esc_attr( $value ) . '" class="regular-text" />';
-	}
-
-	public function render_model_field(): void {
-		echo '<p><strong>GPT-5 Mini</strong> ' . esc_html__( '(fast, capable ChatGPT model)', 'wp-ai-chatbot' ) . '</p>';
-		echo '<p class="description">' . esc_html__( 'The model is managed for you for the best balance of speed, cost, and quality.', 'wp-ai-chatbot' ) . '</p>';
-	}
-
-	public function render_greeting_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['greeting_message'] ?? 'Hello! How can I help you today?' ) : 'Hello! How can I help you today?';
-		echo '<textarea name="wpaic_settings[greeting_message]" rows="3" class="large-text">' . esc_textarea( $value ) . '</textarea>';
-	}
-
-	public function render_enabled_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$checked  = is_array( $settings ) && ! empty( $settings['enabled'] );
-		echo '<input type="checkbox" name="wpaic_settings[enabled]" value="1" ' . checked( $checked, true, false ) . ' />';
-	}
-
-	public function render_system_prompt_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['system_prompt'] ?? '' ) : '';
-		echo '<textarea name="wpaic_settings[system_prompt]" rows="5" class="large-text" placeholder="' . esc_attr__( 'Leave empty for default prompt', 'wp-ai-chatbot' ) . '">' . esc_textarea( $value ) . '</textarea>';
-		echo '<p class="description">' . esc_html__( 'Customize the system prompt to define the chatbot\'s personality and behavior. This can further fine-tune or override the selected tone of voice. Leave empty to use the default.', 'wp-ai-chatbot' ) . '</p>';
-	}
-
-	public function render_theme_color_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['theme_color'] ?? '#2545B8' ) : '#2545B8';
-		echo '<input type="text" name="wpaic_settings[theme_color]" value="' . esc_attr( $value ) . '" class="wpaic-color-picker" data-default-color="#2545B8" />';
-		echo '<p class="description">' . esc_html__( 'Choose the primary color for the chatbot header, buttons, and accents.', 'wp-ai-chatbot' ) . '</p>';
-	}
-
-	public function render_language_field(): void {
-		$settings  = get_option( 'wpaic_settings', array() );
-		$value     = is_array( $settings ) ? ( $settings['language'] ?? 'auto' ) : 'auto';
-		$languages = array(
-			'auto' => __( 'Auto-detect (match user)', 'wp-ai-chatbot' ),
-			'en'   => __( 'English', 'wp-ai-chatbot' ),
-			'es'   => __( 'Spanish', 'wp-ai-chatbot' ),
-			'fr'   => __( 'French', 'wp-ai-chatbot' ),
-			'de'   => __( 'German', 'wp-ai-chatbot' ),
-			'it'   => __( 'Italian', 'wp-ai-chatbot' ),
-			'pt'   => __( 'Portuguese', 'wp-ai-chatbot' ),
-			'nl'   => __( 'Dutch', 'wp-ai-chatbot' ),
-			'ru'   => __( 'Russian', 'wp-ai-chatbot' ),
-			'zh'   => __( 'Chinese', 'wp-ai-chatbot' ),
-			'ja'   => __( 'Japanese', 'wp-ai-chatbot' ),
-			'ko'   => __( 'Korean', 'wp-ai-chatbot' ),
-			'ar'   => __( 'Arabic', 'wp-ai-chatbot' ),
-		);
-		echo '<select name="wpaic_settings[language]">';
-		foreach ( $languages as $code => $label ) {
-			echo '<option value="' . esc_attr( $code ) . '" ' . selected( $value, $code, false ) . '>' . esc_html( $label ) . '</option>';
-		}
-		echo '</select>';
-		echo '<p class="description">' . esc_html__( 'Language for chatbot responses. Auto-detect will respond in the language the user writes in.', 'wp-ai-chatbot' ) . '</p>';
-	}
-
 	/**
 	 * @return array<string, string>
 	 */
@@ -459,44 +323,6 @@ class WPAIC_Admin {
 			'professional' => __( 'Professional (Neutral, task-focused, clear and efficient, straight to the point)', 'wp-ai-chatbot' ),
 			'enthusiastic' => __( 'Enthusiastic (Upbeat, energetic, positive, more expressive without being pushy)', 'wp-ai-chatbot' ),
 		);
-	}
-
-	public function render_proactive_enabled_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$checked  = is_array( $settings ) && ! empty( $settings['proactive_enabled'] );
-		echo '<input type="checkbox" name="wpaic_settings[proactive_enabled]" value="1" ' . checked( $checked, true, false ) . ' />';
-		echo '<p class="description">' . esc_html__( 'Auto-open chat widget after visitor is on page for the specified delay.', 'wp-ai-chatbot' ) . '</p>';
-	}
-
-	public function render_proactive_delay_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['proactive_delay'] ?? 10 ) : 10;
-		echo '<input type="number" name="wpaic_settings[proactive_delay]" value="' . esc_attr( (string) $value ) . '" min="1" max="300" class="small-text" /> ';
-		echo '<span class="description">' . esc_html__( 'seconds', 'wp-ai-chatbot' ) . '</span>';
-	}
-
-	public function render_proactive_message_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['proactive_message'] ?? '' ) : '';
-		echo '<textarea name="wpaic_settings[proactive_message]" rows="2" class="large-text" placeholder="' . esc_attr__( 'Hi! Looking for something specific? I can help you find the perfect product.', 'wp-ai-chatbot' ) . '">' . esc_textarea( $value ) . '</textarea>';
-		echo '<p class="description">' . esc_html__( 'Message shown when chat opens proactively. Leave empty to use the greeting message.', 'wp-ai-chatbot' ) . '</p>';
-	}
-
-	public function render_proactive_pages_field(): void {
-		$settings = get_option( 'wpaic_settings', array() );
-		$value    = is_array( $settings ) ? ( $settings['proactive_pages'] ?? 'all' ) : 'all';
-		$options  = array(
-			'all'      => __( 'All pages', 'wp-ai-chatbot' ),
-			'shop'     => __( 'Shop pages only', 'wp-ai-chatbot' ),
-			'product'  => __( 'Product pages only', 'wp-ai-chatbot' ),
-			'homepage' => __( 'Homepage only', 'wp-ai-chatbot' ),
-		);
-		echo '<select name="wpaic_settings[proactive_pages]">';
-		foreach ( $options as $key => $label ) {
-			echo '<option value="' . esc_attr( $key ) . '" ' . selected( $value, $key, false ) . '>' . esc_html( $label ) . '</option>';
-		}
-		echo '</select>';
-		echo '<p class="description">' . esc_html__( 'Which pages should trigger the proactive popup.', 'wp-ai-chatbot' ) . '</p>';
 	}
 
 	/**
@@ -696,11 +522,34 @@ class WPAIC_Admin {
 					<div class="<?php echo 'appearance' === $active_tab ? 'max-w-[1200px]' : 'max-w-[960px]'; ?> mx-auto px-8 pb-8">
 						<div class="pt-4">
 							<button type="submit" class="wpaic-btn wpaic-btn-primary">
-								<?php esc_html_e( 'Save changes', 'wp-ai-chatbot' ); ?>
+								<?php esc_html_e( 'Save changes', 'wp-ai-chatbot' ); ?><span id="wpaic-unsaved-indicator" class="hidden" aria-hidden="true"> &bull;</span>
 							</button>
 						</div>
 					</div>
 				</form>
+
+				<script>
+				jQuery(document).ready(function($) {
+					// Unsaved-changes guard: tab links are full page loads, so edits
+					// were silently lost on navigation before this prompt existed.
+					var $form = $('.wpaic-admin-wrap form[action="options.php"]');
+					if (!$form.length) return;
+					var hasUnsavedChanges = false;
+					$form.on('input change', ':input', function() {
+						if (hasUnsavedChanges) return;
+						hasUnsavedChanges = true;
+						$('#wpaic-unsaved-indicator').removeClass('hidden');
+					});
+					$form.on('submit', function() {
+						hasUnsavedChanges = false;
+					});
+					window.addEventListener('beforeunload', function(event) {
+						if (!hasUnsavedChanges) return;
+						event.preventDefault();
+						event.returnValue = '';
+					});
+				});
+				</script>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -900,11 +749,13 @@ class WPAIC_Admin {
 	 * @param array<string, mixed> $settings Current settings.
 	 */
 	private function render_general_tab( array $settings ): void {
-		$enabled       = ! empty( $settings['enabled'] );
-		$greeting      = $settings['greeting_message'] ?? 'Hello! How can I help you today?';
-		$language      = $settings['language'] ?? 'auto';
-		$tone_of_voice = $settings['tone_of_voice'] ?? 'neutral';
-		$system_prompt = $settings['system_prompt'] ?? '';
+		$enabled        = ! empty( $settings['enabled'] );
+		$greeting       = $settings['greeting_message'] ?? 'Hello! How can I help you today?';
+		$language       = $settings['language'] ?? 'auto';
+		$tone_of_voice  = $settings['tone_of_voice'] ?? 'neutral';
+		$system_prompt  = $settings['system_prompt'] ?? '';
+		$retention_days = max( 0, (int) ( $settings['retention_days'] ?? 0 ) );
+		$anonymize_ip   = array_key_exists( 'anonymize_ip', $settings ) ? ! empty( $settings['anonymize_ip'] ) : true;
 		$languages     = array(
 			'auto' => __( 'Auto-detect (match user)', 'wp-ai-chatbot' ),
 			'en'   => __( 'English', 'wp-ai-chatbot' ),
@@ -1029,6 +880,34 @@ class WPAIC_Admin {
 								placeholder="<?php esc_attr_e( 'Leave empty to use the selected tone preset.', 'wp-ai-chatbot' ); ?>"><?php echo esc_textarea( $system_prompt ); ?></textarea>
 							<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Define the chatbot\'s personality and behavior.', 'wp-ai-chatbot' ); ?></span>
 						</div>
+					</div>
+				</div>
+
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div>
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Privacy', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'How long visitor conversations are kept and how IP addresses are stored.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+					</div>
+					<div class="wpaic-card-row">
+						<div class="max-w-[60%]">
+							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Anonymize visitor IP addresses', 'wp-ai-chatbot' ); ?></h4>
+							<p class="text-muted m-0 text-[13px]"><?php esc_html_e( 'Store only truncated IPs (e.g. 203.0.113.0) for new conversations. Recommended for GDPR compliance.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+						<label class="wpaic-toggle">
+							<input type="hidden" name="wpaic_settings[anonymize_ip]" value="0">
+							<input type="checkbox" name="wpaic_settings[anonymize_ip]" value="1" <?php checked( $anonymize_ip ); ?>>
+							<span class="wpaic-toggle-track"><span class="wpaic-toggle-thumb"></span></span>
+						</label>
+					</div>
+					<div class="wpaic-card-body">
+						<label for="wpaic_retention_days" class="block font-medium text-[13px] mb-1.5 text-ink"><?php esc_html_e( 'Conversation retention', 'wp-ai-chatbot' ); ?></label>
+						<div class="flex items-center gap-2">
+							<input type="number" id="wpaic_retention_days" name="wpaic_settings[retention_days]" value="<?php echo esc_attr( (string) $retention_days ); ?>" min="0" max="3650" class="wpaic-input !w-24">
+							<span class="text-[13px] text-muted"><?php esc_html_e( 'days', 'wp-ai-chatbot' ); ?></span>
+						</div>
+						<span class="text-xs text-muted mt-1.5 block"><?php esc_html_e( 'Conversations idle for longer than this are deleted daily, including their messages and events. Set to 0 to keep conversations forever.', 'wp-ai-chatbot' ); ?></span>
 					</div>
 				</div>
 			</div>
@@ -1208,9 +1087,14 @@ class WPAIC_Admin {
 								<span class="block font-medium text-[13px] mb-1.5"><?php esc_html_e( 'Primary color', 'wp-ai-chatbot' ); ?></span>
 								<div class="flex gap-2 items-center flex-wrap">
 									<?php foreach ( $preset_colors as $color ) : ?>
-										<div class="wpaic-color-dot <?php echo $theme_color === $color ? 'wpaic-color-dot-active' : ''; ?>"
+										<button type="button"
+											class="wpaic-color-dot <?php echo $theme_color === $color ? 'wpaic-color-dot-active' : ''; ?>"
 											style="background: <?php echo esc_attr( $color ); ?>;"
-											data-color="<?php echo esc_attr( $color ); ?>"></div>
+											data-color="<?php echo esc_attr( $color ); ?>"
+											aria-label="<?php
+											/* translators: %s: hex color code preset. */
+											echo esc_attr( sprintf( __( 'Use theme color %s', 'wp-ai-chatbot' ), $color ) );
+											?>"></button>
 									<?php endforeach; ?>
 									<input type="text" name="wpaic_settings[theme_color]" value="<?php echo esc_attr( $theme_color ); ?>" class="wpaic-input font-mono !text-[12.5px] !w-28 ml-1.5" id="wpaic_theme_color_input">
 								</div>
@@ -1233,7 +1117,8 @@ class WPAIC_Admin {
 		jQuery(document).ready(function($) {
 			$('.wpaic-color-dot').on('click', function() {
 				var color = $(this).data('color');
-				$('#wpaic_theme_color_input').val(color);
+				// Native event so the live preview and the unsaved-changes guard both see it.
+				$('#wpaic_theme_color_input').val(color)[0].dispatchEvent(new Event('input', {bubbles: true}));
 				$('.wpaic-color-dot').removeClass('wpaic-color-dot-active');
 				$(this).addClass('wpaic-color-dot-active');
 			});
@@ -1627,16 +1512,20 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 							<span id="wpaic-index-status-dot" class="w-2 h-2 rounded-full <?php echo ( $product_status['exists'] || $content_status['exists'] ) ? 'bg-success' : 'bg-muted-2'; ?>"></span>
 							<span class="flex-1 text-[13px]" id="wpaic-index-status-text">
 								<?php if ( $product_status['exists'] || $content_status['exists'] ) : ?>
-									<span class="font-medium"><?php esc_html_e( 'Index is fresh.', 'wp-ai-chatbot' ); ?></span>
+									<span class="font-medium"><?php esc_html_e( 'Up to date.', 'wp-ai-chatbot' ); ?></span>
 									<span class="text-muted">
 										<?php echo esc_html( (string) $total_indexed ); ?> <?php esc_html_e( 'items', 'wp-ai-chatbot' ); ?>
+										· <?php esc_html_e( 'content changes are indexed automatically', 'wp-ai-chatbot' ); ?>
 										<?php
 										$last_updated = $product_status['last_updated'] ?? $content_status['last_updated'] ?? null;
 										if ( $last_updated ) :
 											?>
-											· <?php esc_html_e( 'last updated', 'wp-ai-chatbot' ); ?> <?php echo esc_html( $this->format_index_updated_at( $last_updated ) ); ?>
+											· <?php esc_html_e( 'last full rebuild', 'wp-ai-chatbot' ); ?> <?php echo esc_html( $this->format_index_updated_at( $last_updated ) ); ?>
 										<?php endif; ?>
 									</span>
+									<?php if ( $product_index_enabled && ! $product_status['exists'] ) : ?>
+										<span id="wpaic-products-unindexed-note" class="block text-warn-ink"><?php esc_html_e( 'Products are not indexed yet — activation only indexes site content. Click "Re-index all" to add your products.', 'wp-ai-chatbot' ); ?></span>
+									<?php endif; ?>
 								<?php else : ?>
 									<span class="font-medium"><?php esc_html_e( 'No index built yet.', 'wp-ai-chatbot' ); ?></span>
 									<span class="text-muted"><?php esc_html_e( 'Click "Re-index all" to build.', 'wp-ai-chatbot' ); ?></span>
@@ -1812,7 +1701,7 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 							$('#wpaic-product-count').text(response.data.product.count || 0);
 							$('#wpaic-index-status-dot').removeClass('bg-muted-2').addClass('bg-success');
 							var updated = response.data.product.last_updated_label || response.data.content.last_updated_label || '';
-							$('#wpaic-index-status-text').html('<span class="font-medium"><?php echo esc_js( __( 'Index is fresh.', 'wp-ai-chatbot' ) ); ?></span> <span class="text-muted">' + total + ' <?php echo esc_js( __( 'items', 'wp-ai-chatbot' ) ); ?>' + (updated ? ' · <?php echo esc_js( __( 'last updated', 'wp-ai-chatbot' ) ); ?> ' + updated : '') + '</span>');
+							$('#wpaic-index-status-text').html('<span class="font-medium"><?php echo esc_js( __( 'Up to date.', 'wp-ai-chatbot' ) ); ?></span> <span class="text-muted">' + total + ' <?php echo esc_js( __( 'items', 'wp-ai-chatbot' ) ); ?> · <?php echo esc_js( __( 'content changes are indexed automatically', 'wp-ai-chatbot' ) ); ?>' + (updated ? ' · <?php echo esc_js( __( 'last full rebuild', 'wp-ai-chatbot' ) ); ?> ' + updated : '') + '</span>');
 						} else {
 							$status.html('<span style="color:var(--color-danger)">' + (response.data ? response.data.message : '<?php echo esc_js( __( 'Error', 'wp-ai-chatbot' ) ); ?>') + '</span>');
 						}
@@ -2063,6 +1952,13 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 				.wpaic-message-assistant { background: var(--color-canvas); color: var(--color-ink); margin-right: 40px; }
 				.wpaic-message-role { font-size: 11px; text-transform: uppercase; opacity: 0.6; margin-bottom: 4px; font-weight: 600; letter-spacing: 0.05em; }
 				.wpaic-message-time { font-size: 11px; opacity: 0.5; margin-top: 5px; }
+				.wpaic-message-content p { margin: 0 0 8px; }
+				.wpaic-message-content p:last-child { margin-bottom: 0; }
+				.wpaic-message-content ul, .wpaic-message-content ol { margin: 4px 0 8px; padding-left: 18px; }
+				.wpaic-message-content ul { list-style: disc; }
+				.wpaic-message-content ol { list-style: decimal; }
+				.wpaic-message-content code { background: rgba(0,0,0,0.07); padding: 1px 4px; border-radius: 4px; font-size: 12px; }
+				.wpaic-message-content a { color: inherit; text-decoration: underline; }
 				.wpaic-event-chip { display: block; width: fit-content; margin: 0 auto 10px; padding: 3px 10px; border-radius: 999px; background: #f0f0f1; color: #646970; font-size: 11px; line-height: 1.4; }
 			</style>
 
@@ -2091,7 +1987,12 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 									}
 									html += '<div class="wpaic-message wpaic-message-' + item.role + '">';
 									html += '<div class="wpaic-message-role">' + item.role + '</div>';
-									html += '<div class="wpaic-message-content">' + $('<div>').text(item.content).html().replace(/\n/g, '<br>') + '</div>';
+									// content_html is server-rendered, escaped markdown (assistant replies).
+									if (item.content_html) {
+										html += '<div class="wpaic-message-content">' + item.content_html + '</div>';
+									} else {
+										html += '<div class="wpaic-message-content">' + $('<div>').text(item.content).html().replace(/\n/g, '<br>') + '</div>';
+									}
 									html += '<div class="wpaic-message-time">' + item.created_at + '</div>';
 									html += '</div>';
 								});
@@ -2165,13 +2066,19 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 
 		$items = array();
 		foreach ( $this->logs->get_conversation_messages( $conversation_id ) as $msg ) {
-			$items[] = array(
+			$item = array(
 				'type'       => 'message',
 				'role'       => $msg->role,
 				'content'    => $msg->content,
 				'created_at' => wp_date( $datetime_format, strtotime( $msg->created_at ) ),
 				'sort_time'  => $msg->created_at,
 			);
+			// Assistant replies are markdown; render server-side so the modal
+			// shows formatting instead of raw asterisks. User text stays plain.
+			if ( 'assistant' === $msg->role ) {
+				$item['content_html'] = self::render_markdown_lite( (string) $msg->content );
+			}
+			$items[] = $item;
 		}
 
 		foreach ( WPAIC_Events::get_for_conversation( $conversation_id ) as $event ) {
@@ -2209,6 +2116,102 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 		unset( $item );
 
 		return $items;
+	}
+
+	/**
+	 * Minimal markdown-to-HTML for admin transcript display: bold, italic,
+	 * inline code, links, bullet/numbered lists, and headings (rendered bold).
+	 * All input is HTML-escaped first, so the output only contains the tags
+	 * generated here.
+	 */
+	public static function render_markdown_lite( string $text ): string {
+		$lines = explode( "\n", str_replace( array( "\r\n", "\r" ), "\n", $text ) );
+
+		// Tokenize each line, then emit grouping consecutive same-type segments.
+		$segments = array();
+		foreach ( $lines as $line ) {
+			$trimmed = trim( $line );
+
+			if ( '' === $trimmed ) {
+				$segments[] = array(
+					'type' => 'break',
+					'html' => '',
+				);
+			} elseif ( preg_match( '/^[-*]\s+(.*)$/', $trimmed, $matches ) ) {
+				$segments[] = array(
+					'type' => 'ul',
+					'html' => '<li>' . self::render_inline_markdown( $matches[1] ) . '</li>',
+				);
+			} elseif ( preg_match( '/^\d+[.)]\s+(.*)$/', $trimmed, $matches ) ) {
+				$segments[] = array(
+					'type' => 'ol',
+					'html' => '<li>' . self::render_inline_markdown( $matches[1] ) . '</li>',
+				);
+			} elseif ( preg_match( '/^#{1,6}\s+(.*)$/', $trimmed, $matches ) ) {
+				$segments[] = array(
+					'type' => 'heading',
+					'html' => '<p><strong>' . self::render_inline_markdown( $matches[1] ) . '</strong></p>',
+				);
+			} else {
+				$segments[] = array(
+					'type' => 'text',
+					'html' => self::render_inline_markdown( $trimmed ),
+				);
+			}
+		}
+
+		$html          = '';
+		$segment_count = count( $segments );
+		$index         = 0;
+		while ( $index < $segment_count ) {
+			$type = $segments[ $index ]['type'];
+
+			if ( 'break' === $type ) {
+				++$index;
+				continue;
+			}
+
+			if ( 'heading' === $type ) {
+				$html .= $segments[ $index ]['html'];
+				++$index;
+				continue;
+			}
+
+			$run = array();
+			while ( $index < $segment_count && $segments[ $index ]['type'] === $type ) {
+				$run[] = $segments[ $index ]['html'];
+				++$index;
+			}
+
+			if ( 'text' === $type ) {
+				$html .= '<p>' . implode( '<br>', $run ) . '</p>';
+			} else {
+				$html .= '<' . $type . '>' . implode( '', $run ) . '</' . $type . '>';
+			}
+		}
+
+		return $html;
+	}
+
+	/**
+	 * Inline markdown spans (code, bold, italic, links) on a single line.
+	 * Escapes the line first; replacements only introduce tags built here.
+	 */
+	private static function render_inline_markdown( string $text ): string {
+		$escaped = esc_html( $text );
+
+		$escaped = (string) preg_replace( '/`([^`]+)`/', '<code>$1</code>', $escaped );
+		$escaped = (string) preg_replace( '/\*\*([^*]+)\*\*/', '<strong>$1</strong>', $escaped );
+		$escaped = (string) preg_replace( '/(?<!\*)\*([^*]+)\*(?!\*)/', '<em>$1</em>', $escaped );
+		$escaped = (string) preg_replace_callback(
+			'/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/',
+			static function ( array $matches ): string {
+				return '<a href="' . esc_url( $matches[2] ) . '" target="_blank" rel="noopener">' . $matches[1] . '</a>';
+			},
+			$escaped
+		);
+
+		return $escaped;
 	}
 
 	public function ajax_delete_conversation(): void {
@@ -2422,6 +2425,13 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 			.wpaic-transcript-user { background: var(--color-ink); color: #fff; margin-left: 40px; }
 			.wpaic-transcript-assistant { background: var(--color-canvas); color: var(--color-ink); margin-right: 40px; }
 			.wpaic-transcript-role { font-size: 11px; text-transform: uppercase; opacity: 0.6; margin-bottom: 4px; font-weight: 600; letter-spacing: 0.05em; }
+			.wpaic-transcript-content p { margin: 0 0 8px; }
+			.wpaic-transcript-content p:last-child { margin-bottom: 0; }
+			.wpaic-transcript-content ul, .wpaic-transcript-content ol { margin: 4px 0 8px; padding-left: 18px; }
+			.wpaic-transcript-content ul { list-style: disc; }
+			.wpaic-transcript-content ol { list-style: decimal; }
+			.wpaic-transcript-content code { background: rgba(0,0,0,0.07); padding: 1px 4px; border-radius: 4px; font-size: 12px; }
+			.wpaic-transcript-content a { color: inherit; text-decoration: underline; }
 			.wpaic-event-chip { display: block; width: fit-content; margin: 0 auto 10px; padding: 3px 10px; border-radius: 999px; background: #f0f0f1; color: #646970; font-size: 11px; line-height: 1.4; }
 			.wpaic-support-status-select:focus { outline: none; }
 		</style>
@@ -2455,15 +2465,23 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 									}
 									html += '<div class="wpaic-transcript-message wpaic-transcript-' + item.role + '">';
 									html += '<div class="wpaic-transcript-role">' + item.role + '</div>';
-									html += '<div>' + $('<div>').text(item.content).html().replace(/\n/g, '<br>') + '</div></div>';
+									// content_html is server-rendered, escaped markdown (assistant replies).
+									if (item.content_html) {
+										html += '<div class="wpaic-transcript-content">' + item.content_html + '</div></div>';
+									} else {
+										html += '<div>' + $('<div>').text(item.content).html().replace(/\n/g, '<br>') + '</div></div>';
+									}
 								});
 							} else {
 								var lines = response.data.transcript.split('\n');
 								var currentRole = '', currentContent = '';
 								function flush() {
 									if (!currentContent) return;
-									html += '<div class="wpaic-transcript-message wpaic-transcript-' + currentRole + '">';
-									html += '<div class="wpaic-transcript-role">' + currentRole + '</div>';
+									html += '<div class="wpaic-transcript-message' + (currentRole ? ' wpaic-transcript-' + currentRole : '') + '">';
+									// Summary-only/legacy requests have no role-prefixed lines; skip the empty chip.
+									if (currentRole) {
+										html += '<div class="wpaic-transcript-role">' + currentRole + '</div>';
+									}
 									html += '<div>' + $('<div>').text(currentContent.trim()).html().replace(/\n/g, '<br>') + '</div></div>';
 								}
 								lines.forEach(function(line) {

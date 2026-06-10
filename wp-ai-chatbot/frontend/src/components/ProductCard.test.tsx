@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import ProductCard, { Product } from './ProductCard'
 
 describe('ProductCard', () => {
@@ -216,7 +216,8 @@ describe('ProductCard', () => {
     expect(screen.getByRole('button', { name: /add to cart/i })).toBeInTheDocument()
   })
 
-  it('falls back to redirect on fetch error', async () => {
+  it('shows an inline error state on fetch failure and auto-resets without navigating', async () => {
+    vi.useFakeTimers()
     const originalLocation = window.location
     Object.defineProperty(window, 'location', {
       value: { href: '' },
@@ -233,13 +234,19 @@ describe('ProductCard', () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error'))
 
     render(<ProductCard product={mockProduct} />)
-    const button = screen.getByRole('button', { name: /add to cart/i })
-    fireEvent.click(button)
+    fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
 
-    await waitFor(() => {
-      expect(window.location.href).toBe('https://example.com/cart?add-to-cart=1')
+    await act(async () => {})
+    expect(screen.getByText('ERROR')).toBeInTheDocument()
+    expect(window.location.href).toBe('')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500)
     })
+    expect(screen.queryByText('ERROR')).not.toBeInTheDocument()
+    expect(screen.getByText('ADD')).toBeInTheDocument()
 
     Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
+    vi.useRealTimers()
   })
 })

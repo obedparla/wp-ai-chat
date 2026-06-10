@@ -230,3 +230,11 @@ describe('curateProducts', () => {
     expect(curateProducts(products, comparison).map((p) => p.id)).toEqual([1])
   })
 })
+
+describe('MessageList accessibility', () => {
+  it('exposes the message container as a polite live log', () => {
+    render(<MessageList messages={makeMessages(3)} />)
+    const log = screen.getByRole('log', { name: 'Chat messages' })
+    expect(log).toHaveAttribute('aria-live', 'polite')
+  })
+})

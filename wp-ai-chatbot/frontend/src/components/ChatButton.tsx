@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 
 interface ChatButtonProps {
@@ -6,9 +7,13 @@ interface ChatButtonProps {
   hasUnread?: boolean
 }
 
-export default function ChatButton({ onClick, isOpen, hasUnread = false }: ChatButtonProps) {
+const ChatButton = forwardRef<HTMLButtonElement, ChatButtonProps>(function ChatButton(
+  { onClick, isOpen, hasUnread = false },
+  ref
+) {
   return (
     <button
+      ref={ref}
       onClick={onClick}
       className={cn(
         'fixed bottom-6 right-6 w-[60px] h-[60px] rounded-full border-0',
@@ -63,4 +68,6 @@ export default function ChatButton({ onClick, isOpen, hasUnread = false }: ChatB
       )}
     </button>
   )
-}
+})
+
+export default ChatButton

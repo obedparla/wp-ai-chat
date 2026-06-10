@@ -65,6 +65,15 @@ describe('App', () => {
     expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
   })
 
+  it('returns focus to the launcher when the widget closes', async () => {
+    render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.getByRole('button', { name: 'Open chat' })).toHaveFocus()
+  })
+
   it('shows greeting message when widget opened', async () => {
     render(<App />)
 
@@ -139,6 +148,34 @@ describe('App', () => {
     await userEvent.type(input, 'Test message{Enter}')
 
     expect(mockSendMessage).toHaveBeenCalledWith('Test message')
+  })
+
+  it('opens the widget immediately when mounted with openOnMount (loader handoff)', () => {
+    render(<App openOnMount />)
+
+    expect(screen.getByText('AI Assistant')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open chat' })).not.toBeInTheDocument()
+  })
+
+  it('seeds the proactive greeting when mounted via the loader teaser', () => {
+    const mockChat = createMockChat()
+    vi.mocked(useChatModule.useChat).mockReturnValue(mockChat)
+
+    render(<App openOnMount viaProactiveTeaser />)
+
+    expect(screen.getByText('AI Assistant')).toBeInTheDocument()
+    expect(mockChat.showProactiveGreeting).toHaveBeenCalled()
+  })
+
+  it('does not seed the proactive greeting over a stored conversation', () => {
+    sessionStorage.setItem('wpaic_chat_history', '[{"id":"1"}]')
+    const mockChat = createMockChat()
+    vi.mocked(useChatModule.useChat).mockReturnValue(mockChat)
+
+    render(<App openOnMount viaProactiveTeaser />)
+
+    expect(mockChat.showProactiveGreeting).not.toHaveBeenCalled()
+    sessionStorage.removeItem('wpaic_chat_history')
   })
 
   it('passes configured conversation starters into the widget', async () => {

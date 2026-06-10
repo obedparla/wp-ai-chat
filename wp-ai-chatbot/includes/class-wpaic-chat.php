@@ -4,8 +4,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-use OpenAI\Client;
-
 class WPAIC_Chat {
 	/** @var array<string, mixed> */
 	private array $settings;
@@ -13,7 +11,6 @@ class WPAIC_Chat {
 	private array $page_context = array();
 	private ?WPAIC_Tools $tools = null;
 	private ?WPAIC_Product_Tools $product_tools = null;
-	private ?Client $client     = null;
 	private WPAIC_License_Manager $license_manager;
 	/** Logged conversation this chat belongs to; used to record tool events and link handoffs. */
 	private int $conversation_id = 0;
@@ -31,13 +28,6 @@ class WPAIC_Chat {
 			$this->tools         = new WPAIC_Tools();
 			$this->product_tools = new WPAIC_Product_Tools();
 		}
-
-		if ( ! $this->is_provider_mode() ) {
-			$api_key = $this->settings['openai_api_key'] ?? '';
-			if ( is_string( $api_key ) && '' !== $api_key ) {
-				$this->client = \OpenAI::client( $api_key );
-			}
-		}
 	}
 
 	/**
@@ -49,215 +39,12 @@ class WPAIC_Chat {
 	}
 
 	/**
-	 * Check if provider mode is active.
-	 */
-	public function is_provider_mode(): bool {
-		return $this->license_manager->is_provider_url_configured() && $this->license_manager->has_provider_auth();
-	}
-
-	/**
-	 * Reasoning effort for a model. Returns null for models that don't support it,
-	 * so the param is omitted rather than sent to a model that would reject it.
-	 * Medium effort balances chat latency and cost against tool use quality.
-	 */
-	private function reasoning_effort_for_model( string $model ): ?string {
-		return match ( $model ) {
-			'gpt-5-mini' => 'medium',
-			default      => null,
-		};
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $messages
-	 * @return array<string, mixed>|WP_Error
-	 */
-	public function send( array $messages ): array|WP_Error {
-		if ( ! $this->is_provider_mode() && null === $this->client ) {
-			return new WP_Error( 'no_api_key', 'OpenAI API key not configured', array( 'status' => 500 ) );
-		}
-
-		if ( $this->is_provider_mode() ) {
-			return $this->send_via_provider( $messages );
-		}
-
-		$model = $this->settings['model'] ?? 'gpt-5-mini';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5-mini';
-		}
-
-		try {
-			$params = array(
-				'model'    => $model,
-				'messages' => $this->format_messages( $messages ),
-			);
-
-			$tools = $this->get_tool_definitions();
-			if ( ! empty( $tools ) ) {
-				$params['tools'] = $tools;
-			}
-
-			$effort = $this->reasoning_effort_for_model( $model );
-			if ( null !== $effort ) {
-				$params['reasoning_effort'] = $effort;
-			}
-
-			$response = $this->client->chat()->create( $params );
-
-			$choice = $response->choices[0];
-
-			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-			if ( 'tool_calls' === $choice->finishReason ) {
-				return $this->handle_tool_calls( $messages, $choice->message );
-			}
-
-			return array( 'content' => $choice->message->content ?? '' );
-
-		} catch ( \Exception $e ) {
-			return new WP_Error( 'openai_error', $e->getMessage(), array( 'status' => 500 ) );
-		}
-	}
-
-	/**
-	 * Non-streaming send via provider. Collects full response from SSE stream.
+	 * Stream a chat completion via the provider endpoint, handling tool calls locally.
 	 *
-	 * @param array<int, array<string, mixed>> $messages
-	 * @return array<string, mixed>|WP_Error
-	 */
-	private function send_via_provider( array $messages ): array|WP_Error {
-		$collected_content = '';
-		$error             = null;
-
-		$this->send_stream_via_provider(
-			$messages,
-			function ( array $data ) use ( &$collected_content, &$error ): void {
-				if ( isset( $data['content'] ) && is_string( $data['content'] ) ) {
-					$collected_content .= $data['content'];
-				}
-				if ( isset( $data['error'] ) && is_string( $data['error'] ) ) {
-					$error = $data['error'];
-				}
-			}
-		);
-
-		if ( null !== $error ) {
-			return new WP_Error( 'provider_error', $error, array( 'status' => 500 ) );
-		}
-
-		return array( 'content' => $collected_content );
-	}
-
-	/**
 	 * @param array<int, array<string, mixed>> $messages
 	 * @param callable(array<string, mixed>): void $on_chunk
 	 */
 	public function send_stream( array $messages, callable $on_chunk ): void {
-		if ( $this->is_provider_mode() ) {
-			$this->send_stream_via_provider( $messages, $on_chunk );
-			return;
-		}
-
-		if ( null === $this->client ) {
-			$on_chunk( array( 'error' => 'Chat is currently unavailable. Please try again later.' ) );
-			return;
-		}
-
-		$model = $this->settings['model'] ?? 'gpt-5-mini';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5-mini';
-		}
-
-		try {
-			$params = array(
-				'model'    => $model,
-				'messages' => $this->format_messages( $messages ),
-			);
-
-			$tools = $this->get_tool_definitions();
-			if ( ! empty( $tools ) ) {
-				$params['tools'] = $tools;
-			}
-
-			$effort = $this->reasoning_effort_for_model( $model );
-			if ( null !== $effort ) {
-				$params['reasoning_effort'] = $effort;
-			}
-
-			$stream = $this->client->chat()->createStreamed( $params );
-
-			/** @var array<int, array{id: string|null, type: string, function: array{name: string, arguments: string}, started: bool}> $tool_calls */
-			$tool_calls = array();
-
-			foreach ( $stream as $response ) {
-				$delta = $response->choices[0]->delta;
-
-				if ( $this->should_emit_stream_content( $delta->content ?? null ) ) {
-					$on_chunk( array( 'content' => $delta->content ) );
-				}
-
-				// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-				if ( $delta->toolCalls ) {
-					// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-					foreach ( $delta->toolCalls as $tc ) {
-						if ( ! isset( $tool_calls[ $tc->index ] ) ) {
-							$tool_calls[ $tc->index ] = array(
-								'id'       => $tc->id,
-								'type'     => 'function',
-								'function' => array(
-									'name'      => '',
-									'arguments' => '',
-								),
-								'started'  => false,
-							);
-						}
-						if ( $tc->function->name ) {
-							$tool_calls[ $tc->index ]['function']['name'] = $tc->function->name;
-							if ( ! $tool_calls[ $tc->index ]['started'] ) {
-								$tool_calls[ $tc->index ]['started'] = true;
-								$on_chunk(
-									array(
-										'tool_input_start' => array(
-											'toolCallId' => $tool_calls[ $tc->index ]['id'],
-											'toolName'   => $tc->function->name,
-										),
-									)
-								);
-							}
-						}
-						if ( $tc->function->arguments ) {
-							$tool_calls[ $tc->index ]['function']['arguments'] .= $tc->function->arguments;
-							$on_chunk(
-								array(
-									'tool_input_delta' => array(
-										'toolCallId'     => $tool_calls[ $tc->index ]['id'],
-										'inputTextDelta' => $tc->function->arguments,
-									),
-								)
-							);
-						}
-					}
-				}
-
-				// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-				if ( 'tool_calls' === $response->choices[0]->finishReason ) {
-					$this->handle_tool_calls_stream( $messages, $tool_calls, $on_chunk );
-					return;
-				}
-			}
-
-			$on_chunk( array( 'done' => true ) );
-
-		} catch ( \Exception $e ) {
-			$on_chunk( array( 'error' => $e->getMessage() ) );
-		}
-	}
-
-	/**
-	 * Stream chat completion via provider endpoint, handling tool calls locally.
-	 *
-	 * @param array<int, array<string, mixed>> $messages
-	 * @param callable(array<string, mixed>): void $on_chunk
-	 */
-	private function send_stream_via_provider( array $messages, callable $on_chunk ): void {
 		$input        = $this->build_responses_input( $messages );
 		$instructions = $this->get_system_prompt();
 		$tools        = $this->to_responses_tools( $this->get_tool_definitions() );
@@ -275,7 +62,11 @@ class WPAIC_Chat {
 	/**
 	 * Convert conversation history into Responses API `input` items. The system
 	 * prompt is sent separately as `instructions`, so it is not included here.
-	 * Only the most recent MAX_INPUT_MESSAGES messages are forwarded.
+	 * Only the most recent MAX_INPUT_MESSAGES messages are forwarded. A message
+	 * carrying `product_context` (compact card summary built by
+	 * WPAIC_API::transform_messages) emits an additional system-role item so the
+	 * model can resolve ordinal references without echoing the list into
+	 * shopper-visible replies.
 	 *
 	 * @param array<int, array<string, mixed>> $messages
 	 * @return array<int, array<string, mixed>>
@@ -292,6 +83,14 @@ class WPAIC_Chat {
 				'role'    => $role,
 				'content' => (string) ( $msg['content'] ?? '' ),
 			);
+
+			$product_context = $msg['product_context'] ?? '';
+			if ( is_string( $product_context ) && '' !== $product_context ) {
+				$input[] = array(
+					'role'    => 'system',
+					'content' => 'Internal context — never quote, mention, or list this to the shopper: ' . $product_context,
+				);
+			}
 		}
 		return $input;
 	}
@@ -620,42 +419,6 @@ class WPAIC_Chat {
 		return "Provider returned HTTP {$http_status}";
 	}
 
-	/**
-	 * @param array<int, array<string, mixed>> $messages
-	 * @return array<int, array<string, mixed>>
-	 */
-	private function format_messages( array $messages ): array {
-		$formatted = array(
-			array(
-				'role'    => 'system',
-				'content' => $this->get_system_prompt(),
-			),
-		);
-
-		foreach ( $messages as $msg ) {
-			if ( isset( $msg['tool_calls'] ) ) {
-				$formatted[] = array(
-					'role'       => 'assistant',
-					'content'    => $msg['content'] ?? null,
-					'tool_calls' => $msg['tool_calls'],
-				);
-			} elseif ( isset( $msg['role'] ) && 'tool' === $msg['role'] ) {
-				$formatted[] = array(
-					'role'         => 'tool',
-					'tool_call_id' => $msg['tool_call_id'] ?? '',
-					'content'      => $msg['content'] ?? '',
-				);
-			} else {
-				$formatted[] = array(
-					'role'    => $msg['role'] ?? 'user',
-					'content' => $msg['content'] ?? '',
-				);
-			}
-		}
-
-		return $formatted;
-	}
-
 	private function should_emit_stream_content( mixed $content ): bool {
 		return is_string( $content ) && '' !== $content;
 	}
@@ -754,7 +517,7 @@ class WPAIC_Chat {
 							),
 							'limit'     => array(
 								'type'        => 'integer',
-								'description' => 'Max results (default 10)',
+								'description' => 'Max results (default 6, max 10)',
 							),
 						),
 					),
@@ -774,7 +537,7 @@ class WPAIC_Chat {
 							),
 							'limit'    => array(
 								'type'        => 'integer',
-								'description' => 'Max results, default 10',
+								'description' => 'Max results (default 6, max 10)',
 							),
 						),
 					),
@@ -1052,152 +815,6 @@ class WPAIC_Chat {
 		);
 
 		return $tools;
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $messages
-	 * @param object $assistant_message
-	 * @return array<string, mixed>|WP_Error
-	 */
-	private function handle_tool_calls( array $messages, object $assistant_message ): array|WP_Error {
-		/** @var array<int, array{id: string, type: string, function: array{name: string, arguments: string}}> $tool_calls_arr */
-		$tool_calls_arr = array();
-
-		/** @var object{id: string, function: object{name: string, arguments: string}} $tc */
-		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-		foreach ( $assistant_message->toolCalls as $tc ) {
-			$tool_calls_arr[] = array(
-				'id'       => $tc->id,
-				'type'     => 'function',
-				'function' => array(
-					'name'      => $tc->function->name,
-					'arguments' => $tc->function->arguments,
-				),
-			);
-		}
-
-		$messages[] = array(
-			'role'       => 'assistant',
-			'content'    => $assistant_message->content ?? null,
-			'tool_calls' => $tool_calls_arr,
-		);
-
-		foreach ( $tool_calls_arr as $tc ) {
-			$args       = json_decode( $tc['function']['arguments'], true );
-			$result     = $this->execute_tool( $tc['function']['name'], is_array( $args ) ? $args : array() );
-			$messages[] = array(
-				'role'         => 'tool',
-				'tool_call_id' => $tc['id'],
-				'content'      => (string) wp_json_encode( $this->to_model_payload( $tc['function']['name'], $result ) ),
-			);
-		}
-
-		if ( null === $this->client ) {
-			return new WP_Error( 'no_api_key', 'OpenAI API key not configured', array( 'status' => 500 ) );
-		}
-
-		$model = $this->settings['model'] ?? 'gpt-5-mini';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5-mini';
-		}
-
-		try {
-			$response = $this->client->chat()->create(
-				array(
-					'model'    => $model,
-					'messages' => $this->format_messages( $messages ),
-				)
-			);
-
-			return array( 'content' => $response->choices[0]->message->content ?? '' );
-		} catch ( \Exception $e ) {
-			return new WP_Error( 'openai_error', $e->getMessage(), array( 'status' => 500 ) );
-		}
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $messages
-	 * @param array<int, array{id: string|null, type: string, function: array{name: string, arguments: string}, started?: bool}> $tool_calls
-	 * @param callable(array<string, mixed>): void $on_chunk
-	 */
-	private function handle_tool_calls_stream( array $messages, array $tool_calls, callable $on_chunk ): void {
-		$tool_calls_for_messages = array_map(
-			function ( $tc ) {
-				return array(
-					'id'       => $tc['id'],
-					'type'     => $tc['type'],
-					'function' => $tc['function'],
-				);
-			},
-			array_values( $tool_calls )
-		);
-
-		$messages[] = array(
-			'role'       => 'assistant',
-			'content'    => null,
-			'tool_calls' => $tool_calls_for_messages,
-		);
-
-		foreach ( $tool_calls as $tc ) {
-			$args        = json_decode( $tc['function']['arguments'], true );
-			$parsed_args = is_array( $args ) ? $args : array();
-
-			$on_chunk(
-				array(
-					'tool_input_available' => array(
-						'toolCallId' => $tc['id'] ?? '',
-						'toolName'   => $tc['function']['name'],
-						'input'      => $parsed_args,
-					),
-				)
-			);
-
-			$result = $this->execute_tool( $tc['function']['name'], $parsed_args );
-
-			$on_chunk(
-				array(
-					'tool_output_available' => array(
-						'toolCallId' => $tc['id'] ?? '',
-						'output'     => $result,
-					),
-				)
-			);
-
-			$messages[] = array(
-				'role'         => 'tool',
-				'tool_call_id' => $tc['id'] ?? '',
-				'content'      => (string) wp_json_encode( $this->to_model_payload( $tc['function']['name'], $result ) ),
-			);
-		}
-
-		if ( null === $this->client ) {
-			$on_chunk( array( 'error' => 'Chat is currently unavailable. Please try again later.' ) );
-			return;
-		}
-
-		$model = $this->settings['model'] ?? 'gpt-5-mini';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5-mini';
-		}
-
-		try {
-			$stream = $this->client->chat()->createStreamed(
-				array(
-					'model'    => $model,
-					'messages' => $this->format_messages( $messages ),
-				)
-			);
-
-			foreach ( $stream as $response ) {
-				if ( $this->should_emit_stream_content( $response->choices[0]->delta->content ?? null ) ) {
-					$on_chunk( array( 'content' => $response->choices[0]->delta->content ) );
-				}
-			}
-
-			$on_chunk( array( 'done' => true ) );
-		} catch ( \Exception $e ) {
-			$on_chunk( array( 'error' => 'Something went wrong. Please try again.' ) );
-		}
 	}
 
 	/**

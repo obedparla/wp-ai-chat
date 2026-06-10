@@ -85,7 +85,9 @@ export default function VariableProductCard({ product }: VariableProductCardProp
 
       setTimeout(() => setCartState('idle'), 2000)
     } catch {
-      window.location.href = product.url
+      // Stay in the conversation: show the inline error state, then reset.
+      setCartState('error')
+      setTimeout(() => setCartState('idle'), 2500)
     }
   }
 

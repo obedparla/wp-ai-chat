@@ -88,7 +88,9 @@ export default function ProductCard({ product }: ProductCardProps) {
 
       setTimeout(() => setCartState('idle'), 2000)
     } catch {
-      window.location.href = product.add_to_cart_url || product.url
+      // Stay in the conversation: show the inline error state, then reset.
+      setCartState('error')
+      setTimeout(() => setCartState('idle'), 2500)
     }
   }
 

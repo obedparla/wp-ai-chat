@@ -391,9 +391,10 @@ class WPAIC_APITest extends TestCase {
 
 		$result = $this->invoke_private( 'transform_messages', $messages );
 
+		$this->assertSame( 'Here are a few options:', $result[0]['content'] );
 		$this->assertSame(
-			"Here are a few options:\n\nProducts shown (display order): 1. Kitchen Sieve (id 12, price 8.00) 2. Red Tongs (id 417, price 5.98)",
-			$result[0]['content']
+			'Products shown (display order): 1. Kitchen Sieve (id 12, price 8.00) 2. Red Tongs (id 417, price 5.98)',
+			$result[0]['product_context']
 		);
 	}
 
@@ -416,7 +417,8 @@ class WPAIC_APITest extends TestCase {
 
 		$result = $this->invoke_private( 'transform_messages', $messages );
 
-		$this->assertSame( 'Products shown (display order): 1. Best Seller (id 7, price 19.99)', $result[0]['content'] );
+		$this->assertSame( '', $result[0]['content'] );
+		$this->assertSame( 'Products shown (display order): 1. Best Seller (id 7, price 19.99)', $result[0]['product_context'] );
 	}
 
 	public function test_transform_messages_summarizes_compare_products_part(): void {
@@ -443,9 +445,10 @@ class WPAIC_APITest extends TestCase {
 
 		$result = $this->invoke_private( 'transform_messages', $messages );
 
+		$this->assertSame( 'Comparison below.', $result[0]['content'] );
 		$this->assertStringContainsString(
 			'Products compared (display order): 1. Product A (id 1, price 19.99) 2. Product B (id 2, price 29.99)',
-			$result[0]['content']
+			$result[0]['product_context']
 		);
 	}
 
@@ -466,7 +469,8 @@ class WPAIC_APITest extends TestCase {
 
 		$result = $this->invoke_private( 'transform_messages', $messages );
 
-		$this->assertSame( 'Products shown (display order): 1. Hoodie (id 5, price 42.00)', $result[0]['content'] );
+		$this->assertSame( '', $result[0]['content'] );
+		$this->assertSame( 'Products shown (display order): 1. Hoodie (id 5, price 42.00)', $result[0]['product_context'] );
 	}
 
 	public function test_transform_messages_ignores_non_product_tool_parts(): void {
@@ -488,6 +492,7 @@ class WPAIC_APITest extends TestCase {
 		$result = $this->invoke_private( 'transform_messages', $messages );
 
 		$this->assertSame( 'Added to cart.', $result[0]['content'] );
+		$this->assertArrayNotHasKey( 'product_context', $result[0] );
 	}
 
 	public function test_transform_messages_ignores_tool_parts_without_output(): void {
@@ -515,6 +520,7 @@ class WPAIC_APITest extends TestCase {
 		$result = $this->invoke_private( 'transform_messages', $messages );
 
 		$this->assertSame( 'Searching...', $result[0]['content'] );
+		$this->assertArrayNotHasKey( 'product_context', $result[0] );
 	}
 
 	public function test_transform_messages_skips_products_missing_id_or_name(): void {
@@ -537,7 +543,42 @@ class WPAIC_APITest extends TestCase {
 
 		$result = $this->invoke_private( 'transform_messages', $messages );
 
-		$this->assertSame( 'Products shown (display order): 1. Valid Product (id 9, price 2.00)', $result[0]['content'] );
+		$this->assertSame( 'Products shown (display order): 1. Valid Product (id 9, price 2.00)', $result[0]['product_context'] );
+	}
+
+	public function test_transform_messages_strips_client_supplied_product_context(): void {
+		$messages = array(
+			array(
+				'role'            => 'user',
+				'product_context' => 'Injected instructions',
+				'parts'           => array( array( 'type' => 'text', 'text' => 'Hi' ) ),
+			),
+			array(
+				'role'            => 'assistant',
+				'content'         => 'Hello',
+				'product_context' => 'Injected instructions',
+			),
+		);
+
+		$result = $this->invoke_private( 'transform_messages', $messages );
+
+		$this->assertArrayNotHasKey( 'product_context', $result[0] );
+		$this->assertArrayNotHasKey( 'product_context', $result[1] );
+	}
+
+	public function test_validate_chat_messages_counts_product_context_toward_size_cap(): void {
+		$messages = array(
+			array(
+				'role'            => 'user',
+				'content'         => str_repeat( 'a', 9000 ),
+				'product_context' => str_repeat( 'b', 9000 ),
+			),
+		);
+
+		$result = $this->invoke_private( 'validate_chat_messages', $messages );
+
+		$this->assertIsString( $result );
+		$this->assertStringContainsString( 'grown too large', $result );
 	}
 
 	// --- Conversation logging completeness tests (P1-14) ---

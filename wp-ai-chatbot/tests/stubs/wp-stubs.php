@@ -1081,6 +1081,9 @@ class MockWpdb {
 	public string $prefix = 'wp_';
 	public int $insert_id = 0;
 
+	/** @var array<int, string> Raw queries passed to query(), for assertions. */
+	public array $queries = array();
+
 	/** @var array<string, array<int, array<string, mixed>>> */
 	private array $tables = array();
 	private int $auto_increment = 1;
@@ -1104,6 +1107,8 @@ class MockWpdb {
 	 * @return int|bool
 	 */
 	public function query( string $query ): int|bool {
+		$this->queries[] = $query;
+
 		if ( preg_match( '/TRUNCATE\s+TABLE\s+(\S+)/i', $query, $matches ) ) {
 			$table = $matches[1];
 			if ( isset( $this->tables[ $table ] ) ) {
@@ -1111,7 +1116,47 @@ class MockWpdb {
 			}
 			return true;
 		}
+
+		if ( preg_match( '/DROP\s+TABLE\s+IF\s+EXISTS\s+(\S+)/i', $query, $matches ) ) {
+			unset( $this->tables[ $matches[1] ] );
+			return true;
+		}
+
+		if ( preg_match( '/DELETE\s+FROM\s+(\S+)\s+WHERE\s+(\w+)\s+IN\s*\(([^)]*)\)/i', $query, $matches ) ) {
+			$table  = $matches[1];
+			$column = $matches[2];
+			$values = array_map( 'trim', explode( ',', $matches[3] ) );
+			if ( ! isset( $this->tables[ $table ] ) ) {
+				return false;
+			}
+			$deleted = 0;
+			foreach ( $this->tables[ $table ] as $id => $row ) {
+				if ( in_array( (string) ( $row[ $column ] ?? '' ), $values, true ) ) {
+					unset( $this->tables[ $table ][ $id ] );
+					++$deleted;
+				}
+			}
+			return $deleted;
+		}
+
 		return false;
+	}
+
+	/**
+	 * @return array<int, string>
+	 */
+	public function get_col( string $query ): array {
+		if ( preg_match( "/SELECT\s+id\s+FROM\s+\S+wpaic_conversations\s+WHERE\s+updated_at\s*<\s*'([^']+)'/i", $query, $matches ) ) {
+			$cutoff = $matches[1];
+			$ids    = array();
+			foreach ( $this->tables['wp_wpaic_conversations'] as $row ) {
+				if ( strcmp( (string) ( $row['updated_at'] ?? '' ), $cutoff ) < 0 ) {
+					$ids[] = (string) $row['id'];
+				}
+			}
+			return $ids;
+		}
+		return array();
 	}
 
 	/**
@@ -1237,6 +1282,17 @@ class MockWpdb {
 			$count      = 0;
 			foreach ( $this->tables['wp_wpaic_events'] as $row ) {
 				if ( ( $row['event_type'] ?? '' ) === $event_type && $this->row_matches_created_at_bounds( $row, $query ) ) {
+					++$count;
+				}
+			}
+			return (string) $count;
+		}
+
+		if ( preg_match( "/SELECT\s+COUNT\(\*\)\s+FROM\s+\S+wpaic_support_requests(?:\s+WHERE\s+status\s*=\s*'([^']+)')?/i", $query, $matches ) ) {
+			$status = $matches[1] ?? null;
+			$count  = 0;
+			foreach ( $this->tables['wp_wpaic_support_requests'] as $row ) {
+				if ( null === $status || ( $row['status'] ?? '' ) === $status ) {
 					++$count;
 				}
 			}
@@ -1409,6 +1465,7 @@ class MockWpdb {
 		);
 		$this->auto_increment = 1;
 		$this->insert_id      = 0;
+		$this->queries        = array();
 	}
 }
 
@@ -1426,6 +1483,48 @@ if ( ! function_exists( 'flush_rewrite_rules' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_next_scheduled' ) ) {
+	function wp_next_scheduled( string $hook, array $args = array() ): int|false {
+		$scheduled = WPAICTestHelper::get_option( 'test_scheduled_events', array() );
+		return $scheduled[ $hook ] ?? false;
+	}
+}
+
+if ( ! function_exists( 'wp_schedule_event' ) ) {
+	function wp_schedule_event( int $timestamp, string $recurrence, string $hook, array $args = array() ): bool {
+		$scheduled          = WPAICTestHelper::get_option( 'test_scheduled_events', array() );
+		$scheduled[ $hook ] = $timestamp;
+		WPAICTestHelper::set_option( 'test_scheduled_events', $scheduled );
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_clear_scheduled_hook' ) ) {
+	function wp_clear_scheduled_hook( string $hook, array $args = array() ): int {
+		$scheduled = WPAICTestHelper::get_option( 'test_scheduled_events', array() );
+		unset( $scheduled[ $hook ] );
+		WPAICTestHelper::set_option( 'test_scheduled_events', $scheduled );
+		return 0;
+	}
+}
+
+if ( ! function_exists( 'wp_privacy_anonymize_ip' ) ) {
+	/**
+	 * Simplified version of core: zero the host portion of the address.
+	 */
+	function wp_privacy_anonymize_ip( string $ip_addr, bool $ipv6_fallback = false ): string {
+		if ( str_contains( $ip_addr, ':' ) ) {
+			$parts = explode( ':', $ip_addr );
+			return implode( ':', array_slice( $parts, 0, 4 ) ) . '::';
+		}
+		$parts = explode( '.', $ip_addr );
+		if ( 4 === count( $parts ) ) {
+			$parts[3] = '0';
+		}
+		return implode( '.', $parts );
+	}
+}
+
 /**
  * Plugin activation function.
  */
@@ -1433,7 +1532,6 @@ function wpaic_activate(): void {
 	add_option(
 		'wpaic_settings',
 		array(
-			'openai_api_key'        => '',
 			'model'                 => 'gpt-5-mini',
 			'greeting_message'      => 'Hello! How can I help you today?',
 			'enabled'               => true,
@@ -1441,11 +1539,17 @@ function wpaic_activate(): void {
 			'theme_color'           => '#2545B8',
 			'conversation_starters' => array(),
 			'provider_url_override' => '',
+			'retention_days'        => 0,
+			'anonymize_ip'          => true,
 		)
 	);
 
 	wpaic_create_tables();
 	flush_rewrite_rules();
+
+	if ( ! wp_next_scheduled( 'wpaic_daily_retention' ) ) {
+		wp_schedule_event( time(), 'daily', 'wpaic_daily_retention' );
+	}
 
 	// Mirrors the real activation hook: one-time redirect to the settings page.
 	set_transient( 'wpaic_activation_redirect', true, 60 );
@@ -1507,6 +1611,11 @@ if ( ! function_exists( 'add_menu_page' ) ) {
 	 * @return string
 	 */
 	function add_menu_page( string $page_title, string $menu_title, string $capability, string $menu_slug, ?callable $callback = null, string $icon_url = '', int|float|null $position = null ): string {
+		$GLOBALS['wpaic_test_menu_pages'][] = array(
+			'page_title' => $page_title,
+			'menu_title' => $menu_title,
+			'menu_slug'  => $menu_slug,
+		);
 		return $menu_slug;
 	}
 }
@@ -1523,6 +1632,12 @@ if ( ! function_exists( 'add_submenu_page' ) ) {
 	 * @return string|false
 	 */
 	function add_submenu_page( string $parent_slug, string $page_title, string $menu_title, string $capability, string $menu_slug, ?callable $callback = null, int|float|null $position = null ): string|false {
+		$GLOBALS['wpaic_test_submenu_pages'][] = array(
+			'parent_slug' => $parent_slug,
+			'page_title'  => $page_title,
+			'menu_title'  => $menu_title,
+			'menu_slug'   => $menu_slug,
+		);
 		return $menu_slug;
 	}
 }

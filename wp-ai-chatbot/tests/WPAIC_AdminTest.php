@@ -115,9 +115,9 @@ class WPAIC_AdminTest extends TestCase {
 		};
 	}
 
-	public function test_sanitize_settings_sanitizes_api_key(): void {
+	public function test_sanitize_settings_drops_openai_api_key(): void {
 		$input = array(
-			'openai_api_key'   => '  sk-test-key-12345  ',
+			'openai_api_key'   => 'sk-test-key-12345',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -126,12 +126,11 @@ class WPAIC_AdminTest extends TestCase {
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertEquals( 'sk-test-key-12345', $sanitized['openai_api_key'] );
+		$this->assertArrayNotHasKey( 'openai_api_key', $sanitized );
 	}
 
 	public function test_sanitize_settings_forces_model_ignoring_input(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -145,7 +144,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_sets_model_when_missing(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
 		);
@@ -157,7 +155,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_sanitizes_greeting_message(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => "  Hello!\nHow can I help?  ",
 			'enabled'          => '1',
@@ -171,7 +168,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_enabled_is_true_when_set(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -185,7 +181,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_enabled_is_false_when_not_set(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'system_prompt'    => '',
@@ -198,7 +193,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_enabled_is_false_when_empty(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '',
@@ -210,9 +204,82 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertFalse( $sanitized['enabled'] );
 	}
 
+	public function test_sanitize_settings_general_tab_saves_retention_and_anonymize_ip(): void {
+		$input = array(
+			'active_tab'     => 'general',
+			'enabled'        => '1',
+			'retention_days' => '30',
+			'anonymize_ip'   => '1',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 30, $sanitized['retention_days'] );
+		$this->assertTrue( $sanitized['anonymize_ip'] );
+	}
+
+	public function test_sanitize_settings_general_tab_disables_anonymize_ip(): void {
+		$input = array(
+			'active_tab'     => 'general',
+			'enabled'        => '1',
+			'retention_days' => '0',
+			'anonymize_ip'   => '0',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 0, $sanitized['retention_days'] );
+		$this->assertFalse( $sanitized['anonymize_ip'] );
+	}
+
+	public function test_sanitize_settings_clamps_negative_retention_days(): void {
+		$input = array(
+			'active_tab'     => 'general',
+			'enabled'        => '1',
+			'retention_days' => '-7',
+			'anonymize_ip'   => '1',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 0, $sanitized['retention_days'] );
+	}
+
+	public function test_sanitize_settings_defaults_anonymize_ip_on_when_never_saved(): void {
+		// Save from a different tab: privacy fields come from (empty) existing settings.
+		$input = array(
+			'active_tab'   => 'appearance',
+			'chatbot_name' => 'Bot',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertTrue( $sanitized['anonymize_ip'] );
+		$this->assertSame( 0, $sanitized['retention_days'] );
+	}
+
+	public function test_sanitize_settings_preserves_privacy_settings_on_other_tab_saves(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'retention_days' => 90,
+				'anonymize_ip'   => false,
+			)
+		);
+
+		$input = array(
+			'active_tab'   => 'appearance',
+			'chatbot_name' => 'Bot',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertSame( 90, $sanitized['retention_days'] );
+		$this->assertFalse( $sanitized['anonymize_ip'] );
+	}
+
 	public function test_sanitize_settings_sanitizes_system_prompt(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -224,21 +291,8 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertEquals( "You are a helpful bot.\nBe nice.", $sanitized['system_prompt'] );
 	}
 
-	public function test_sanitize_settings_handles_missing_api_key(): void {
-		$input = array(
-			'model'            => 'gpt-5-mini',
-			'greeting_message' => 'Hello',
-			'enabled'          => '1',
-		);
-
-		$sanitized = $this->admin->sanitize_settings( $input );
-
-		$this->assertEquals( '', $sanitized['openai_api_key'] );
-	}
-
 	public function test_sanitize_settings_sanitizes_theme_color(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -252,7 +306,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_defaults_theme_color_when_invalid(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -266,7 +319,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_defaults_theme_color_when_missing(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -277,222 +329,8 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertEquals( '#2545B8', $sanitized['theme_color'] );
 	}
 
-	public function test_sanitize_settings_strips_html_from_api_key(): void {
-		$input = array(
-			'openai_api_key'   => '<script>alert("xss")</script>sk-key',
-			'model'            => 'gpt-5-mini',
-			'greeting_message' => 'Hello',
-			'enabled'          => '1',
-		);
-
-		$sanitized = $this->admin->sanitize_settings( $input );
-
-		$this->assertEquals( 'alert("xss")sk-key', $sanitized['openai_api_key'] );
-	}
-
-	public function test_render_api_key_field_outputs_password_input(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'openai_api_key' => 'sk-test-key-secret',
-			)
-		);
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_api_key_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'type="password"', $output );
-		$this->assertStringContainsString( 'name="wpaic_settings[openai_api_key]"', $output );
-		$this->assertStringContainsString( 'value="sk-test-key-secret"', $output );
-	}
-
-	public function test_render_api_key_field_empty_when_no_settings(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_api_key_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'value=""', $output );
-	}
-
-	public function test_render_model_field_outputs_static_text(): void {
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_model_field();
-		$output = ob_get_clean();
-
-		$this->assertStringNotContainsString( '<select', $output );
-		$this->assertStringContainsString( 'GPT-5 Mini', $output );
-		$this->assertStringContainsString( 'fast, capable ChatGPT model', $output );
-	}
-
-	public function test_render_greeting_field_outputs_textarea(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'greeting_message' => 'Welcome to our store!',
-			)
-		);
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_greeting_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( '<textarea', $output );
-		$this->assertStringContainsString( 'name="wpaic_settings[greeting_message]"', $output );
-		$this->assertStringContainsString( 'Welcome to our store!', $output );
-	}
-
-	public function test_render_greeting_field_shows_default_when_empty(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_greeting_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'Hello! How can I help you today?', $output );
-	}
-
-	public function test_render_enabled_field_outputs_checkbox(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'enabled' => true,
-			)
-		);
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_enabled_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'type="checkbox"', $output );
-		$this->assertStringContainsString( 'name="wpaic_settings[enabled]"', $output );
-		$this->assertStringContainsString( 'checked="checked"', $output );
-	}
-
-	public function test_render_enabled_field_unchecked_when_disabled(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'enabled' => false,
-			)
-		);
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_enabled_field();
-		$output = ob_get_clean();
-
-		$this->assertStringNotContainsString( 'checked="checked"', $output );
-	}
-
-	public function test_render_system_prompt_field_outputs_textarea(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'system_prompt' => 'You are a custom assistant.',
-			)
-		);
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_system_prompt_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( '<textarea', $output );
-		$this->assertStringContainsString( 'name="wpaic_settings[system_prompt]"', $output );
-		$this->assertStringContainsString( 'You are a custom assistant.', $output );
-	}
-
-	public function test_render_system_prompt_field_has_placeholder(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_system_prompt_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'placeholder=', $output );
-		$this->assertStringContainsString( 'Leave empty for default prompt', $output );
-	}
-
-	public function test_render_system_prompt_field_has_description(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_system_prompt_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( '<p class="description">', $output );
-		$this->assertStringContainsString( 'personality and behavior', $output );
-	}
-
-	public function test_render_theme_color_field_outputs_color_input(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'theme_color' => '#ff5500',
-			)
-		);
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_theme_color_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'type="text"', $output );
-		$this->assertStringContainsString( 'name="wpaic_settings[theme_color]"', $output );
-		$this->assertStringContainsString( 'value="#ff5500"', $output );
-		$this->assertStringContainsString( 'wpaic-color-picker', $output );
-	}
-
-	public function test_render_theme_color_field_defaults_to_wp_blue(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_theme_color_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( 'value="#2545B8"', $output );
-	}
-
-	public function test_render_theme_color_field_has_description(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_theme_color_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( '<p class="description">', $output );
-		$this->assertStringContainsString( 'primary color', $output );
-	}
-
 	public function test_settings_persist_after_sanitization(): void {
 		$input = array(
-			'openai_api_key'   => 'sk-test-persist',
 			'model'            => 'gpt-5',
 			'greeting_message' => 'Hello, welcome!',
 			'enabled'          => '1',
@@ -504,7 +342,6 @@ class WPAIC_AdminTest extends TestCase {
 
 		$retrieved = get_option( 'wpaic_settings' );
 
-		$this->assertEquals( 'sk-test-persist', $retrieved['openai_api_key'] );
 		$this->assertEquals( 'gpt-5-mini', $retrieved['model'] );
 		$this->assertEquals( 'Hello, welcome!', $retrieved['greeting_message'] );
 		$this->assertTrue( $retrieved['enabled'] );
@@ -742,36 +579,8 @@ class WPAIC_AdminTest extends TestCase {
 		unset( $_GET['tab'], $_GET['wpaic_faq_question'] );
 	}
 
-	public function test_all_settings_fields_have_correct_names(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_api_key_field();
-		$api_output = ob_get_clean();
-
-		ob_start();
-		$this->admin->render_greeting_field();
-		$greeting_output = ob_get_clean();
-
-		ob_start();
-		$this->admin->render_enabled_field();
-		$enabled_output = ob_get_clean();
-
-		ob_start();
-		$this->admin->render_system_prompt_field();
-		$prompt_output = ob_get_clean();
-
-		$this->assertStringContainsString( 'wpaic_settings[openai_api_key]', $api_output );
-		$this->assertStringContainsString( 'wpaic_settings[greeting_message]', $greeting_output );
-		$this->assertStringContainsString( 'wpaic_settings[enabled]', $enabled_output );
-		$this->assertStringContainsString( 'wpaic_settings[system_prompt]', $prompt_output );
-	}
-
 	public function test_sanitize_settings_sanitizes_language(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -785,7 +594,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_defaults_language_to_auto(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -798,7 +606,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_sanitizes_tone_of_voice(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -812,7 +619,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_defaults_tone_of_voice_to_neutral(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -825,7 +631,6 @@ class WPAIC_AdminTest extends TestCase {
 
 	public function test_sanitize_settings_rejects_invalid_tone_of_voice(): void {
 		$input = array(
-			'openai_api_key'   => 'test-key',
 			'model'            => 'gpt-5-mini',
 			'greeting_message' => 'Hello',
 			'enabled'          => '1',
@@ -835,53 +640,6 @@ class WPAIC_AdminTest extends TestCase {
 		$sanitized = $this->admin->sanitize_settings( $input );
 
 		$this->assertEquals( 'neutral', $sanitized['tone_of_voice'] );
-	}
-
-	public function test_render_language_field_outputs_select(): void {
-		WPAICTestHelper::set_option(
-			'wpaic_settings',
-			array(
-				'language' => 'fr',
-			)
-		);
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_language_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( '<select', $output );
-		$this->assertStringContainsString( 'name="wpaic_settings[language]"', $output );
-		$this->assertStringContainsString( 'Auto-detect', $output );
-		$this->assertStringContainsString( 'English', $output );
-		$this->assertStringContainsString( 'Spanish', $output );
-		$this->assertStringContainsString( 'French', $output );
-	}
-
-	public function test_render_language_field_defaults_to_auto(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_language_field();
-		$output = ob_get_clean();
-
-		$this->assertMatchesRegularExpression( '/value="auto"[^>]*selected/', $output );
-	}
-
-	public function test_render_language_field_has_description(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		$this->admin = new WPAIC_Admin();
-
-		ob_start();
-		$this->admin->render_language_field();
-		$output = ob_get_clean();
-
-		$this->assertStringContainsString( '<p class="description">', $output );
-		$this->assertStringContainsString( 'Language for chatbot responses', $output );
 	}
 
 	public function test_render_settings_page_general_tab_includes_tone_of_voice_field(): void {
@@ -951,47 +709,21 @@ class WPAIC_AdminTest extends TestCase {
 			'enabled'          => true,
 			'greeting_message' => 'Hi there!',
 			'language'         => 'es',
-			'openai_api_key'   => 'old-key',
 			'model'            => 'gpt-5-mini',
 		) );
 
 		$input = array(
-			'active_tab'     => 'api',
-			'openai_api_key' => 'new-key-123',
+			'active_tab'            => 'api',
+			'provider_url_override' => 'https://override.example.com/wp-json/wpaip/v1/chat',
 		);
 
 		$sanitized = $this->admin->sanitize_settings( $input );
 
-		$this->assertEquals( 'new-key-123', $sanitized['openai_api_key'] );
+		$this->assertEquals( 'https://override.example.com/wp-json/wpaip/v1/chat', $sanitized['provider_url_override'] );
 		$this->assertEquals( 'gpt-5-mini', $sanitized['model'] );
 		$this->assertTrue( $sanitized['enabled'] );
 		$this->assertEquals( 'Hi there!', $sanitized['greeting_message'] );
 		$this->assertEquals( 'es', $sanitized['language'] );
-	}
-
-	public function test_sanitize_settings_general_tab_preserves_api_settings(): void {
-		WPAICTestHelper::set_option( 'wpaic_settings', array(
-			'openai_api_key' => 'sk-existing-key',
-			'model'          => 'gpt-5',
-			'enabled'        => false,
-		) );
-
-		$input = array(
-			'active_tab'       => 'general',
-			'enabled'          => '1',
-			'greeting_message' => 'Welcome!',
-			'language'         => 'fr',
-			'tone_of_voice'    => 'friendly',
-		);
-
-		$sanitized = $this->admin->sanitize_settings( $input );
-
-		$this->assertTrue( $sanitized['enabled'] );
-		$this->assertEquals( 'Welcome!', $sanitized['greeting_message'] );
-		$this->assertEquals( 'fr', $sanitized['language'] );
-		$this->assertEquals( 'friendly', $sanitized['tone_of_voice'] );
-		$this->assertEquals( 'sk-existing-key', $sanitized['openai_api_key'] );
-		$this->assertEquals( 'gpt-5-mini', $sanitized['model'] );
 	}
 
 	public function test_sanitize_settings_engagement_tab_preserves_appearance(): void {
@@ -1364,15 +1096,13 @@ class WPAIC_AdminTest extends TestCase {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
-				'openai_api_key' => 'existing-key',
-				'enabled'        => true,
+				'enabled' => true,
 			)
 		);
 
 		$admin = new WPAIC_Admin();
 		$result = $admin->sanitize_settings( array(
 			'active_tab'            => 'api',
-			'openai_api_key'        => '',
 			'model'                 => 'gpt-5-mini',
 			'provider_url_override' => 'https://provider.example.com/wp-json/wpaip/v1/chat',
 		) );
@@ -1409,7 +1139,6 @@ class WPAIC_AdminTest extends TestCase {
 		$admin = new WPAIC_Admin();
 		$result = $admin->sanitize_settings( array(
 			'active_tab'            => 'api',
-			'openai_api_key'        => '',
 			'model'                 => 'gpt-5-mini',
 			'provider_url_override' => 'https://valid-url.com/wp-json/wpaip/v1/chat',
 		) );
@@ -2072,5 +1801,217 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 		$this->assertStringNotContainsString( 'only the first 30 FAQ pairs', $output );
 
 		unset( $_GET['tab'] );
+	}
+
+	// ---- Markdown-lite transcript rendering (P2-27d) ----
+
+	public function test_render_markdown_lite_renders_bold_italic_code_and_links(): void {
+		$html = WPAIC_Admin::render_markdown_lite( 'Try **bold**, *italic*, `code`, and [our shop](https://example.com/shop).' );
+
+		$this->assertStringContainsString( '<strong>bold</strong>', $html );
+		$this->assertStringContainsString( '<em>italic</em>', $html );
+		$this->assertStringContainsString( '<code>code</code>', $html );
+		$this->assertStringContainsString( '<a href="https://example.com/shop" target="_blank" rel="noopener">our shop</a>', $html );
+		$this->assertStringNotContainsString( '**', $html );
+	}
+
+	public function test_render_markdown_lite_renders_bullet_and_numbered_lists(): void {
+		$html = WPAIC_Admin::render_markdown_lite( "Top picks:\n- Mug A\n- Mug B\n\n1. First\n2. Second" );
+
+		$this->assertStringContainsString( '<ul><li>Mug A</li><li>Mug B</li></ul>', $html );
+		$this->assertStringContainsString( '<ol><li>First</li><li>Second</li></ol>', $html );
+		$this->assertStringContainsString( '<p>Top picks:</p>', $html );
+	}
+
+	public function test_render_markdown_lite_escapes_html(): void {
+		$html = WPAIC_Admin::render_markdown_lite( '<script>alert("xss")</script> & **<b>bold</b>**' );
+
+		$this->assertStringNotContainsString( '<script>', $html );
+		$this->assertStringNotContainsString( '<b>', $html );
+		$this->assertStringContainsString( '&lt;script&gt;', $html );
+		$this->assertStringContainsString( '<strong>&lt;b&gt;bold&lt;/b&gt;</strong>', $html );
+	}
+
+	public function test_render_markdown_lite_joins_paragraph_lines_with_breaks(): void {
+		$html = WPAIC_Admin::render_markdown_lite( "Line one\nLine two\n\nNext paragraph" );
+
+		$this->assertStringContainsString( '<p>Line one<br>Line two</p>', $html );
+		$this->assertStringContainsString( '<p>Next paragraph</p>', $html );
+	}
+
+	public function test_render_markdown_lite_renders_headings_as_bold_paragraphs(): void {
+		$html = WPAIC_Admin::render_markdown_lite( '## Shipping options' );
+
+		$this->assertStringContainsString( '<p><strong>Shipping options</strong></p>', $html );
+	}
+
+	public function test_ajax_get_conversation_adds_content_html_for_assistant_messages_only(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->create_conversation( 'markdown-session' );
+		$logs->log_message( $conversation_id, 'user', 'I typed **stars** myself' );
+		$logs->log_message( $conversation_id, 'assistant', 'Here is a **great** pick.' );
+
+		$_POST['conversation_id'] = (string) $conversation_id;
+
+		try {
+			$this->admin->ajax_get_conversation();
+			$this->fail( 'Expected WPAICJsonResponseException' );
+		} catch ( WPAICJsonResponseException $response ) {
+			$this->assertTrue( $response->success );
+			$items = $response->data;
+
+			$this->assertArrayNotHasKey( 'content_html', $items[0] );
+			$this->assertArrayHasKey( 'content_html', $items[1] );
+			$this->assertStringContainsString( '<strong>great</strong>', $items[1]['content_html'] );
+			$this->assertSame( 'Here is a **great** pick.', $items[1]['content'] );
+		} finally {
+			unset( $_POST['conversation_id'] );
+		}
+	}
+
+	// ---- New-handoff count bubble on the admin menu (P2-27c) ----
+
+	public function test_admin_menu_shows_awaiting_mod_bubble_for_new_support_requests(): void {
+		$this->reset_mock_wpdb();
+		global $wpdb;
+		$wpdb->insert( 'wp_wpaic_support_requests', array( 'customer_name' => 'A', 'customer_email' => 'a@example.com', 'status' => 'new' ) );
+		$wpdb->insert( 'wp_wpaic_support_requests', array( 'customer_name' => 'B', 'customer_email' => 'b@example.com', 'status' => 'new' ) );
+		$wpdb->insert( 'wp_wpaic_support_requests', array( 'customer_name' => 'C', 'customer_email' => 'c@example.com', 'status' => 'resolved' ) );
+
+		$GLOBALS['wpaic_test_menu_pages']    = array();
+		$GLOBALS['wpaic_test_submenu_pages'] = array();
+
+		$this->admin->add_admin_menu();
+
+		$this->assertStringContainsString( 'awaiting-mod count-2', $GLOBALS['wpaic_test_menu_pages'][0]['menu_title'] );
+
+		$support_submenu = null;
+		foreach ( $GLOBALS['wpaic_test_submenu_pages'] as $submenu ) {
+			if ( 'wp-ai-chatbot-support' === $submenu['menu_slug'] ) {
+				$support_submenu = $submenu;
+			}
+		}
+		$this->assertNotNull( $support_submenu );
+		$this->assertStringContainsString( 'awaiting-mod count-2', $support_submenu['menu_title'] );
+		$this->assertStringContainsString( '2 new support requests', $support_submenu['menu_title'] );
+	}
+
+	public function test_admin_menu_has_no_bubble_without_new_support_requests(): void {
+		$this->reset_mock_wpdb();
+		global $wpdb;
+		$wpdb->insert( 'wp_wpaic_support_requests', array( 'customer_name' => 'C', 'customer_email' => 'c@example.com', 'status' => 'resolved' ) );
+
+		$GLOBALS['wpaic_test_menu_pages']    = array();
+		$GLOBALS['wpaic_test_submenu_pages'] = array();
+
+		$this->admin->add_admin_menu();
+
+		$this->assertStringNotContainsString( 'awaiting-mod', $GLOBALS['wpaic_test_menu_pages'][0]['menu_title'] );
+		foreach ( $GLOBALS['wpaic_test_submenu_pages'] as $submenu ) {
+			$this->assertStringNotContainsString( 'awaiting-mod', $submenu['menu_title'] );
+		}
+	}
+
+	// ---- Unsaved-changes guard on settings tabs (P2-27a) ----
+
+	public function test_settings_page_includes_unsaved_changes_guard(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option( 'wpaic_settings', array() );
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringContainsString( 'id="wpaic-unsaved-indicator"', $output );
+		$this->assertStringContainsString( 'beforeunload', $output );
+		$this->assertStringContainsString( 'hasUnsavedChanges', $output );
+	}
+
+	// ---- Honest index freshness wording (P2-27b) ----
+
+	public function test_knowledge_tab_describes_index_freshness_honestly(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'product_index_enabled'    => true,
+				'content_index_post_types' => array( 'page', 'post' ),
+			)
+		);
+		WPAICTestHelper::set_option(
+			'wpaic_content_index_meta',
+			array(
+				'post_count'   => 7,
+				'last_updated' => '2026-05-06 10:00:00',
+				'post_types'   => array( 'page', 'post' ),
+			)
+		);
+
+		$upload_dir = wp_upload_dir();
+		$search_dir = $upload_dir['basedir'] . '/wpaic/search';
+		wp_mkdir_p( $search_dir );
+		file_put_contents( $search_dir . '/content.index', 'content' );
+
+		$_GET['tab'] = 'knowledge';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'Index is fresh', $output );
+		$this->assertStringContainsString( 'Up to date.', $output );
+		$this->assertStringContainsString( 'content changes are indexed automatically', $output );
+		$this->assertStringContainsString( 'last full rebuild', $output );
+		// Products enabled but never indexed (activation only builds the content index).
+		$this->assertStringContainsString( 'Products are not indexed yet', $output );
+
+		unset( $_GET['tab'] );
+	}
+
+	public function test_knowledge_tab_hides_products_unindexed_note_when_product_index_exists(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'product_index_enabled'    => true,
+				'content_index_post_types' => array( 'page', 'post' ),
+			)
+		);
+
+		$upload_dir = wp_upload_dir();
+		$search_dir = $upload_dir['basedir'] . '/wpaic/search';
+		wp_mkdir_p( $search_dir );
+		file_put_contents( $search_dir . '/products.index', 'products' );
+		file_put_contents( $search_dir . '/content.index', 'content' );
+
+		$_GET['tab'] = 'knowledge';
+
+		ob_start();
+		$this->admin->render_settings_page();
+		$output = ob_get_clean();
+
+		$this->assertStringNotContainsString( 'Products are not indexed yet', $output );
+
+		unset( $_GET['tab'] );
+	}
+
+	// ---- Legacy handoff fallback role chip (FIX-5) ----
+
+	public function test_support_page_text_fallback_hides_empty_role_chip(): void {
+		$this->reset_mock_wpdb();
+		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
+
+		ob_start();
+		$this->admin->render_support_page();
+		$output = ob_get_clean();
+
+		// The flush() helper only emits the role chip when a role was parsed.
+		$this->assertStringContainsString( 'if (currentRole) {', $output );
 	}
 }

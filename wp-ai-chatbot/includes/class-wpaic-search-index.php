@@ -19,6 +19,21 @@ class WPAIC_Search_Index {
 		array( 't shirt', 'tshirt', 'tee' ),
 	);
 
+	/**
+	 * Phrase-level synonyms, merged into results whenever the phrase appears
+	 * in the query — unlike SYNONYM_GROUPS, which only broaden zero-result or
+	 * weak-result searches. Catalogs name "running shoes" sneakers ("Sports
+	 * Sneakers Off White Red"), and sneaker queries should also surface plain
+	 * shoes as a fallback. Keys and replacements are singular, normalized
+	 * (matching singularize_query_text output). Single-pass, no chaining.
+	 */
+	private const PHRASE_SYNONYMS = array(
+		'running shoe' => 'sneaker',
+		'trainer'      => 'sneaker',
+		'kick'         => 'sneaker',
+		'sneaker'      => 'shoe',
+	);
+
 	private ?TNTSearch $tnt = null;
 	private string $index_path;
 	private string $index_name = 'products.index';
@@ -223,13 +238,19 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Weak-result recall booster: when the primary results carry no title-token
-	 * match for a query noun that has known synonyms (e.g. "running shoos"
-	 * fuzzy-matched heels via their description but no result has shoe/shoos in
-	 * its title), run the synonym-substituted query variants (shoe↔sneaker↔
-	 * trainer) and merge their results in. Bounded to one extra search per
-	 * synonym variant of the unmatched token; a no-op when any result already
-	 * names the noun in its title.
+	 * Recall booster, merging two kinds of synonym variants into non-empty
+	 * primary results:
+	 *
+	 * 1. Phrase synonyms (PHRASE_SYNONYMS) run whenever the phrase appears in
+	 *    the query, regardless of title-token matches — "running shoes" always
+	 *    has a "shoes" title match somewhere (heels, slippers), which must not
+	 *    stop sneakers from surfacing.
+	 * 2. Token synonyms (SYNONYM_GROUPS) run only when the primary results
+	 *    carry no title-token match for a query noun with known synonyms
+	 *    (e.g. "shoos" fuzzy-matched heels via their description but no result
+	 *    has shoe/shoos in its title).
+	 *
+	 * Bounded to one extra search per variant query, deduped, capped at limit.
 	 *
 	 * @param array<int>          $product_ids Primary (non-empty) result IDs.
 	 * @param string              $query Original query.
@@ -238,7 +259,12 @@ class WPAIC_Search_Index {
 	 * @return array<int>
 	 */
 	private function merge_synonym_variant_results( array $product_ids, string $query, array $filters, int $limit ): array {
-		$variant_queries = $this->synonym_variants_for_unmatched_title_tokens( $product_ids, $query );
+		$variant_queries = array_unique(
+			array_merge(
+				$this->phrase_synonym_variants( $query ),
+				$this->synonym_variants_for_unmatched_title_tokens( $product_ids, $query )
+			)
+		);
 		if ( empty( $variant_queries ) ) {
 			return $product_ids;
 		}
@@ -278,13 +304,7 @@ class WPAIC_Search_Index {
 			}
 		}
 
-		$singular_query = implode(
-			' ',
-			array_map(
-				array( $this, 'singularize_token' ),
-				explode( ' ', $this->normalize_query_text( $query ) )
-			)
-		);
+		$singular_query = $this->singularize_query_text( $query );
 
 		$variants = array();
 		foreach ( $tokens as $token ) {
@@ -317,22 +337,94 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Whether a (singularized) query token belongs to a synonym group, exactly
-	 * or within a single-letter typo for words long enough to be distinctive
-	 * ("shoo" → "shoe").
+	 * Whether a (singularized) query token belongs to a synonym group.
 	 *
 	 * @param array<string> $group
 	 */
 	private function token_matches_synonym_group( string $token, array $group ): bool {
 		foreach ( $group as $member ) {
-			if ( $token === $member ) {
-				return true;
-			}
-			if ( strlen( $token ) >= 4 && strlen( $member ) >= 4 && 1 === levenshtein( $token, $member ) ) {
+			if ( $this->tokens_equivalent( $token, $member ) ) {
 				return true;
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Whether two singular tokens are the same word, exactly or within a
+	 * single-letter typo for words long enough to be distinctive
+	 * ("shoo" → "shoe").
+	 */
+	private function tokens_equivalent( string $token, string $member ): bool {
+		if ( $token === $member ) {
+			return true;
+		}
+		return strlen( $token ) >= 4 && strlen( $member ) >= 4 && 1 === levenshtein( $token, $member );
+	}
+
+	/**
+	 * Query variants with each PHRASE_SYNONYMS phrase found in the query
+	 * substituted by its synonym ("running shoos" → "sneaker",
+	 * "red trainers" → "red sneaker"). Phrase tokens match singularized query
+	 * tokens exactly or within a one-letter typo.
+	 *
+	 * @return array<string>
+	 */
+	private function phrase_synonym_variants( string $query ): array {
+		$singular_query = $this->singularize_query_text( $query );
+		if ( '' === $singular_query ) {
+			return array();
+		}
+
+		$query_tokens = explode( ' ', $singular_query );
+		$variants     = array();
+
+		foreach ( self::PHRASE_SYNONYMS as $phrase => $replacement ) {
+			$phrase_tokens = explode( ' ', (string) $phrase );
+			$position      = $this->find_phrase_position( $query_tokens, $phrase_tokens );
+			if ( null === $position ) {
+				continue;
+			}
+
+			$substituted = implode(
+				' ',
+				array_merge(
+					array_slice( $query_tokens, 0, $position ),
+					array( $replacement ),
+					array_slice( $query_tokens, $position + count( $phrase_tokens ) )
+				)
+			);
+			if ( '' !== $substituted && $substituted !== $singular_query ) {
+				$variants[ $substituted ] = true;
+			}
+		}
+
+		return array_keys( $variants );
+	}
+
+	/**
+	 * Position of the first occurrence of the phrase within the query tokens,
+	 * each phrase token matching exactly or within a one-letter typo, or null
+	 * when the phrase does not appear.
+	 *
+	 * @param array<string> $query_tokens
+	 * @param array<string> $phrase_tokens
+	 */
+	private function find_phrase_position( array $query_tokens, array $phrase_tokens ): ?int {
+		$last_start = count( $query_tokens ) - count( $phrase_tokens );
+		for ( $start = 0; $start <= $last_start; $start++ ) {
+			$matches = true;
+			foreach ( $phrase_tokens as $offset => $phrase_token ) {
+				if ( ! $this->tokens_equivalent( $query_tokens[ $start + $offset ], $phrase_token ) ) {
+					$matches = false;
+					break;
+				}
+			}
+			if ( $matches ) {
+				return $start;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -378,7 +470,8 @@ class WPAIC_Search_Index {
 	 * 1. plural/hyphen-normalized full query ("t-shirts" → "t shirt")
 	 * 2. synonym substitutions, one group member swapped at a time
 	 *    ("chanel perfume" → "chanel fragrance")
-	 * 3. each significant token alone, raw then singular, plus its synonyms
+	 * 3. phrase synonym substitutions ("kicks" → "sneaker")
+	 * 4. each significant token alone, raw then singular, plus its synonyms
 	 *    (catches brand-only matches: "chanel perfume" → "chanel")
 	 * The original query is never included.
 	 *
@@ -390,13 +483,7 @@ class WPAIC_Search_Index {
 			return array();
 		}
 
-		$singular = implode(
-			' ',
-			array_map(
-				array( $this, 'singularize_token' ),
-				explode( ' ', $normalized )
-			)
-		);
+		$singular = $this->singularize_query_text( $query );
 
 		$variants = array( $normalized, $singular );
 
@@ -416,6 +503,10 @@ class WPAIC_Search_Index {
 					}
 				}
 			}
+		}
+
+		foreach ( $this->phrase_synonym_variants( $query ) as $phrase_variant ) {
+			$variants[] = $phrase_variant;
 		}
 
 		// Single-token retries, only when there is more than one significant token.
@@ -457,6 +548,24 @@ class WPAIC_Search_Index {
 	private function normalize_query_text( string $query ): string {
 		$normalized = preg_replace( '/[^a-z0-9]+/', ' ', strtolower( $query ) );
 		return is_string( $normalized ) ? trim( $normalized ) : '';
+	}
+
+	/**
+	 * Normalized query with every token reduced to singular — the canonical
+	 * form synonym matching operates on.
+	 */
+	private function singularize_query_text( string $query ): string {
+		$normalized = $this->normalize_query_text( $query );
+		if ( '' === $normalized ) {
+			return '';
+		}
+		return implode(
+			' ',
+			array_map(
+				array( $this, 'singularize_token' ),
+				explode( ' ', $normalized )
+			)
+		);
 	}
 
 	/**

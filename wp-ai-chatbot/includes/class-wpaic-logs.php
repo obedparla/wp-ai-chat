@@ -15,6 +15,10 @@ class WPAIC_Logs {
 		$user_id = get_current_user_id();
 		$user_ip = $this->get_client_ip();
 
+		if ( null !== $user_ip && $this->should_anonymize_ip() ) {
+			$user_ip = wp_privacy_anonymize_ip( $user_ip );
+		}
+
 		$result = $wpdb->insert(
 			$wpdb->prefix . 'wpaic_conversations',
 			array(
@@ -254,6 +258,61 @@ class WPAIC_Logs {
 		);
 
 		return false !== $result;
+	}
+
+	/**
+	 * Delete conversations whose last activity is older than $days, along with
+	 * their messages and events. Used by the daily retention cron.
+	 *
+	 * @param int $days Retention window in days. Values < 1 mean keep forever.
+	 * @return int Number of conversations deleted.
+	 */
+	public function delete_conversations_older_than( int $days ): int {
+		global $wpdb;
+
+		if ( $days < 1 ) {
+			return 0;
+		}
+
+		$conversations_table = $wpdb->prefix . 'wpaic_conversations';
+		$cutoff              = gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - $days * DAY_IN_SECONDS );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table names cannot use placeholders.
+		$conversation_ids = array_map(
+			'intval',
+			(array) $wpdb->get_col(
+				$wpdb->prepare( "SELECT id FROM $conversations_table WHERE updated_at < %s", $cutoff )
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		if ( empty( $conversation_ids ) ) {
+			return 0;
+		}
+
+		$id_list = implode( ',', $conversation_ids );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- IDs are cast to int above; table names cannot use placeholders.
+		$wpdb->query( "DELETE FROM {$wpdb->prefix}wpaic_messages WHERE conversation_id IN ($id_list)" );
+		$wpdb->query( "DELETE FROM {$wpdb->prefix}wpaic_events WHERE conversation_id IN ($id_list)" );
+		$wpdb->query( "DELETE FROM $conversations_table WHERE id IN ($id_list)" );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+
+		return count( $conversation_ids );
+	}
+
+	/**
+	 * Whether visitor IPs should be anonymized before storage. Defaults to on
+	 * when the setting has never been saved.
+	 */
+	private function should_anonymize_ip(): bool {
+		$settings = get_option( 'wpaic_settings', array() );
+
+		if ( ! is_array( $settings ) || ! array_key_exists( 'anonymize_ip', $settings ) ) {
+			return true;
+		}
+
+		return ! empty( $settings['anonymize_ip'] );
 	}
 
 	private function get_client_ip(): ?string {

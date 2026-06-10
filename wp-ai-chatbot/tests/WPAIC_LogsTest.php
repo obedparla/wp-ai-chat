@@ -27,6 +27,7 @@ class WPAIC_LogsTest extends TestCase {
 			$wpdb->reset();
 		}
 		WPAICTestHelper::reset();
+		unset( $_SERVER['REMOTE_ADDR'] );
 		parent::tearDown();
 	}
 
@@ -225,5 +226,112 @@ class WPAIC_LogsTest extends TestCase {
 		$messages = $this->logs->get_conversation_messages( 99999 );
 
 		$this->assertEmpty( $messages );
+	}
+
+	public function test_create_conversation_anonymizes_ip_by_default(): void {
+		$_SERVER['REMOTE_ADDR'] = '203.0.113.45';
+
+		$this->logs->create_conversation( 'anon-default-session' );
+
+		$conversations = $this->logs->get_conversations();
+		$this->assertEquals( '203.0.113.0', $conversations[0]->user_ip );
+	}
+
+	public function test_create_conversation_stores_full_ip_when_anonymization_disabled(): void {
+		$_SERVER['REMOTE_ADDR'] = '203.0.113.45';
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'anonymize_ip' => false ) );
+
+		$this->logs->create_conversation( 'full-ip-session' );
+
+		$conversations = $this->logs->get_conversations();
+		$this->assertEquals( '203.0.113.45', $conversations[0]->user_ip );
+	}
+
+	public function test_create_conversation_anonymizes_ip_when_setting_enabled(): void {
+		$_SERVER['REMOTE_ADDR'] = '198.51.100.7';
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'anonymize_ip' => true ) );
+
+		$this->logs->create_conversation( 'anon-on-session' );
+
+		$conversations = $this->logs->get_conversations();
+		$this->assertEquals( '198.51.100.0', $conversations[0]->user_ip );
+	}
+
+	public function test_delete_conversations_older_than_purges_conversations_messages_and_events(): void {
+		global $wpdb;
+
+		$wpdb->insert(
+			'wp_wpaic_conversations',
+			array(
+				'session_id' => 'stale-session',
+				'created_at' => '2025-01-01 10:00:00',
+			)
+		);
+		$stale_id = $wpdb->insert_id;
+		$wpdb->insert(
+			'wp_wpaic_messages',
+			array(
+				'conversation_id' => $stale_id,
+				'role'            => 'user',
+				'content'         => 'Old message',
+				'created_at'      => '2025-01-01 10:00:00',
+			)
+		);
+		$wpdb->insert(
+			'wp_wpaic_events',
+			array(
+				'conversation_id' => $stale_id,
+				'event_type'      => 'product_click',
+				'created_at'      => '2025-01-01 10:00:00',
+			)
+		);
+
+		$fresh_id = $this->logs->create_conversation( 'fresh-session' );
+		$this->logs->log_message( $fresh_id, 'user', 'Recent message' );
+
+		$deleted = $this->logs->delete_conversations_older_than( 30 );
+
+		$this->assertEquals( 1, $deleted );
+		$this->assertEquals( 1, $this->logs->get_conversation_count() );
+		$this->assertEquals( 'fresh-session', $this->logs->get_conversations()[0]->session_id );
+		$this->assertEmpty( $this->logs->get_conversation_messages( $stale_id ) );
+		$this->assertEmpty( $wpdb->get_results( "SELECT * FROM wp_wpaic_events WHERE conversation_id = $stale_id" ) );
+		$this->assertCount( 1, $this->logs->get_conversation_messages( $fresh_id ) );
+	}
+
+	public function test_delete_conversations_older_than_uses_last_activity(): void {
+		global $wpdb;
+
+		// Created long ago but active recently: must be kept.
+		$wpdb->insert(
+			'wp_wpaic_conversations',
+			array(
+				'session_id' => 'long-lived-session',
+				'created_at' => '2025-01-01 10:00:00',
+			)
+		);
+		$conversation_id = $wpdb->insert_id;
+		$this->logs->log_message( $conversation_id, 'user', 'Still chatting' );
+
+		$deleted = $this->logs->delete_conversations_older_than( 30 );
+
+		$this->assertEquals( 0, $deleted );
+		$this->assertEquals( 1, $this->logs->get_conversation_count() );
+	}
+
+	public function test_delete_conversations_older_than_zero_days_is_noop(): void {
+		global $wpdb;
+
+		$wpdb->insert(
+			'wp_wpaic_conversations',
+			array(
+				'session_id' => 'ancient-session',
+				'created_at' => '2020-01-01 10:00:00',
+			)
+		);
+
+		$this->assertEquals( 0, $this->logs->delete_conversations_older_than( 0 ) );
+		$this->assertEquals( 0, $this->logs->delete_conversations_older_than( -5 ) );
+		$this->assertEquals( 1, $this->logs->get_conversation_count() );
 	}
 }

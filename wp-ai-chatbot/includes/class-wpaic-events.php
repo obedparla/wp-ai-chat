@@ -16,6 +16,12 @@ class WPAIC_Events {
 	public const PRODUCT_ADDED_TO_CART = 'product_added_to_cart';
 	public const CHECKOUT_STARTED      = 'checkout_started';
 	public const HANDOFF_CREATED       = 'handoff_created';
+	/**
+	 * Real outcome of a chat-initiated cart change (the tool call only proposes
+	 * it; the mutation happens later via the cart AJAX endpoints). event_data:
+	 * action (add|remove|clear), outcome (completed|failed|cancelled), name?.
+	 */
+	public const CART_CONFIRMATION     = 'cart_confirmation';
 
 	/**
 	 * Record an event for a conversation.
@@ -226,6 +232,44 @@ class WPAIC_Events {
 					__( 'Added %s to cart', 'wp-ai-chatbot' ),
 					'' !== $name ? $name : __( 'a product', 'wp-ai-chatbot' )
 				);
+
+			case self::CART_CONFIRMATION:
+				$action  = isset( $event_data['action'] ) && is_string( $event_data['action'] ) ? $event_data['action'] : '';
+				$outcome = isset( $event_data['outcome'] ) && is_string( $event_data['outcome'] ) ? $event_data['outcome'] : '';
+				$name    = isset( $event_data['name'] ) && is_string( $event_data['name'] ) ? $event_data['name'] : '';
+
+				if ( 'cancelled' === $outcome ) {
+					return __( 'Cart change cancelled — shopper kept the cart', 'wp-ai-chatbot' );
+				}
+
+				if ( 'add' === $action ) {
+					$label = '' !== $name ? $name : __( 'a product', 'wp-ai-chatbot' );
+					if ( 'failed' === $outcome ) {
+						return sprintf(
+							/* translators: %s: product name */
+							__( 'Add to cart failed — %s', 'wp-ai-chatbot' ),
+							$label
+						);
+					}
+					return sprintf(
+						/* translators: %s: product name */
+						__( 'Cart updated — added %s', 'wp-ai-chatbot' ),
+						$label
+					);
+				}
+
+				if ( 'clear' === $action ) {
+					return __( 'Cart emptied by shopper', 'wp-ai-chatbot' );
+				}
+
+				if ( '' !== $name ) {
+					return sprintf(
+						/* translators: %s: removed item names */
+						__( 'Cart updated — removed %s', 'wp-ai-chatbot' ),
+						$name
+					);
+				}
+				return __( 'Cart items removed', 'wp-ai-chatbot' );
 
 			case self::CHECKOUT_STARTED:
 				return __( 'Checkout started', 'wp-ai-chatbot' );

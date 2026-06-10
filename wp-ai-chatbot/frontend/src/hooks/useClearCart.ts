@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ClearCartIntent, Message } from './useChat'
-import { applyCartUpdate, requestClearCart } from '../lib/cart'
+import { applyCartUpdate, reportCartCancelled, requestClearCart } from '../lib/cart'
 
 export type ClearCartStatus = 'pending' | 'clearing' | 'cleared' | 'cancelled' | 'error'
 
@@ -124,6 +124,10 @@ export function useClearCart(messages: Message[]): ClearCartController {
 
   const cancel = useCallback(() => {
     if (!pending) return
+    const wcAjaxUrl = window.wpaicConfig?.wcAjaxUrl
+    if (wcAjaxUrl) {
+      reportCartCancelled(pending.clearAll ? 'clear' : 'remove', wcAjaxUrl)
+    }
     setStatuses((prev) => ({ ...prev, [pending.toolCallId]: 'cancelled' }))
   }, [pending])
 

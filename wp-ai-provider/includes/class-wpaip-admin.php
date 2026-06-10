@@ -151,7 +151,11 @@ class WPAIP_Admin {
 		$sanitized = array();
 
 		$sanitized['freemius_product_id'] = max( 0, (int) ( $input['freemius_product_id'] ?? ( $existing['freemius_product_id'] ?? 0 ) ) );
-		$sanitized['freemius_api_token']  = sanitize_text_field( trim( $input['freemius_api_token'] ?? ( $existing['freemius_api_token'] ?? '' ) ) );
+
+		// The token field renders blank with a masked placeholder, so an empty
+		// submission means "keep the saved token", not "clear it".
+		$submitted_freemius_api_token    = sanitize_text_field( trim( $input['freemius_api_token'] ?? '' ) );
+		$sanitized['freemius_api_token'] = '' !== $submitted_freemius_api_token ? $submitted_freemius_api_token : (string) ( $existing['freemius_api_token'] ?? '' );
 
 		// The key field renders blank with a masked placeholder, so an empty
 		// submission means "keep the saved key", not "clear it".
@@ -179,12 +183,22 @@ class WPAIP_Admin {
 	}
 
 	public function render_freemius_api_token_field(): void {
-		$settings      = get_option( 'wpaip_settings', array() );
-		$saved_value   = is_array( $settings ) ? (string) ( $settings['freemius_api_token'] ?? '' ) : '';
-		$placeholder   = $this->has_constant_freemius_api_token() ? __( 'Configured via wp-config.php constant', 'wp-ai-provider' ) : '';
+		$settings    = get_option( 'wpaip_settings', array() );
+		$saved_token = is_array( $settings ) ? (string) ( $settings['freemius_api_token'] ?? '' ) : '';
 
-		echo '<input type="password" name="wpaip_settings[freemius_api_token]" value="' . esc_attr( $saved_value ) . '" class="regular-text code" placeholder="' . esc_attr( $placeholder ) . '" />';
+		// Never echo the saved token back into the page source; show a masked
+		// placeholder instead and let sanitize_settings keep the saved token
+		// when the field is submitted blank.
+		$placeholder = self::mask_api_key( $saved_token );
+		if ( '' === $placeholder && $this->has_constant_freemius_api_token() ) {
+			$placeholder = __( 'Configured via wp-config.php constant', 'wp-ai-provider' );
+		}
+
+		echo '<input type="password" name="wpaip_settings[freemius_api_token]" value="" class="regular-text code" autocomplete="new-password" placeholder="' . esc_attr( $placeholder ) . '" />';
 		echo '<p class="description">' . esc_html__( 'Bearer token from Freemius. Stored only on the internal provider site. You can also provide it via the WPAIP_FREEMIUS_API_TOKEN constant for local development.', 'wp-ai-provider' ) . '</p>';
+		if ( '' !== $saved_token ) {
+			echo '<p class="description">' . esc_html__( 'A token is saved. Leave blank to keep it, or enter a new token to replace it.', 'wp-ai-provider' ) . '</p>';
+		}
 	}
 
 	public function render_api_key_field(): void {
