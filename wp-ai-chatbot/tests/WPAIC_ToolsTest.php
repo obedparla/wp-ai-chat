@@ -920,6 +920,10 @@ class WPAIC_ToolsTest extends TestCase {
 
 		$this->assertTrue( $result['success'] );
 		$this->assertEquals( 'clear_cart', $result['action'] );
+		// The tool never mutates the cart — the result must tell the model the
+		// removal is still pending the shopper's popup confirmation.
+		$this->assertSame( 'pending_user_confirmation', $result['status'] );
+		$this->assertStringContainsString( 'Nothing has been removed yet', $result['note'] );
 		$this->assertTrue( $result['clear_all'] );
 		$this->assertCount( 2, $result['items'] );
 		$this->assertSame( 1, $result['items'][0]['product_id'] );

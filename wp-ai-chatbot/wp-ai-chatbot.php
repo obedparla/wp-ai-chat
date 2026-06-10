@@ -102,7 +102,11 @@ if ( ! function_exists( 'wpaic_fs' ) ) {
 			'public_key'          => WPAIC_FREEMIUS_PUBLIC_KEY,
 			'is_premium'          => true,
 			'is_premium_only'     => true,
-			'has_premium_version' => false,
+			// Both flags below are required for FS_Plugin_Updater to run: the SDK only
+			// serves updates when has_release_on_freemius() is true, i.e. the plugin is
+			// premium (not wp.org hosted) or explicitly has a premium version.
+			'has_premium_version' => true,
+			'is_org_compliant'    => false,
 			'has_paid_plans'      => true,
 			'menu'                => array(
 				'slug'    => 'wp-ai-chatbot',

@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Maximize2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatPrice } from '@/lib/price'
 import { applyCartUpdate, requestAddToCart } from '@/lib/cart'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 export interface ComparisonProduct {
   id: number
@@ -46,8 +48,55 @@ const STOCK_STATUS_LABELS: Record<string, string> = {
   onbackorder: 'On Backorder',
 }
 
+// Mounted only while expanded so the focus trap attaches on open.
+function ExpandedComparisonDialog({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const dialogRef = useFocusTrap<HTMLDivElement>()
+
+  // Capture phase so Escape closes only this dialog — the widget's
+  // document-level (bubble) handler would otherwise close the whole chat.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [onClose])
+
+  return (
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 p-4 animate-wpaic-fadeIn"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Product comparison"
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+          <h2 className="text-base font-semibold text-slate-900">Compare products</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close comparison"
+            className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 cursor-pointer transition-colors hover:text-slate-800 hover:bg-slate-100"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto">{children}</div>
+      </div>
+    </div>
+  )
+}
+
 export default function ComparisonTable({ data }: ComparisonTableProps) {
   const [cartStates, setCartStates] = useState<Record<number, CartState>>({})
+  const [isExpanded, setIsExpanded] = useState(false)
 
   if (data.products.length === 0) return null
 
@@ -157,16 +206,46 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
     ] as const
   ).filter(([, getValue]) => data.products.some((product) => getValue(product)))
 
-  return (
-    <div className="w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-xs max-[480px]:text-[10px]">
+  // Same table at two sizes: inline (compact, in the message stream) and
+  // expanded (larger text/padding inside the fullscreen dialog).
+  const renderTable = (expanded: boolean) => {
+    const cellPad = expanded ? 'p-3' : 'p-2 max-[480px]:p-1.5'
+    const labelCellClass = cn('sticky left-0 bg-white font-medium text-slate-600', cellPad)
+    const dataCellClass = cn('text-center text-slate-700', cellPad)
+
+    return (
+      <table
+        className={cn(
+          'w-full border-collapse',
+          expanded ? 'text-sm' : 'text-xs max-[480px]:text-[10px]'
+        )}
+      >
         <thead>
           <tr className="bg-slate-50">
-            <th className="sticky left-0 bg-slate-50 p-2 min-w-[80px] max-[480px]:min-w-[60px] max-[480px]:p-1.5" />
+            <th
+              className={cn(
+                'sticky left-0 bg-slate-50',
+                expanded ? 'p-3 min-w-[100px]' : 'p-2 min-w-[80px] max-[480px]:min-w-[60px] max-[480px]:p-1.5'
+              )}
+            >
+              {!expanded && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(true)}
+                  aria-label="Expand comparison"
+                  title="Expand comparison"
+                  className="flex items-center justify-center w-7 h-7 mx-auto rounded-lg text-slate-400 cursor-pointer transition-colors hover:text-slate-700 hover:bg-slate-100"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              )}
+            </th>
             {data.products.map((product) => (
               <th
                 key={product.id}
-                className="p-2 min-w-[100px] max-[480px]:min-w-[80px] max-[480px]:p-1.5"
+                className={cn(
+                  expanded ? 'p-3 min-w-[140px]' : 'p-2 min-w-[100px] max-[480px]:min-w-[80px] max-[480px]:p-1.5'
+                )}
               >
                 <a
                   href={product.url}
@@ -178,10 +257,20 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
                     <img
                       src={product.image}
                       alt={product.name}
-                      className="w-14 h-14 object-cover rounded-lg max-[480px]:w-10 max-[480px]:h-10 max-[480px]:rounded"
+                      className={cn(
+                        'object-cover rounded-lg',
+                        expanded
+                          ? 'w-20 h-20'
+                          : 'w-14 h-14 max-[480px]:w-10 max-[480px]:h-10 max-[480px]:rounded'
+                      )}
                     />
                   )}
-                  <span className="text-[11px] font-semibold text-slate-800 text-center line-clamp-2 max-[480px]:text-[10px]">
+                  <span
+                    className={cn(
+                      'font-semibold text-slate-800 text-center line-clamp-2',
+                      expanded ? 'text-sm' : 'text-[11px] max-[480px]:text-[10px]'
+                    )}
+                  >
                     {product.name}
                   </span>
                 </a>
@@ -194,16 +283,11 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
             const bestIdx = getBestValue(attr)
             return (
               <tr key={attr} className="border-t border-slate-100">
-                <td className="sticky left-0 bg-white p-2 font-medium text-slate-600 max-[480px]:p-1.5">
-                  {ATTRIBUTE_LABELS[attr] || attr}
-                </td>
+                <td className={labelCellClass}>{ATTRIBUTE_LABELS[attr] || attr}</td>
                 {data.products.map((product, idx) => (
                   <td
                     key={product.id}
-                    className={cn(
-                      'p-2 text-center text-slate-700 max-[480px]:p-1.5',
-                      bestIdx === idx && 'bg-green-50 text-green-700'
-                    )}
+                    className={cn(dataCellClass, bestIdx === idx && 'bg-green-50 text-green-700')}
                   >
                     {formatValue(product, attr)}
                   </td>
@@ -213,14 +297,9 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
           })}
           {attributeLabels.map((label) => (
             <tr key={`attr-${label}`} className="border-t border-slate-100">
-              <td className="sticky left-0 bg-white p-2 font-medium text-slate-600 max-[480px]:p-1.5">
-                {label}
-              </td>
+              <td className={labelCellClass}>{label}</td>
               {data.products.map((product) => (
-                <td
-                  key={product.id}
-                  className="p-2 text-center text-slate-700 max-[480px]:p-1.5"
-                >
+                <td key={product.id} className={dataCellClass}>
                   {product.attributes?.[label] || '—'}
                 </td>
               ))}
@@ -228,33 +307,30 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
           ))}
           {physicalRows.map(([label, getValue]) => (
             <tr key={label} className="border-t border-slate-100">
-              <td className="sticky left-0 bg-white p-2 font-medium text-slate-600 max-[480px]:p-1.5">
-                {label}
-              </td>
+              <td className={labelCellClass}>{label}</td>
               {data.products.map((product) => (
-                <td
-                  key={product.id}
-                  className="p-2 text-center text-slate-700 max-[480px]:p-1.5"
-                >
+                <td key={product.id} className={dataCellClass}>
                   {getValue(product) || '—'}
                 </td>
               ))}
             </tr>
           ))}
           <tr className="border-t border-slate-200 bg-slate-50">
-            <td className="sticky left-0 bg-slate-50 p-2 max-[480px]:p-1.5" />
+            <td className={cn('sticky left-0 bg-slate-50', cellPad)} />
             {data.products.map((product) => {
               const cartState = cartStates[product.id] || 'idle'
               return (
-                <td key={product.id} className="p-2 text-center max-[480px]:p-1.5">
+                <td key={product.id} className={cn('text-center', cellPad)}>
                   <button
                     type="button"
                     className={cn(
-                      'inline-flex items-center justify-center gap-1 rounded-full border-0 cursor-pointer font-semibold text-[10px] transition-all duration-200 py-1.5 px-3 mx-auto',
+                      'inline-flex items-center justify-center gap-1 rounded-full border-0 cursor-pointer font-semibold transition-all duration-200 mx-auto',
+                      expanded
+                        ? 'text-xs py-2 px-4'
+                        : 'text-[10px] py-1.5 px-3 max-[480px]:py-1 max-[480px]:px-2 max-[480px]:text-[9px]',
                       'bg-[var(--wpaic-primary)] text-white hover:enabled:scale-[1.04] active:enabled:scale-95 shadow-sm',
                       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wpaic-primary)]',
                       'disabled:cursor-not-allowed disabled:opacity-80',
-                      'max-[480px]:py-1 max-[480px]:px-2 max-[480px]:text-[9px]',
                       cartState === 'loading' && 'bg-slate-200 text-slate-500 shadow-none',
                       cartState === 'success' && 'bg-emerald-600',
                       cartState === 'error' && 'bg-red-600'
@@ -276,6 +352,19 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
           </tr>
         </tbody>
       </table>
-    </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        {renderTable(false)}
+      </div>
+      {isExpanded && (
+        <ExpandedComparisonDialog onClose={() => setIsExpanded(false)}>
+          {renderTable(true)}
+        </ExpandedComparisonDialog>
+      )}
+    </>
   )
 }

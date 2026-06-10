@@ -206,26 +206,31 @@ interface DynamicToolPart {
 
 function extractProductsFromMessage(uiMessage: UIMessage): Product[] {
   const products: Product[] = []
+  const detailProducts: Product[] = []
 
   for (const part of uiMessage.parts) {
     if (part.type === 'dynamic-tool') {
       const toolPart = part as DynamicToolPart
       if (toolPart.state === 'output-available' && isProductTool(toolPart.toolName)) {
         const output = toolPart.output
+        // get_product_details is a deliberate single-product focus (for example a
+        // superlative answer naming one product) — render it ahead of list
+        // results so the rendered-cards cap can never cut it.
+        const target = toolPart.toolName === 'get_product_details' ? detailProducts : products
         if (Array.isArray(output)) {
           for (const item of output) {
             if (isProduct(item)) {
-              products.push(item)
+              target.push(item)
             }
           }
         } else if (isProduct(output)) {
-          products.push(output)
+          target.push(output)
         }
       }
     }
   }
 
-  return products
+  return [...detailProducts, ...products]
 }
 
 function isProduct(obj: unknown): obj is Product {
@@ -568,6 +573,19 @@ export function useChat() {
           {
             ...lastMsg,
             isError: true,
+          },
+        ]
+      }
+      // Request failed before any assistant message arrived (network error,
+      // timeout): append a synthetic error message so the retry icon renders.
+      if (lastMsg.role === 'user') {
+        return [
+          ...messages,
+          {
+            role: 'assistant' as const,
+            content: 'Sorry, something went wrong. Please try again.',
+            isError: true,
+            id: 'wpaic-error-retry',
           },
         ]
       }

@@ -533,8 +533,14 @@ class WPAIC_Tools {
 			);
 		}
 
+		// success here means the intent is valid and the confirmation popup will be
+		// shown — the cart has NOT been mutated yet (that happens via AJAX after the
+		// shopper confirms). The status and note keys tell the model exactly that, so
+		// it never claims the removal already happened.
 		return array(
 			'success'   => true,
+			'status'    => 'pending_user_confirmation',
+			'note'      => 'Nothing has been removed yet. The shopper must click Confirm in the popup before the cart changes. Do not say items were removed or the cart was cleared.',
 			'action'    => 'clear_cart',
 			'clear_all' => $clear_all,
 			'items'     => $items,

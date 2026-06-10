@@ -887,6 +887,47 @@ describe('useChat', () => {
     expect(result.current.messages[0].products?.[0].name).toBe('Single Product')
   })
 
+  it('renders get_product_details products before search results so the cap never cuts them', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'search_products',
+              toolCallId: '123',
+              state: 'output-available',
+              output: Array.from({ length: 6 }, (_, i) => ({
+                id: i + 1,
+                name: `Product ${i + 1}`,
+                url: `https://example.com/${i + 1}`,
+                price: '10',
+              })),
+            },
+            {
+              type: 'dynamic-tool',
+              toolName: 'get_product_details',
+              toolCallId: '456',
+              state: 'output-available',
+              output: { id: 99, name: 'Named Pick', url: 'https://example.com/99', price: '999' },
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].products?.[0].name).toBe('Named Pick')
+  })
+
   it('does not extract products from non-product tool output', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [
