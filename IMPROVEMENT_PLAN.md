@@ -168,3 +168,28 @@ Verification: every cart/checkout item must be re-verified with the Playwright f
 
 - [ ] **NEW-B [provider, small] Provider admin: mask OpenAI key + surface cache hit rate**
   The OpenAI API key renders as a plaintext text input (full sk-... visible in page source). Render as password-type field showing only last 4 chars when saved (keep editable). Usage Today column shows msgs + total tokens but not the tracked cached_input_tokens — add cache-hit % so cost monitoring needs no DB access.
+
+---
+
+## Round-3 addenda (from P1 verification, 2026-06-10)
+
+- [ ] **FIX-1 [backend, small, CRITICAL] Stop "Products shown (display order)" context leaking into replies**
+  The P1-10 compact product-context is injected as assistant-role text in history; the model now echoes debug-style lines ("Products shown (display order): 1. Red Nail Polish (id 179, price 7.96)…") into customer-visible replies (live-confirmed on gifts/t-shirts/sale/compare turns). Move the compact context out of assistant text — emit it as a system/developer-role input item in build_responses_input (verify provider validate_chat_request forwards it), or clearly-marked internal context; belt-and-braces prompt rule: never write "Products shown", internal IDs, or display-order enumerations in replies. Also align counts: bot text enumerated 10 products while the widget rendered 6 cards — default search_products/get_popular_products limit to 6 (model may request more via the limit param up to 10) and add prompt rule: never enumerate more products in text than are shown as cards.
+
+- [ ] **FIX-2 [backend, small] Humanize slug-like category NAMES + importer**
+  Demo catalog stores category name == slug ('kitchen-accessories'); card captions and comparison rows render it verbatim. At payload-serialization time (product card caption field, get_categories, comparison categories), when a term's name is slug-like (name === slug and contains '-'), humanize for display (hyphens→spaces, ucwords). Also humanize names in the dummyjson importer for future imports. Keep slugs in tool-param fields.
+
+- [ ] **FIX-3 [backend, small] Phrase-level synonym recall ("running shoes" → sneakers)**
+  The weak-result synonym merge only fires when primary results lack a title-token match; "shoes" matches heels so Sports Sneakers never surface. Add phrase-level synonyms (running shoes/trainers/kicks → sneakers; sneakers → shoes) merged into results whenever the phrase appears in the query, regardless of title-token presence (bounded, deduped, capped).
+
+- [ ] **FIX-4 [backend, small] Clarifying questions must show candidate cards**
+  "add the beanie to my cart" produced a bare "Which beanie do you mean?" with no cards; candidates only appeared a turn later. Prompt rule: when asking which product the shopper means, always run the search first and present the candidates as cards in the same turn.
+
+- [ ] **FIX-5 [admin, tiny] Legacy handoff fallback renders empty role chip**
+  Support-request modal text-fallback path (class-wpaic-admin.php ~2456-2476) renders an empty wpaic-transcript-role div for summary-only/legacy requests — hide the role chip when role is empty.
+
+- [ ] **FIX-6 [provider, tiny] Freemius API token field echoes saved value**
+  Same exposure as the OpenAI key field had — apply the same masked-placeholder pattern.
+
+- [ ] **P1-11b [frontend, small] Render the richer comparison payload**
+  compare_products now returns real attributes, weight, dimensions — ComparisonTable still renders only its fixed rows. Add attribute/weight/dimension rows when present (graceful absence).
