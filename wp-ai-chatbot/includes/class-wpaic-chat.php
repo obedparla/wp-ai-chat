@@ -902,7 +902,11 @@ class WPAIC_Chat {
 			'compare_products' => $this->product_tools->compare_products( isset( $arguments['product_ids'] ) && is_array( $arguments['product_ids'] ) ? $arguments['product_ids'] : array() ),
 			'get_order_status' => $this->tools->get_order_status( $arguments ),
 			'get_shipping_info' => $this->tools->get_shipping_info(),
-			'get_active_promotions' => $this->promotion_tools->get_active_promotions(),
+			// Gated at dispatch too, not only at tool registration: a crafted or
+			// stale tool call must not leak coupon codes when promotions are off.
+			'get_active_promotions' => $this->is_promotions_enabled()
+				? $this->promotion_tools->get_active_promotions()
+				: array( 'error' => 'Promotions are not enabled.' ),
 			default => array( 'error' => 'Unknown tool' ),
 		};
 

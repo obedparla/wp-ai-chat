@@ -71,7 +71,7 @@ function generateClientMessageId(): string {
   return generateSessionId()
 }
 
-function getOrCreateSessionId(): string {
+export function getOrCreateSessionId(): string {
   const key = 'wpaic_session_id'
   let sessionId = sessionStorage.getItem(key)
   if (!sessionId) {

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Message } from '../hooks/useChat'
+import { getOrCreateSessionId } from '../hooks/useChat'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 
 interface SendTranscriptDialogProps {
@@ -57,6 +58,7 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
         body: JSON.stringify({
           email: trimmed,
           transcript: formatTranscript(messages),
+          session_id: getOrCreateSessionId(),
         }),
       })
 

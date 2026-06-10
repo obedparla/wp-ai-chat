@@ -177,6 +177,47 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertContains( 'search_products', $tool_names );
 	}
 
+	public function test_dispatch_get_active_promotions_errors_when_promotions_disabled(): void {
+		// The kill switch must hold at dispatch too, not only at registration:
+		// a crafted or stale tool call must not leak coupon codes.
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'model' => 'gpt-5-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'dispatch_tool' );
+		$method->setAccessible( true );
+
+		$result = $method->invoke( $chat, 'get_active_promotions', array() );
+
+		$this->assertSame( array( 'error' => 'Promotions are not enabled.' ), $result );
+	}
+
+	public function test_dispatch_get_active_promotions_runs_when_promotions_enabled(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'model'              => 'gpt-5-mini',
+				'promotions_enabled' => true,
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'dispatch_tool' );
+		$method->setAccessible( true );
+
+		$result = $method->invoke( $chat, 'get_active_promotions', array() );
+
+		$this->assertArrayNotHasKey( 'error', $result );
+	}
+
 	public function test_get_cart_contents_tool_uses_empty_object_properties_schema(): void {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
@@ -2836,7 +2877,8 @@ class WPAIC_ChatTest extends TestCase {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
-				'model'          => 'gpt-5-mini',
+				'model'              => 'gpt-5-mini',
+				'promotions_enabled' => true,
 			)
 		);
 

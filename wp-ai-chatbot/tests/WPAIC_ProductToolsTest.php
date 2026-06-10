@@ -1148,9 +1148,10 @@ class WPAIC_ProductToolsTest extends TestCase {
 	// Variant generation and ordering (formerly expand_query_variants) is
 	// covered by WPAIC_QueryExpanderTest against WPAIC_Query_Expander.
 
-	public function test_search_caps_total_search_passes(): void {
-		// Empty catalog: every variant misses across every filter fallback,
-		// so the pass counter must stop at WPAIC_Search_Index's cap (8).
+	public function test_search_caps_search_passes_per_filter_set(): void {
+		// Empty catalog: every variant misses in every filter set. The pass
+		// counter resets per filter set, so after search() it holds the last
+		// set's count, capped at WPAIC_Search_Index's per-set cap (4).
 		$index  = new WPAIC_Search_Index();
 		$result = $index->search( 'chanel perfumes sneakers', array( 'category' => 'beauty' ), 6 );
 
@@ -1158,7 +1159,30 @@ class WPAIC_ProductToolsTest extends TestCase {
 
 		$property = new ReflectionProperty( WPAIC_Search_Index::class, 'search_pass_count' );
 		$property->setAccessible( true );
-		$this->assertSame( 8, $property->getValue( $index ) );
+		$this->assertSame( 4, $property->getValue( $index ) );
+	}
+
+	public function test_search_with_wrong_category_and_many_variants_still_reaches_no_category_fallback(): void {
+		// "chanel perfumes sprays" expands to 9 variants — more than a shared
+		// 8-pass cap could spread across two filter sets — so a cap shared
+		// across filter sets would burn every pass inside the wrong 'beauty'
+		// category and starve the no-category rescue set. The per-set cap must
+		// leave the rescue set enough passes to find the product.
+		$this->create_mock_product( 1, 'Chanel Perfume Spray', '129.99' );
+		WPAICTestHelper::set_post_terms( 1, 'product_cat', array( 'fragrances' ) );
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id'  => 11,
+				'name'     => 'Beauty',
+				'slug'     => 'beauty',
+				'taxonomy' => 'product_cat',
+			)
+		);
+
+		$index  = new WPAIC_Search_Index();
+		$result = $index->search( 'chanel perfumes sprays', array( 'category' => 'beauty' ), 6 );
+
+		$this->assertSame( array( 1 ), $result );
 	}
 
 	public function test_relevance_filter_matches_plural_query_against_singular_title(): void {

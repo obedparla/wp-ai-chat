@@ -19,13 +19,15 @@ class WPAIC_Search_Index {
 	public const INDEX_VERSION = 2;
 
 	/**
-	 * Hard cap on search passes (TNT or LIKE-fallback queries) per search()
-	 * call, across all query variants and filter fallbacks. The expansion can
-	 * produce a dozen variants and up to three filter sets; without a cap a
-	 * fully-missing query multiplies into dozens of index/database hits, so
-	 * tail latency is bounded at ~8 passes.
+	 * Hard cap on search passes (TNT or LIKE-fallback queries) per filter set
+	 * within one search() call. The expansion can produce a dozen variants;
+	 * without a cap a fully-missing query multiplies into dozens of
+	 * index/database hits. The cap is per filter set (not shared across the
+	 * up-to-three sets) so a miss-heavy expansion under a wrong category
+	 * filter can never starve the parent-category/no-category rescue sets of
+	 * passes; worst case is 3 sets x 4 = 12 passes.
 	 */
-	private const MAX_SEARCH_PASSES = 8;
+	private const MAX_PASSES_PER_FILTER_SET = 4;
 
 	private ?TNTSearch $tnt = null;
 	private string $index_path;
@@ -41,7 +43,7 @@ class WPAIC_Search_Index {
 	 */
 	private array $product_data_cache = array();
 
-	/** Search passes executed by the current search() call. */
+	/** Search passes executed for the filter set currently being searched. */
 	private int $search_pass_count = 0;
 
 	/** Whether the TNT index returned any raw candidate during this search(). */
@@ -293,10 +295,10 @@ class WPAIC_Search_Index {
 	 * @return array<int> Array of product IDs.
 	 */
 	public function search( string $query, array $filters = array(), int $limit = 20 ): array {
-		// Per-request state: product-data memo for relevance checks, the
-		// total pass cap, and whether TNT has produced candidates yet.
+		// Per-request state: product-data memo for relevance checks and
+		// whether TNT has produced candidates yet. The pass counter is reset
+		// per filter set inside search_variants().
 		$this->product_data_cache      = array();
-		$this->search_pass_count       = 0;
 		$this->tnt_returned_candidates = false;
 
 		$variants = $this->query_expander->expand( $query );
@@ -325,10 +327,12 @@ class WPAIC_Search_Index {
 	private function search_variants( array $variants, array $filters, int $limit ): array {
 		$merged = array();
 
+		$this->search_pass_count = 0;
+
 		foreach ( $variants as $variant ) {
-			// MAX_SEARCH_PASSES caps total passes per search() call, shared
-			// across filter fallbacks — see the constant's doc comment.
-			if ( $this->search_pass_count >= self::MAX_SEARCH_PASSES ) {
+			// MAX_PASSES_PER_FILTER_SET caps passes per filter set, so every
+			// filter fallback gets passes — see the constant's doc comment.
+			if ( $this->search_pass_count >= self::MAX_PASSES_PER_FILTER_SET ) {
 				break;
 			}
 			if ( ! $this->should_search_variant( $variant, $merged ) ) {
