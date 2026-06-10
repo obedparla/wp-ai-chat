@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { applyCartUpdate, hasCartUpdateError, requestAddToCart, requestClearCart } from './cart'
+import {
+  applyCartUpdate,
+  hasCartUpdateError,
+  reportCartCancelled,
+  requestAddToCart,
+  requestClearCart,
+} from './cart'
 
 describe('cart helpers', () => {
   afterEach(() => {
@@ -160,5 +166,80 @@ describe('requestClearCart', () => {
     await expect(
       requestClearCart([{ productId: 1, quantity: 1 }], 'https://shop.test/admin-ajax.php')
     ).rejects.toThrow()
+  })
+})
+
+describe('chat session id forwarding', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    sessionStorage.clear()
+  })
+
+  it('sends the chat session id with add-to-cart requests when present', async () => {
+    sessionStorage.setItem('wpaic_session_id', 'session-uuid-1')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestAddToCart({ productId: 7 }, 'https://shop.test/admin-ajax.php')
+
+    expect(fetchMock.mock.calls[0][0]).toContain('wpaic_session_id=session-uuid-1')
+  })
+
+  it('sends the chat session id with clear-cart requests when present', async () => {
+    sessionStorage.setItem('wpaic_session_id', 'session-uuid-2')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestClearCart(undefined, 'https://shop.test/admin-ajax.php')
+
+    expect(fetchMock.mock.calls[0][0]).toContain('wpaic_session_id=session-uuid-2')
+  })
+
+  it('omits the session id param when no chat session exists', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestAddToCart({ productId: 7 }, 'https://shop.test/admin-ajax.php')
+
+    expect(fetchMock.mock.calls[0][0]).not.toContain('wpaic_session_id')
+  })
+})
+
+describe('reportCartCancelled', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    sessionStorage.clear()
+  })
+
+  it('posts the cancelled action with the session id', () => {
+    sessionStorage.setItem('wpaic_session_id', 'session-uuid-3')
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    reportCartCancelled('clear', 'https://shop.test/admin-ajax.php')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('action=wpaic_cart_cancelled')
+    expect(url).toContain('cart_action=clear')
+    expect(url).toContain('wpaic_session_id=session-uuid-3')
+    expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin' })
+  })
+
+  it('does nothing without a chat session id', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    reportCartCancelled('remove', 'https://shop.test/admin-ajax.php')
+
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

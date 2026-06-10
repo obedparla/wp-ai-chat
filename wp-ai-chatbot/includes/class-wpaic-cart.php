@@ -10,6 +10,8 @@ class WPAIC_Cart {
 		add_action( 'wp_ajax_nopriv_woocommerce_ajax_add_to_cart', array( $this, 'ajax_add_to_cart' ) );
 		add_action( 'wp_ajax_wpaic_clear_cart', array( $this, 'ajax_clear_cart' ) );
 		add_action( 'wp_ajax_nopriv_wpaic_clear_cart', array( $this, 'ajax_clear_cart' ) );
+		add_action( 'wp_ajax_wpaic_cart_cancelled', array( $this, 'ajax_cart_cancelled' ) );
+		add_action( 'wp_ajax_nopriv_wpaic_cart_cancelled', array( $this, 'ajax_cart_cancelled' ) );
 	}
 
 	public function ajax_add_to_cart(): void {
@@ -36,10 +38,12 @@ class WPAIC_Cart {
 		}
 
 		if ( ! $product->is_purchasable() ) {
+			$this->record_cart_confirmation( 'add', 'failed', $product->get_name() );
 			wp_send_json_error( array( 'message' => 'Product cannot be purchased' ) );
 		}
 
 		if ( ! $product->is_in_stock() ) {
+			$this->record_cart_confirmation( 'add', 'failed', $product->get_name() );
 			wp_send_json_error( array( 'message' => 'Product is out of stock' ) );
 		}
 
@@ -48,6 +52,8 @@ class WPAIC_Cart {
 		if ( $cart_item_key ) {
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- WooCommerce standard hook
 			do_action( 'woocommerce_ajax_added_to_cart', $product_id );
+
+			$this->record_cart_confirmation( 'add', 'completed', $product->get_name() );
 
 			wp_send_json_success(
 				array(
@@ -60,6 +66,7 @@ class WPAIC_Cart {
 				)
 			);
 		} else {
+			$this->record_cart_confirmation( 'add', 'failed', $product->get_name() );
 			wp_send_json_error( array( 'message' => 'Failed to add product to cart' ) );
 		}
 	}
@@ -85,10 +92,16 @@ class WPAIC_Cart {
 		$remaining = $this->get_request_clear_items();
 
 		if ( count( $remaining ) > 0 ) {
+			$removed_names = array();
 			foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
 				$product_id = isset( $cart_item['product_id'] ) ? absint( $cart_item['product_id'] ) : 0;
 				if ( ! isset( $remaining[ $product_id ] ) || $remaining[ $product_id ] <= 0 ) {
 					continue;
+				}
+
+				$line_product = isset( $cart_item['data'] ) && is_object( $cart_item['data'] ) && method_exists( $cart_item['data'], 'get_name' ) ? $cart_item['data'] : null;
+				if ( $line_product && '' !== (string) $line_product->get_name() ) {
+					$removed_names[ $product_id ] = (string) $line_product->get_name();
 				}
 
 				$line_quantity = isset( $cart_item['quantity'] ) ? absint( $cart_item['quantity'] ) : 0;
@@ -100,8 +113,10 @@ class WPAIC_Cart {
 					$remaining[ $product_id ] = 0;
 				}
 			}
+			$this->record_cart_confirmation( 'remove', 'completed', implode( ', ', $removed_names ) );
 		} else {
 			$cart->empty_cart();
+			$this->record_cart_confirmation( 'clear', 'completed' );
 		}
 
 		wp_send_json_success(
@@ -113,6 +128,54 @@ class WPAIC_Cart {
 				'fragments'  => $this->get_cart_fragments(),
 			)
 		);
+	}
+
+	/**
+	 * Record that the shopper dismissed the clear/remove confirmation popup
+	 * without confirming, so the conversation transcript shows the outcome.
+	 */
+	public function ajax_cart_cancelled(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public AJAX for the shopper's own session cart
+		$action = isset( $_REQUEST['cart_action'] ) ? sanitize_key( wp_unslash( $_REQUEST['cart_action'] ) ) : '';
+		if ( ! in_array( $action, array( 'clear', 'remove' ), true ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid cart action' ) );
+		}
+
+		$this->record_cart_confirmation( $action, 'cancelled' );
+		wp_send_json_success();
+	}
+
+	/**
+	 * Record the real outcome of a chat-initiated cart change as a conversation
+	 * event (the chat tool only proposes the change; the mutation happens in the
+	 * AJAX endpoints here). No-op without a valid chat session id in the request.
+	 */
+	private function record_cart_confirmation( string $action, string $outcome, string $name = '' ): void {
+		if ( ! class_exists( 'WPAIC_Events' ) || ! class_exists( 'WPAIC_Logs' ) ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public AJAX for the shopper's own session cart
+		$session_id = isset( $_REQUEST['wpaic_session_id'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['wpaic_session_id'] ) ) : '';
+		if ( '' === $session_id || ! wp_is_uuid( $session_id ) ) {
+			return;
+		}
+
+		$logs            = new WPAIC_Logs();
+		$conversation_id = $logs->get_conversation_id( $session_id );
+		if ( null === $conversation_id ) {
+			return;
+		}
+
+		$event_data = array(
+			'action'  => $action,
+			'outcome' => $outcome,
+		);
+		if ( '' !== $name ) {
+			$event_data['name'] = $name;
+		}
+
+		WPAIC_Events::record( $conversation_id, WPAIC_Events::CART_CONFIRMATION, $event_data );
 	}
 
 	/**

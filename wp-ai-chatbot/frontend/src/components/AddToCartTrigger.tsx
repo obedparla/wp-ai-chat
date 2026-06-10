@@ -1,55 +1,12 @@
-import { useEffect, useState } from 'react'
 import { AddToCartIntent } from '../hooks/useChat'
-import { applyCartUpdate, requestAddToCart, CartUpdateResponse } from '@/lib/cart'
-
-type Status = 'adding' | 'added' | 'error'
-
-// Dedupe the network call across re-renders and StrictMode remounts: each unique
-// tool call adds to the cart exactly once, no matter how often the message rerenders.
-const inFlight = new Map<string, Promise<CartUpdateResponse>>()
+import { useAddToCart } from '../hooks/useAddToCart'
 
 interface AddToCartTriggerProps {
   intent: AddToCartIntent
 }
 
 export default function AddToCartTrigger({ intent }: AddToCartTriggerProps) {
-  const [status, setStatus] = useState<Status>(() =>
-    window.wpaicConfig?.wcAjaxUrl ? 'adding' : 'error'
-  )
-
-  useEffect(() => {
-    const wcAjaxUrl = window.wpaicConfig?.wcAjaxUrl
-    if (!wcAjaxUrl) return
-
-    let cancelled = false
-
-    let request = inFlight.get(intent.toolCallId)
-    if (!request) {
-      request = requestAddToCart(
-        {
-          productId: intent.productId,
-          variationId: intent.variationId,
-          quantity: intent.quantity,
-        },
-        wcAjaxUrl
-      )
-      inFlight.set(intent.toolCallId, request)
-    }
-
-    request
-      .then((data) => {
-        if (cancelled) return
-        applyCartUpdate(data)
-        setStatus('added')
-      })
-      .catch(() => {
-        if (!cancelled) setStatus('error')
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [intent.toolCallId, intent.productId, intent.variationId, intent.quantity])
+  const status = useAddToCart(intent)
 
   const label =
     status === 'added'

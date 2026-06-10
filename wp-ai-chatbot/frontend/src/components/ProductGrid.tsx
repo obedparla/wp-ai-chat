@@ -1,6 +1,7 @@
 import ProductCard, { Product } from './ProductCard'
 import VariableProductCard from './VariableProductCard'
 import LinkProductCard from './LinkProductCard'
+import { hasPositivePrice } from '@/lib/price'
 import {
   Carousel,
   CarouselContent,
@@ -60,6 +61,19 @@ function renderProductCard(product: Product) {
   }
 
   if (SIMPLE_TYPES.has(type) || VARIABLE_TYPES.has(type)) {
+    // Zero/empty price (e.g. unpriced sample products): an active ADD button
+    // would add a $0.00 item, so link to the product page instead.
+    if (!hasPositivePrice(product.price)) {
+      return (
+        <LinkProductCard
+          key={product.id}
+          product={product}
+          href={product.url}
+          target="_blank"
+          label="View product"
+        />
+      )
+    }
     return <ProductCard key={product.id} product={product} />
   }
 
@@ -116,8 +130,8 @@ export default function ProductGrid({ products }: ProductGridProps) {
               </CarouselItem>
             ))}
           </CarouselContent>
-          <CarouselPrevious className="-left-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 [@media(hover:none)]:hidden" />
-          <CarouselNext className="-right-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 [@media(hover:none)]:hidden" />
+          <CarouselPrevious className="-left-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:hidden" />
+          <CarouselNext className="-right-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:hidden" />
         </Carousel>
       </div>
     </div>

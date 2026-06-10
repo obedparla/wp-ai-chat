@@ -1,14 +1,3 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import App from './App'
-import './styles.css'
+import { mountWidget } from './widget'
 
-const root = document.getElementById('wpaic-chatbot-root')
-
-if (root) {
-  createRoot(root).render(
-    <StrictMode>
-      <App />
-    </StrictMode>
-  )
-}
+mountWidget()

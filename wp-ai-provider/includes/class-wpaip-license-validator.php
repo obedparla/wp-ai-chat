@@ -46,7 +46,7 @@ class WPAIP_License_Validator {
 
 		$install = $this->freemius_api->get_install( $install_id );
 		if ( is_wp_error( $install ) ) {
-			return $this->maybe_allow_grace_period( $record, $install );
+			return $this->maybe_allow_grace_period( $request, $record, $headers, $install );
 		}
 
 		if ( ! $this->is_install_active( $install ) ) {
@@ -69,7 +69,7 @@ class WPAIP_License_Validator {
 			);
 		}
 
-		if ( ! $this->has_valid_signature( $request, $headers, $install ) ) {
+		if ( ! $this->has_valid_signature( $request, $headers, (string) ( $install['secret_key'] ?? '' ) ) ) {
 			$this->store_invalid_record( $install_id, $record, $install, null, 'invalid_signature', 'Request signature check failed.' );
 
 			return new WP_Error(
@@ -117,7 +117,7 @@ class WPAIP_License_Validator {
 
 		$license = $this->freemius_api->get_license( $license_id );
 		if ( is_wp_error( $license ) ) {
-			return $this->maybe_allow_grace_period( $record, $license );
+			return $this->maybe_allow_grace_period( $request, $record, $headers, $license );
 		}
 
 		if ( ! $this->is_license_valid( $license ) ) {
@@ -223,10 +223,8 @@ class WPAIP_License_Validator {
 
 	/**
 	 * @param array<string, mixed> $headers
-	 * @param array<string, mixed> $install
 	 */
-	private function has_valid_signature( WP_REST_Request $request, array $headers, array $install ): bool {
-		$secret_key = isset( $install['secret_key'] ) ? (string) $install['secret_key'] : '';
+	private function has_valid_signature( WP_REST_Request $request, array $headers, string $secret_key ): bool {
 		if ( '' === $secret_key ) {
 			return false;
 		}
@@ -278,9 +276,15 @@ class WPAIP_License_Validator {
 	}
 
 	/**
+	 * Freemius is unreachable, so the license state cannot be re-checked.
+	 * Grace is only granted when the request carries a valid HMAC signed with
+	 * the install secret key persisted during the last successful validation —
+	 * a replayed plaintext header is never enough.
+	 *
 	 * @param array<string, mixed>|null $record
+	 * @param array{install_id: string, public_key: string, timestamp: string, signature: string} $headers
 	 */
-	private function maybe_allow_grace_period( ?array $record, WP_Error $error ): WP_Error|array {
+	private function maybe_allow_grace_period( WP_REST_Request $request, ?array $record, array $headers, WP_Error $error ): WP_Error|array {
 		$error_data = $error->get_error_data();
 		$is_retryable = is_array( $error_data ) && ! empty( $error_data['retryable'] );
 
@@ -297,6 +301,15 @@ class WPAIP_License_Validator {
 				'rest_service_unavailable',
 				$error->get_error_message(),
 				array( 'status' => 503 )
+			);
+		}
+
+		$stored_secret_key = is_string( $record['site_secret_key'] ?? null ) ? $record['site_secret_key'] : '';
+		if ( ! $this->has_valid_signature( $request, $headers, $stored_secret_key ) ) {
+			return new WP_Error(
+				'rest_forbidden',
+				'Invalid request signature.',
+				array( 'status' => 403 )
 			);
 		}
 
@@ -343,6 +356,9 @@ class WPAIP_License_Validator {
 				'install_id'         => $install_id,
 				'license_id'         => isset( $install['license_id'] ) ? (int) $install['license_id'] : null,
 				'site_public_key'    => $headers['public_key'],
+				// Persisted so grace-period requests can be HMAC-verified while
+				// Freemius is unreachable. Never leaves this internal provider.
+				'site_secret_key'    => (string) ( $install['secret_key'] ?? '' ),
 				'site_url'           => (string) ( $install['url'] ?? '' ),
 				'plan_id'            => isset( $install['plan_id'] ) ? (int) $install['plan_id'] : null,
 				'status'             => $status,

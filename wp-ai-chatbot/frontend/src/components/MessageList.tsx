@@ -1,11 +1,13 @@
 import { useEffect, useRef, useCallback, useState, Fragment, type ReactNode } from 'react'
 import { Message } from '../hooks/useChat'
 import ProductGrid from './ProductGrid'
-import ComparisonTable from './ComparisonTable'
+import type { Product } from './ProductCard'
+import ComparisonTable, { type ComparisonData } from './ComparisonTable'
 import CheckoutButton from './CheckoutButton'
 import AddToCartTrigger from './AddToCartTrigger'
 import ClearCartTrigger from './ClearCartTrigger'
 import MarkdownContent from './MarkdownContent'
+import ProductCardSkeletons from './ProductCardSkeletons'
 import type { ClearCartStatus } from '../hooks/useClearCart'
 import { cn } from '@/lib/utils'
 
@@ -15,10 +17,29 @@ interface MessageListProps {
   messages: Message[]
   onRetry?: () => void
   clearCartStatuses?: Record<string, ClearCartStatus>
+  showProductSkeletons?: boolean
   children?: ReactNode
 }
 
 const CLUSTER_GAP_MS = 5 * 60 * 1000
+
+export const MAX_RENDERED_PRODUCTS = 6
+
+// Curation within a single message: drop duplicate product ids, drop cards
+// already shown in that message's comparison table, and cap the picks so the
+// "N PICKS" header reflects what is actually rendered.
+export function curateProducts(products: Product[], comparison?: ComparisonData): Product[] {
+  const comparisonIds = new Set((comparison?.products ?? []).map((product) => product.id))
+  const seenIds = new Set<number>()
+  const curated: Product[] = []
+  for (const product of products) {
+    if (seenIds.has(product.id) || comparisonIds.has(product.id)) continue
+    seenIds.add(product.id)
+    curated.push(product)
+    if (curated.length === MAX_RENDERED_PRODUCTS) break
+  }
+  return curated
+}
 
 function isSameDay(a: Date, b: Date): boolean {
   return (
@@ -55,7 +76,7 @@ function shouldShowSeparator(current: Message, previous: Message | undefined): b
   return current.createdAt - previous.createdAt > CLUSTER_GAP_MS
 }
 
-export default function MessageList({ messages, onRetry, clearCartStatuses, children }: MessageListProps) {
+export default function MessageList({ messages, onRetry, clearCartStatuses, showProductSkeletons = false, children }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
   const [showJumpButton, setShowJumpButton] = useState(false)
@@ -87,7 +108,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, chil
       containerRef.current.scrollTop = containerRef.current.scrollHeight
       setShowJumpButton(false)
     }
-  }, [messages.length, lastMessageContent])
+  }, [messages.length, lastMessageContent, showProductSkeletons])
 
   return (
     <div className="flex-1 relative flex min-h-0">
@@ -95,13 +116,16 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, chil
       className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 bg-white scroll-smooth overscroll-contain max-[480px]:p-4 max-[480px]:gap-2.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300"
       ref={containerRef}
       onScroll={handleScroll}
+      role="log"
+      aria-live="polite"
+      aria-label="Chat messages"
     >
       {messages.map((msg, i) => {
         const isLastMessage = i === messages.length - 1
         const showRetry = msg.isError && isLastMessage && onRetry
 
-        const products = msg.products ?? []
         const comparison = msg.comparison
+        const products = curateProducts(msg.products ?? [], comparison)
         const checkoutAction = msg.checkoutAction
         const addToCartIntents = msg.addToCartIntents ?? []
         const clearCartIntents = msg.clearCartIntents ?? []
@@ -213,6 +237,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, chil
           </Fragment>
         )
       })}
+      {showProductSkeletons && <ProductCardSkeletons />}
       {children}
     </div>
     {showJumpButton && (

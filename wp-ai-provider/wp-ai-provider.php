@@ -26,7 +26,7 @@ if ( ! defined( 'WPAIP_VERSION' ) ) {
 }
 
 if ( ! defined( 'WPAIP_DB_VERSION' ) ) {
-	define( 'WPAIP_DB_VERSION', '1.0.0' );
+	define( 'WPAIP_DB_VERSION', '1.1.0' );
 }
 
 if ( ! defined( 'WPAIP_FREEMIUS_PRODUCT_ID' ) ) {
@@ -58,22 +58,33 @@ function wpaip_maybe_update_db(): void {
 	$installed_version = get_option( 'wpaip_db_version', '' );
 	if ( WPAIP_DB_VERSION !== $installed_version ) {
 		add_option( 'wpaip_install_registry', array() );
+		wpaip_create_usage_table();
 		update_option( 'wpaip_db_version', WPAIP_DB_VERSION );
 	}
+}
+
+function wpaip_create_usage_table(): void {
+	require_once WPAIP_PLUGIN_DIR . 'includes/class-wpaip-usage-tracker.php';
+	WPAIP_Usage_Tracker::create_table();
+	// Usage counters moved from this option to the dedicated table.
+	delete_option( 'wpaip_usage_daily' );
 }
 
 function wpaip_activate(): void {
 	add_option(
 		'wpaip_settings',
 		array(
-			'openai_api_key'      => '',
-			'model'               => 'gpt-5-mini',
-			'reasoning_effort'    => 'medium',
-			'freemius_product_id' => WPAIP_FREEMIUS_PRODUCT_ID,
-			'freemius_api_token'  => '',
+			'openai_api_key'       => '',
+			'model'                => 'gpt-5-mini',
+			'reasoning_effort'     => 'low',
+			'freemius_product_id'  => WPAIP_FREEMIUS_PRODUCT_ID,
+			'freemius_api_token'   => '',
+			'daily_message_budget' => 2000,
+			'daily_token_budget'   => 1000000,
 		)
 	);
 	add_option( 'wpaip_install_registry', array() );
+	wpaip_create_usage_table();
 	update_option( 'wpaip_db_version', WPAIP_DB_VERSION );
 	flush_rewrite_rules();
 }

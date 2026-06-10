@@ -15,6 +15,10 @@ class WPAIC_Logs {
 		$user_id = get_current_user_id();
 		$user_ip = $this->get_client_ip();
 
+		if ( null !== $user_ip && $this->should_anonymize_ip() ) {
+			$user_ip = wp_privacy_anonymize_ip( $user_ip );
+		}
+
 		$result = $wpdb->insert(
 			$wpdb->prefix . 'wpaic_conversations',
 			array(
@@ -101,28 +105,35 @@ class WPAIC_Logs {
 	/**
 	 * @param int $limit
 	 * @param int $offset
-	 * @return array<int, object{id: int, session_id: string, user_id: int|null, user_ip: string|null, created_at: string, updated_at: string, message_count: int, total_chars: int}>
+	 * @param array{search?: string, date_from?: string, date_to?: string} $filters Optional filters: text search over message
+	 *                                                                              content, and Y-m-d date bounds on created_at.
+	 * @return array<int, object{id: int, session_id: string, user_id: int|null, user_ip: string|null, created_at: string, updated_at: string, message_count: int, first_user_message: string|null}>
 	 */
-	public function get_conversations( int $limit = 20, int $offset = 0 ): array {
+	public function get_conversations( int $limit = 20, int $offset = 0, array $filters = array() ): array {
 		global $wpdb;
 
 		$conversations_table = $wpdb->prefix . 'wpaic_conversations';
 		$messages_table      = $wpdb->prefix . 'wpaic_messages';
 
+		list( $where_sql, $where_values ) = $this->build_conversation_filters( $filters );
+
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table names cannot use placeholders.
+		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared -- $where_sql contains placeholders only.
+		// phpcs:disable WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- Placeholder count varies with $where_sql.
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT c.*, COUNT(m.id) as message_count, COALESCE(SUM(CHAR_LENGTH(m.content)), 0) as total_chars
+				"SELECT c.*, COUNT(m.id) as message_count,
+				(SELECT m2.content FROM $messages_table m2 WHERE m2.conversation_id = c.id AND m2.role = 'user' ORDER BY m2.id ASC LIMIT 1) as first_user_message
 				FROM $conversations_table c
 				LEFT JOIN $messages_table m ON c.id = m.conversation_id
+				$where_sql
 				GROUP BY c.id
 				ORDER BY c.updated_at DESC
 				LIMIT %d OFFSET %d",
-				$limit,
-				$offset
+				...array_merge( $where_values, array( $limit, $offset ) )
 			)
 		);
-		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
 
 		return is_array( $results ) ? $results : array();
 	}
@@ -149,15 +160,82 @@ class WPAIC_Logs {
 	}
 
 	/**
-	 * @return int Total number of conversations
+	 * @param array{search?: string, date_from?: string, date_to?: string} $filters Same filters as get_conversations().
+	 * @return int Total number of conversations matching the filters
 	 */
-	public function get_conversation_count(): int {
+	public function get_conversation_count( array $filters = array() ): int {
 		global $wpdb;
 		$table = $wpdb->prefix . 'wpaic_conversations';
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$count = $wpdb->get_var( "SELECT COUNT(*) FROM $table" );
+		list( $where_sql, $where_values ) = $this->build_conversation_filters( $filters );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+		if ( empty( $where_values ) ) {
+			$count = $wpdb->get_var( "SELECT COUNT(*) FROM $table c" );
+		} else {
+			$count = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table c $where_sql", ...$where_values ) );
+		}
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+
 		return (int) $count;
+	}
+
+	/**
+	 * Count conversations created in the half-open range [$since, $until).
+	 *
+	 * @param string $since Inclusive lower bound (MySQL datetime, local time).
+	 * @param string $until Exclusive upper bound (MySQL datetime, local time).
+	 */
+	public function count_conversations_between( string $since, string $until ): int {
+		global $wpdb;
+		$table = $wpdb->prefix . 'wpaic_conversations';
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table names cannot use placeholders.
+		$count = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM $table WHERE created_at >= %s AND created_at < %s",
+				$since,
+				$until
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return (int) $count;
+	}
+
+	/**
+	 * Build the WHERE clause + prepare() values for conversation list filters.
+	 * Conversation columns must be referenced through the `c` alias.
+	 *
+	 * @param array{search?: string, date_from?: string, date_to?: string} $filters
+	 * @return array{0: string, 1: array<int, string>}
+	 */
+	private function build_conversation_filters( array $filters ): array {
+		global $wpdb;
+
+		$clauses = array();
+		$values  = array();
+
+		if ( ! empty( $filters['date_from'] ) ) {
+			$clauses[] = 'c.created_at >= %s';
+			$values[]  = $filters['date_from'] . ' 00:00:00';
+		}
+
+		if ( ! empty( $filters['date_to'] ) ) {
+			$clauses[] = 'c.created_at <= %s';
+			$values[]  = $filters['date_to'] . ' 23:59:59';
+		}
+
+		if ( ! empty( $filters['search'] ) ) {
+			$messages_table = $wpdb->prefix . 'wpaic_messages';
+			$clauses[]      = "EXISTS (SELECT 1 FROM $messages_table ms WHERE ms.conversation_id = c.id AND ms.content LIKE %s)";
+			$values[]       = '%' . $wpdb->esc_like( $filters['search'] ) . '%';
+		}
+
+		return array(
+			empty( $clauses ) ? '' : 'WHERE ' . implode( ' AND ', $clauses ),
+			$values,
+		);
 	}
 
 	/**
@@ -180,6 +258,61 @@ class WPAIC_Logs {
 		);
 
 		return false !== $result;
+	}
+
+	/**
+	 * Delete conversations whose last activity is older than $days, along with
+	 * their messages and events. Used by the daily retention cron.
+	 *
+	 * @param int $days Retention window in days. Values < 1 mean keep forever.
+	 * @return int Number of conversations deleted.
+	 */
+	public function delete_conversations_older_than( int $days ): int {
+		global $wpdb;
+
+		if ( $days < 1 ) {
+			return 0;
+		}
+
+		$conversations_table = $wpdb->prefix . 'wpaic_conversations';
+		$cutoff              = gmdate( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - $days * DAY_IN_SECONDS );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table names cannot use placeholders.
+		$conversation_ids = array_map(
+			'intval',
+			(array) $wpdb->get_col(
+				$wpdb->prepare( "SELECT id FROM $conversations_table WHERE updated_at < %s", $cutoff )
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		if ( empty( $conversation_ids ) ) {
+			return 0;
+		}
+
+		$id_list = implode( ',', $conversation_ids );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- IDs are cast to int above; table names cannot use placeholders.
+		$wpdb->query( "DELETE FROM {$wpdb->prefix}wpaic_messages WHERE conversation_id IN ($id_list)" );
+		$wpdb->query( "DELETE FROM {$wpdb->prefix}wpaic_events WHERE conversation_id IN ($id_list)" );
+		$wpdb->query( "DELETE FROM $conversations_table WHERE id IN ($id_list)" );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+
+		return count( $conversation_ids );
+	}
+
+	/**
+	 * Whether visitor IPs should be anonymized before storage. Defaults to on
+	 * when the setting has never been saved.
+	 */
+	private function should_anonymize_ip(): bool {
+		$settings = get_option( 'wpaic_settings', array() );
+
+		if ( ! is_array( $settings ) || ! array_key_exists( 'anonymize_ip', $settings ) ) {
+			return true;
+		}
+
+		return ! empty( $settings['anonymize_ip'] );
 	}
 
 	private function get_client_ip(): ?string {

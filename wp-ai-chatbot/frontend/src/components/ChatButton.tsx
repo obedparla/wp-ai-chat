@@ -1,13 +1,19 @@
+import { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 
 interface ChatButtonProps {
   onClick: () => void
   isOpen: boolean
+  hasUnread?: boolean
 }
 
-export default function ChatButton({ onClick, isOpen }: ChatButtonProps) {
+const ChatButton = forwardRef<HTMLButtonElement, ChatButtonProps>(function ChatButton(
+  { onClick, isOpen, hasUnread = false },
+  ref
+) {
   return (
     <button
+      ref={ref}
       onClick={onClick}
       className={cn(
         'fixed bottom-6 right-6 w-[60px] h-[60px] rounded-full border-0',
@@ -21,8 +27,19 @@ export default function ChatButton({ onClick, isOpen }: ChatButtonProps) {
         'max-[480px]:bottom-5 max-[480px]:right-5 max-[480px]:w-14 max-[480px]:h-14',
         isOpen && 'max-[480px]:hidden'
       )}
-      aria-label={isOpen ? 'Close chat' : 'Open chat'}
+      aria-label={isOpen ? 'Close chat' : hasUnread ? 'Open chat (1 unread message)' : 'Open chat'}
     >
+      {hasUnread && !isOpen && (
+        <span className="absolute -top-1 -right-1 flex w-5 h-5">
+          <span
+            className="absolute inline-flex w-full h-full rounded-full bg-red-500 opacity-60 animate-ping"
+            aria-hidden
+          />
+          <span className="relative inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[11px] font-semibold leading-none">
+            1
+          </span>
+        </span>
+      )}
       {isOpen ? (
         <svg
           width="24"
@@ -51,4 +68,6 @@ export default function ChatButton({ onClick, isOpen }: ChatButtonProps) {
       )}
     </button>
   )
-}
+})
+
+export default ChatButton

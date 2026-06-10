@@ -15,6 +15,10 @@ export interface ComparisonProduct {
   categories?: string[]
   image?: string
   add_to_cart_url?: string
+  /** Human attribute label -> value, e.g. { Color: 'Blue, Red' }. */
+  attributes?: Record<string, string>
+  weight?: string
+  dimensions?: string
 }
 
 export interface ComparisonData {
@@ -72,8 +76,11 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
         setCartStates((prev) => ({ ...prev, [product.id]: 'idle' }))
       }, 2000)
     } catch {
-      // eslint-disable-next-line react-hooks/immutability
-      window.location.href = product.add_to_cart_url || product.url
+      // Stay in the conversation: show the inline error state, then reset.
+      setCartStates((prev) => ({ ...prev, [product.id]: 'error' }))
+      setTimeout(() => {
+        setCartStates((prev) => ({ ...prev, [product.id]: 'idle' }))
+      }, 2500)
     }
   }
 
@@ -135,6 +142,21 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
     return null
   }
 
+  // Richer payload rows (attributes/weight/dimensions): union of attribute
+  // labels across products, in first-seen order; absent values render as a dash.
+  const attributeLabels: string[] = []
+  for (const product of data.products) {
+    for (const label of Object.keys(product.attributes ?? {})) {
+      if (!attributeLabels.includes(label)) attributeLabels.push(label)
+    }
+  }
+  const physicalRows = (
+    [
+      ['Weight', (product: ComparisonProduct) => product.weight],
+      ['Dimensions', (product: ComparisonProduct) => product.dimensions],
+    ] as const
+  ).filter(([, getValue]) => data.products.some((product) => getValue(product)))
+
   return (
     <div className="w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full border-collapse text-xs max-[480px]:text-[10px]">
@@ -189,6 +211,36 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
               </tr>
             )
           })}
+          {attributeLabels.map((label) => (
+            <tr key={`attr-${label}`} className="border-t border-slate-100">
+              <td className="sticky left-0 bg-white p-2 font-medium text-slate-600 max-[480px]:p-1.5">
+                {label}
+              </td>
+              {data.products.map((product) => (
+                <td
+                  key={product.id}
+                  className="p-2 text-center text-slate-700 max-[480px]:p-1.5"
+                >
+                  {product.attributes?.[label] || '—'}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {physicalRows.map(([label, getValue]) => (
+            <tr key={label} className="border-t border-slate-100">
+              <td className="sticky left-0 bg-white p-2 font-medium text-slate-600 max-[480px]:p-1.5">
+                {label}
+              </td>
+              {data.products.map((product) => (
+                <td
+                  key={product.id}
+                  className="p-2 text-center text-slate-700 max-[480px]:p-1.5"
+                >
+                  {getValue(product) || '—'}
+                </td>
+              ))}
+            </tr>
+          ))}
           <tr className="border-t border-slate-200 bg-slate-50">
             <td className="sticky left-0 bg-slate-50 p-2 max-[480px]:p-1.5" />
             {data.products.map((product) => {
@@ -198,13 +250,14 @@ export default function ComparisonTable({ data }: ComparisonTableProps) {
                   <button
                     type="button"
                     className={cn(
-                      'py-1.5 px-3 bg-[var(--wpaic-primary)] text-white border-0 rounded-lg cursor-pointer font-semibold text-[10px] transition-all duration-200 flex items-center justify-center gap-1 mx-auto',
-                      'hover:enabled:scale-[1.02] hover:enabled:shadow-sm active:enabled:scale-[0.98]',
+                      'inline-flex items-center justify-center gap-1 rounded-full border-0 cursor-pointer font-semibold text-[10px] transition-all duration-200 py-1.5 px-3 mx-auto',
+                      'bg-[var(--wpaic-primary)] text-white hover:enabled:scale-[1.04] active:enabled:scale-95 shadow-sm',
+                      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wpaic-primary)]',
                       'disabled:cursor-not-allowed disabled:opacity-80',
                       'max-[480px]:py-1 max-[480px]:px-2 max-[480px]:text-[9px]',
-                      cartState === 'loading' && 'bg-slate-200 text-slate-500',
-                      cartState === 'success' && 'bg-gradient-to-br from-green-500 to-green-600',
-                      cartState === 'error' && 'bg-gradient-to-br from-red-500 to-red-600'
+                      cartState === 'loading' && 'bg-slate-200 text-slate-500 shadow-none',
+                      cartState === 'success' && 'bg-emerald-600',
+                      cartState === 'error' && 'bg-red-600'
                     )}
                     onClick={(e) => handleAddToCart(product, e)}
                     disabled={cartState === 'loading'}

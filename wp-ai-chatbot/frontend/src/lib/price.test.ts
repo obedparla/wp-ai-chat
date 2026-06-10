@@ -1,5 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { formatPrice } from './price'
+import { formatPrice, hasPositivePrice } from './price'
+
+describe('hasPositivePrice', () => {
+  it('returns true for positive string and numeric prices', () => {
+    expect(hasPositivePrice('19.99')).toBe(true)
+    expect(hasPositivePrice('0.01')).toBe(true)
+    expect(hasPositivePrice(5)).toBe(true)
+  })
+
+  it('returns false for zero, empty, nullish, and non-numeric values', () => {
+    expect(hasPositivePrice('0')).toBe(false)
+    expect(hasPositivePrice(0)).toBe(false)
+    expect(hasPositivePrice('')).toBe(false)
+    expect(hasPositivePrice(null)).toBe(false)
+    expect(hasPositivePrice(undefined)).toBe(false)
+    expect(hasPositivePrice('not a number')).toBe(false)
+    expect(hasPositivePrice('-5')).toBe(false)
+  })
+})
 
 describe('formatPrice', () => {
   const originalConfig = window.wpaicConfig

@@ -7,11 +7,15 @@ export interface ProductAttribute {
   name: string
   label: string
   options: string[]
+  /** Option slug -> human display label, e.g. { blue: 'Blue' }. */
+  option_labels?: Record<string, string>
 }
 
 export interface ProductVariation {
   variation_id: number
   attributes: Record<string, string>
+  /** Same attribute_* keys as `attributes`, with human display labels as values. */
+  attribute_labels?: Record<string, string>
   price: number
   regular_price: number
   is_in_stock: boolean
@@ -84,7 +88,9 @@ export default function ProductCard({ product }: ProductCardProps) {
 
       setTimeout(() => setCartState('idle'), 2000)
     } catch {
-      window.location.href = product.add_to_cart_url || product.url
+      // Stay in the conversation: show the inline error state, then reset.
+      setCartState('error')
+      setTimeout(() => setCartState('idle'), 2500)
     }
   }
 

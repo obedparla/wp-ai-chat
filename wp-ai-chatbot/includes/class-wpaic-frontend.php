@@ -35,8 +35,11 @@ class WPAIC_Frontend {
 			if ( ! is_array( $manifest ) ) {
 				return;
 			}
+			// Tiny loader stub (launcher + teaser); it dynamic-imports the full
+			// React bundle (and its CSS) on first interaction or at idle when a
+			// stored conversation exists, instead of on every pageview.
 			/** @var array{file?: string, css?: array<string>}|null $entry */
-			$entry = $manifest['index.html'] ?? null;
+			$entry = $manifest['src/loader.ts'] ?? null;
 
 			if ( is_array( $entry ) && isset( $entry['file'] ) ) {
 				$css_files = array();

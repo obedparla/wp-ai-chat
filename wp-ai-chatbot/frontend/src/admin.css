@@ -261,12 +261,18 @@
   }
 
   .wpaic-color-dot {
+    appearance: none;
+    padding: 0;
     width: 28px;
     height: 28px;
     border-radius: 9999px;
     cursor: pointer;
     border: 2px solid transparent;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+  }
+  .wpaic-color-dot:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
   }
   .wpaic-color-dot-active {
     border-color: var(--color-ink);

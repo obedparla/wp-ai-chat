@@ -8,3 +8,5 @@ composer.phar
 **/superpowers/
 **/dist
 .playwright-mcp/
+.qa-screenshots/
+wp-ai-chatbot/.phpunit.cache/

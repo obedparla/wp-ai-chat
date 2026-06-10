@@ -420,6 +420,51 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertStringContainsString( 'Order Number', $mail['message'] );
 	}
 
+	public function test_create_handoff_request_stores_conversation_id(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+			'conversation_id'      => 42,
+		) );
+
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+		$this->assertEquals( 42, $rows[0]->conversation_id );
+	}
+
+	public function test_create_handoff_request_conversation_id_null_when_absent(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+		) );
+
+		$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$this->assertCount( 1, $rows );
+		$this->assertNull( $rows[0]->conversation_id );
+	}
+
+	public function test_create_handoff_request_conversation_id_not_in_extra_fields(): void {
+		global $wpdb;
+
+		$this->tools->create_handoff_request( array(
+			'customer_name'        => 'Jane Doe',
+			'customer_email'       => 'jane@example.com',
+			'conversation_summary' => 'Needs help',
+			'conversation_id'      => 42,
+			'phone_number'         => '555-1234',
+		) );
+
+		$rows  = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wpaic_support_requests" );
+		$extra = json_decode( $rows[0]->extra_fields, true );
+		$this->assertArrayNotHasKey( 'conversation_id', $extra );
+	}
+
 	// --- End handoff tests ---
 
 	// --- Content index tool tests ---
@@ -448,10 +493,10 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertEquals( 'Shipping Policy', $result[0]['title'] );
 	}
 
-	public function test_get_page_content_returns_null_for_nonexistent_post(): void {
+	public function test_get_page_content_returns_error_for_nonexistent_post(): void {
 		$result = $this->tools->get_page_content( array( 'post_id' => 999 ) );
 
-		$this->assertNull( $result );
+		$this->assertSame( array( 'error' => 'Page not found or not available' ), $result );
 	}
 
 	public function test_get_page_content_returns_content_for_valid_post(): void {
@@ -483,6 +528,12 @@ class WPAIC_ToolsTest extends TestCase {
 
 		$this->assertFalse( $result['has_shipping_configured'] );
 		$this->assertArrayHasKey( 'message', $result );
+		// Message must stay shopper-safe (no "configured" dev-speak) and the hint
+		// must steer the model to the shipping policy page instead of a denial.
+		$this->assertStringNotContainsString( 'configured', $result['message'] );
+		$this->assertArrayHasKey( 'hint', $result );
+		$this->assertStringContainsString( 'search_site_content', $result['hint'] );
+		$this->assertStringContainsString( 'shipping policy page', $result['hint'] );
 	}
 
 	public function test_get_shipping_info_returns_zones_with_methods(): void {
@@ -626,6 +677,7 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertTrue( $result['has_shipping_configured'] );
 		$this->assertCount( 1, $result['zones'] );
 		$this->assertSame( 0, $result['zones'][0]['zone_id'] );
+		$this->assertSame( 'Everywhere else (all destinations not covered by the zones above)', $result['zones'][0]['zone_name'] );
 		$this->assertSame( 'International flat rate', $result['zones'][0]['methods'][0]['title'] );
 	}
 
@@ -651,6 +703,31 @@ class WPAIC_ToolsTest extends TestCase {
 		$this->assertArrayHasKey( 'notes', $result );
 		$this->assertNotEmpty( $result['notes'] );
 		$this->assertStringContainsString( 'processing time', $result['notes'][0] );
+	}
+
+	public function test_get_shipping_info_notes_redirect_uncovered_destinations_to_policy_page(): void {
+		WPAICTestHelper::set_option(
+			'test_shipping_zones',
+			array(
+				array(
+					'zone_id'                 => 1,
+					'zone_name'               => 'US',
+					'formatted_zone_location' => 'United States',
+					'zone_locations'          => array(),
+					'shipping_methods'        => array(
+						new MockShippingMethod( array( 'id' => 'flat_rate', 'title' => 'Flat rate', 'cost' => '5.00' ) ),
+					),
+				),
+			)
+		);
+		WPAICTestHelper::set_option( 'test_shipping_rest_of_world_methods', array() );
+
+		$result = $this->tools->get_shipping_info();
+
+		$notes_text = implode( ' ', $result['notes'] );
+		$this->assertStringContainsString( 'destination not covered', $notes_text );
+		$this->assertStringContainsString( 'search_site_content', $notes_text );
+		$this->assertStringContainsString( 'do not say the store cannot ship there', $notes_text );
 	}
 
 	/**
@@ -939,6 +1016,85 @@ class WPAIC_ToolsTest extends TestCase {
 
 		$this->assertFalse( $result['success'] );
 		$this->assertEquals( 'woocommerce_inactive', $result['reason'] );
+	}
+
+	// --- Add-to-cart related product suggestions ---
+
+	public function test_add_to_cart_includes_cross_sell_related_products(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Coffee Maker', '79.99' );
+		$this->create_mock_product( 2, 'Coffee Filters', '4.99' );
+		$this->create_mock_product( 3, 'Descaling Kit', '12.50' );
+
+		$product = new MockWCProduct( 1 );
+		$product->set_cross_sell_ids( array( 2, 3 ) );
+		$mock_wc_products[1] = $product;
+
+		$result = $this->tools->add_to_cart( array( 'product_id' => 1 ) );
+
+		$this->assertTrue( $result['success'] );
+		$this->assertSame(
+			array(
+				array(
+					'id'    => 2,
+					'name'  => 'Coffee Filters',
+					'price' => '4.99',
+				),
+				array(
+					'id'    => 3,
+					'name'  => 'Descaling Kit',
+					'price' => '12.50',
+				),
+			),
+			$result['related_products']
+		);
+	}
+
+	public function test_add_to_cart_caps_related_products_at_three_and_dedupes(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Camera', '499.00' );
+		$this->create_mock_product( 2, 'Memory Card', '19.99' );
+		$this->create_mock_product( 3, 'Camera Bag', '39.99' );
+		$this->create_mock_product( 4, 'Tripod', '59.99' );
+		$this->create_mock_product( 5, 'Lens Cleaner', '9.99' );
+
+		$product = new MockWCProduct( 1 );
+		$product->set_cross_sell_ids( array( 2, 3 ) );
+		$product->set_upsell_ids( array( 2, 4, 5 ) );
+		$mock_wc_products[1] = $product;
+
+		$result = $this->tools->add_to_cart( array( 'product_id' => 1 ) );
+
+		$this->assertCount( 3, $result['related_products'] );
+		$this->assertSame( array( 2, 3, 4 ), array_column( $result['related_products'], 'id' ) );
+	}
+
+	public function test_add_to_cart_omits_related_products_when_none_configured(): void {
+		$this->create_mock_product( 1, 'Plain Product', '10.00' );
+
+		$result = $this->tools->add_to_cart( array( 'product_id' => 1 ) );
+
+		$this->assertTrue( $result['success'] );
+		$this->assertArrayNotHasKey( 'related_products', $result );
+	}
+
+	public function test_add_to_cart_skips_out_of_stock_and_missing_related_products(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Laptop', '999.00' );
+		$this->create_mock_product( 2, 'Laptop Sleeve', '24.99' );
+
+		$product = new MockWCProduct( 1 );
+		$product->set_cross_sell_ids( array( 2, 777 ) );
+		$mock_wc_products[1] = $product;
+		$mock_wc_products[2] = new MockWCProduct( 2, true, false );
+
+		$result = $this->tools->add_to_cart( array( 'product_id' => 1 ) );
+
+		$this->assertTrue( $result['success'] );
+		$this->assertArrayNotHasKey( 'related_products', $result );
 	}
 
 	/**

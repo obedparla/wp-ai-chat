@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import AddToCartTrigger from './AddToCartTrigger'
+import {
+  clearStoredAddToCartStatuses,
+  markAddToCartToolCallsRestored,
+} from '../hooks/useAddToCart'
 
 vi.mock('@/lib/cart', () => ({
   requestAddToCart: vi.fn(),
@@ -15,6 +19,8 @@ const mockApply = applyCartUpdate as ReturnType<typeof vi.fn>
 describe('AddToCartTrigger', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    sessionStorage.clear()
+    clearStoredAddToCartStatuses()
     window.wpaicConfig = {
       apiUrl: '/wp-json/wpaic/v1',
       nonce: 'n',
@@ -59,6 +65,44 @@ describe('AddToCartTrigger', () => {
     render(<AddToCartTrigger intent={{ toolCallId: 'c3', productId: 5, quantity: 1 }} />)
 
     expect(await screen.findByText(/could not add/i)).toBeInTheDocument()
+    expect(mockRequest).not.toHaveBeenCalled()
+  })
+
+  it('persists the added status for future page loads', async () => {
+    mockRequest.mockResolvedValue({ success: true, fragments: {} })
+
+    render(<AddToCartTrigger intent={{ toolCallId: 'd4', productId: 5, quantity: 1 }} />)
+
+    await waitFor(() => expect(mockApply).toHaveBeenCalled())
+
+    const stored = JSON.parse(sessionStorage.getItem('wpaic_add_to_cart_status') ?? '{}')
+    expect(stored.d4).toBe('added')
+  })
+
+  it('renders the stored added badge without re-firing the cart request', async () => {
+    sessionStorage.setItem('wpaic_add_to_cart_status', JSON.stringify({ e5: 'added' }))
+
+    render(<AddToCartTrigger intent={{ toolCallId: 'e5', productId: 5, quantity: 1 }} />)
+
+    expect(await screen.findByText(/added to cart/i)).toBeInTheDocument()
+    expect(mockRequest).not.toHaveBeenCalled()
+  })
+
+  it('renders the stored error badge without re-firing the cart request', async () => {
+    sessionStorage.setItem('wpaic_add_to_cart_status', JSON.stringify({ f6: 'error' }))
+
+    render(<AddToCartTrigger intent={{ toolCallId: 'f6', productId: 5, quantity: 1 }} />)
+
+    expect(await screen.findByText(/could not add/i)).toBeInTheDocument()
+    expect(mockRequest).not.toHaveBeenCalled()
+  })
+
+  it('never executes intents restored from chat history, even without a stored status', async () => {
+    markAddToCartToolCallsRestored(['g7'])
+
+    render(<AddToCartTrigger intent={{ toolCallId: 'g7', productId: 5, quantity: 1 }} />)
+
+    expect(await screen.findByText(/added to cart/i)).toBeInTheDocument()
     expect(mockRequest).not.toHaveBeenCalled()
   })
 })

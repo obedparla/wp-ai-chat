@@ -4,8 +4,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-use OpenAI\Client;
-
 class WPAIC_Chat {
 	/** @var array<string, mixed> */
 	private array $settings;
@@ -13,8 +11,10 @@ class WPAIC_Chat {
 	private array $page_context = array();
 	private ?WPAIC_Tools $tools = null;
 	private ?WPAIC_Product_Tools $product_tools = null;
-	private ?Client $client     = null;
+	private ?WPAIC_Promotion_Tools $promotion_tools = null;
 	private WPAIC_License_Manager $license_manager;
+	/** Logged conversation this chat belongs to; used to record tool events and link handoffs. */
+	private int $conversation_id = 0;
 
 	/**
 	 * @param array<string, mixed> $page_context
@@ -26,228 +26,27 @@ class WPAIC_Chat {
 		$this->license_manager = $license_manager ?? new WPAIC_License_Manager();
 
 		if ( wpaic_is_woocommerce_active() ) {
-			$this->tools         = new WPAIC_Tools();
-			$this->product_tools = new WPAIC_Product_Tools();
-		}
-
-		if ( ! $this->is_provider_mode() ) {
-			$api_key = $this->settings['openai_api_key'] ?? '';
-			if ( is_string( $api_key ) && '' !== $api_key ) {
-				$this->client = \OpenAI::client( $api_key );
-			}
+			$this->tools           = new WPAIC_Tools();
+			$this->product_tools   = new WPAIC_Product_Tools();
+			$this->promotion_tools = new WPAIC_Promotion_Tools();
 		}
 	}
 
 	/**
-	 * Check if provider mode is active.
+	 * Attach the logged conversation so tool execution can record events
+	 * (WPAIC_Events) and link handoff requests to the conversation.
 	 */
-	public function is_provider_mode(): bool {
-		return $this->license_manager->is_provider_url_configured() && $this->license_manager->has_provider_auth();
+	public function set_conversation_id( int $conversation_id ): void {
+		$this->conversation_id = $conversation_id;
 	}
 
 	/**
-	 * Reasoning effort for a model. Returns null for models that don't support it,
-	 * so the param is omitted rather than sent to a model that would reject it.
-	 * Medium effort balances chat latency and cost against tool use quality.
-	 */
-	private function reasoning_effort_for_model( string $model ): ?string {
-		return match ( $model ) {
-			'gpt-5-mini' => 'medium',
-			default      => null,
-		};
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $messages
-	 * @return array<string, mixed>|WP_Error
-	 */
-	public function send( array $messages ): array|WP_Error {
-		if ( ! $this->is_provider_mode() && null === $this->client ) {
-			return new WP_Error( 'no_api_key', 'OpenAI API key not configured', array( 'status' => 500 ) );
-		}
-
-		if ( $this->is_provider_mode() ) {
-			return $this->send_via_provider( $messages );
-		}
-
-		$model = $this->settings['model'] ?? 'gpt-5-mini';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5-mini';
-		}
-
-		try {
-			$params = array(
-				'model'    => $model,
-				'messages' => $this->format_messages( $messages ),
-			);
-
-			$tools = $this->get_tool_definitions();
-			if ( ! empty( $tools ) ) {
-				$params['tools'] = $tools;
-			}
-
-			$effort = $this->reasoning_effort_for_model( $model );
-			if ( null !== $effort ) {
-				$params['reasoning_effort'] = $effort;
-			}
-
-			$response = $this->client->chat()->create( $params );
-
-			$choice = $response->choices[0];
-
-			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-			if ( 'tool_calls' === $choice->finishReason ) {
-				return $this->handle_tool_calls( $messages, $choice->message );
-			}
-
-			return array( 'content' => $choice->message->content ?? '' );
-
-		} catch ( \Exception $e ) {
-			return new WP_Error( 'openai_error', $e->getMessage(), array( 'status' => 500 ) );
-		}
-	}
-
-	/**
-	 * Non-streaming send via provider. Collects full response from SSE stream.
+	 * Stream a chat completion via the provider endpoint, handling tool calls locally.
 	 *
-	 * @param array<int, array<string, mixed>> $messages
-	 * @return array<string, mixed>|WP_Error
-	 */
-	private function send_via_provider( array $messages ): array|WP_Error {
-		$collected_content = '';
-		$error             = null;
-
-		$this->send_stream_via_provider(
-			$messages,
-			function ( array $data ) use ( &$collected_content, &$error ): void {
-				if ( isset( $data['content'] ) && is_string( $data['content'] ) ) {
-					$collected_content .= $data['content'];
-				}
-				if ( isset( $data['error'] ) && is_string( $data['error'] ) ) {
-					$error = $data['error'];
-				}
-			}
-		);
-
-		if ( null !== $error ) {
-			return new WP_Error( 'provider_error', $error, array( 'status' => 500 ) );
-		}
-
-		return array( 'content' => $collected_content );
-	}
-
-	/**
 	 * @param array<int, array<string, mixed>> $messages
 	 * @param callable(array<string, mixed>): void $on_chunk
 	 */
 	public function send_stream( array $messages, callable $on_chunk ): void {
-		if ( $this->is_provider_mode() ) {
-			$this->send_stream_via_provider( $messages, $on_chunk );
-			return;
-		}
-
-		if ( null === $this->client ) {
-			$on_chunk( array( 'error' => 'Chat is currently unavailable. Please try again later.' ) );
-			return;
-		}
-
-		$model = $this->settings['model'] ?? 'gpt-5-mini';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5-mini';
-		}
-
-		try {
-			$params = array(
-				'model'    => $model,
-				'messages' => $this->format_messages( $messages ),
-			);
-
-			$tools = $this->get_tool_definitions();
-			if ( ! empty( $tools ) ) {
-				$params['tools'] = $tools;
-			}
-
-			$effort = $this->reasoning_effort_for_model( $model );
-			if ( null !== $effort ) {
-				$params['reasoning_effort'] = $effort;
-			}
-
-			$stream = $this->client->chat()->createStreamed( $params );
-
-			/** @var array<int, array{id: string|null, type: string, function: array{name: string, arguments: string}, started: bool}> $tool_calls */
-			$tool_calls = array();
-
-			foreach ( $stream as $response ) {
-				$delta = $response->choices[0]->delta;
-
-				if ( $this->should_emit_stream_content( $delta->content ?? null ) ) {
-					$on_chunk( array( 'content' => $delta->content ) );
-				}
-
-				// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-				if ( $delta->toolCalls ) {
-					// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-					foreach ( $delta->toolCalls as $tc ) {
-						if ( ! isset( $tool_calls[ $tc->index ] ) ) {
-							$tool_calls[ $tc->index ] = array(
-								'id'       => $tc->id,
-								'type'     => 'function',
-								'function' => array(
-									'name'      => '',
-									'arguments' => '',
-								),
-								'started'  => false,
-							);
-						}
-						if ( $tc->function->name ) {
-							$tool_calls[ $tc->index ]['function']['name'] = $tc->function->name;
-							if ( ! $tool_calls[ $tc->index ]['started'] ) {
-								$tool_calls[ $tc->index ]['started'] = true;
-								$on_chunk(
-									array(
-										'tool_input_start' => array(
-											'toolCallId' => $tool_calls[ $tc->index ]['id'],
-											'toolName'   => $tc->function->name,
-										),
-									)
-								);
-							}
-						}
-						if ( $tc->function->arguments ) {
-							$tool_calls[ $tc->index ]['function']['arguments'] .= $tc->function->arguments;
-							$on_chunk(
-								array(
-									'tool_input_delta' => array(
-										'toolCallId'     => $tool_calls[ $tc->index ]['id'],
-										'inputTextDelta' => $tc->function->arguments,
-									),
-								)
-							);
-						}
-					}
-				}
-
-				// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-				if ( 'tool_calls' === $response->choices[0]->finishReason ) {
-					$this->handle_tool_calls_stream( $messages, $tool_calls, $on_chunk );
-					return;
-				}
-			}
-
-			$on_chunk( array( 'done' => true ) );
-
-		} catch ( \Exception $e ) {
-			$on_chunk( array( 'error' => $e->getMessage() ) );
-		}
-	}
-
-	/**
-	 * Stream chat completion via provider endpoint, handling tool calls locally.
-	 *
-	 * @param array<int, array<string, mixed>> $messages
-	 * @param callable(array<string, mixed>): void $on_chunk
-	 */
-	private function send_stream_via_provider( array $messages, callable $on_chunk ): void {
 		$input        = $this->build_responses_input( $messages );
 		$instructions = $this->get_system_prompt();
 		$tools        = $this->to_responses_tools( $this->get_tool_definitions() );
@@ -256,14 +55,27 @@ class WPAIC_Chat {
 	}
 
 	/**
+	 * Cap on conversation history sent to the model. Older turns are re-billed on
+	 * every loop iteration and rarely change the answer; the frontend keeps the
+	 * full transcript for display.
+	 */
+	private const MAX_INPUT_MESSAGES = 20;
+
+	/**
 	 * Convert conversation history into Responses API `input` items. The system
 	 * prompt is sent separately as `instructions`, so it is not included here.
+	 * Only the most recent MAX_INPUT_MESSAGES messages are forwarded. A message
+	 * carrying `product_context` (compact card summary built by
+	 * WPAIC_API::transform_messages) emits an additional system-role item so the
+	 * model can resolve ordinal references without echoing the list into
+	 * shopper-visible replies.
 	 *
 	 * @param array<int, array<string, mixed>> $messages
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function build_responses_input( array $messages ): array {
-		$input = array();
+		$messages = array_slice( $messages, -self::MAX_INPUT_MESSAGES );
+		$input    = array();
 		foreach ( $messages as $msg ) {
 			$role = isset( $msg['role'] ) && is_string( $msg['role'] ) ? $msg['role'] : 'user';
 			if ( 'assistant' !== $role ) {
@@ -273,6 +85,14 @@ class WPAIC_Chat {
 				'role'    => $role,
 				'content' => (string) ( $msg['content'] ?? '' ),
 			);
+
+			$product_context = $msg['product_context'] ?? '';
+			if ( is_string( $product_context ) && '' !== $product_context ) {
+				$input[] = array(
+					'role'    => 'system',
+					'content' => 'Internal context — never quote, mention, or list this to the shopper: ' . $product_context,
+				);
+			}
 		}
 		return $input;
 	}
@@ -384,7 +204,7 @@ class WPAIC_Chat {
 				$input[] = array(
 					'type'    => 'function_call_output',
 					'call_id' => $tc['call_id'],
-					'output'  => (string) wp_json_encode( $tool_result ),
+					'output'  => (string) wp_json_encode( $this->to_model_payload( $tc['name'], $tool_result ) ),
 				);
 			}
 
@@ -436,7 +256,9 @@ class WPAIC_Chat {
 			$detail     = $last_error['message'] ?? 'unknown error';
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log( "[WPAIC] Provider connection failed: {$detail} | URL: {$url}" );
-			return array( 'error' => "Failed to connect to provider: {$detail}" );
+			// This error reaches the shopper-visible widget, so keep it generic;
+			// the raw PHP stream error above goes to the server log only.
+			return array( 'error' => 'Could not connect to the chat service. Please try again in a moment.' );
 		}
 
 		$response_meta = stream_get_meta_data( $stream );
@@ -462,13 +284,9 @@ class WPAIC_Chat {
 			);
 		}
 
-		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-		error_log( "[WPAIC] Provider stream opened, HTTP {$http_status}. Reading..." );
-
 		/** @var array<string, array{call_id: string, name: string, arguments: string}> $tool_calls Keyed by Responses output item id. */
-		$tool_calls  = array();
-		$buffer      = '';
-		$total_bytes = 0;
+		$tool_calls = array();
+		$buffer     = '';
 
 		while ( ! feof( $stream ) ) {
 			$chunk = fread( $stream, 8192 ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread
@@ -480,8 +298,7 @@ class WPAIC_Chat {
 			if ( '' === $chunk ) {
 				continue;
 			}
-			$total_bytes += strlen( $chunk );
-			$buffer      .= $chunk;
+			$buffer .= $chunk;
 
 			while ( false !== ( $newline_pos = strpos( $buffer, "\n" ) ) ) {
 				$line   = substr( $buffer, 0, $newline_pos );
@@ -582,9 +399,6 @@ class WPAIC_Chat {
 
 		fclose( $stream ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
 
-		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-		error_log( "[WPAIC] Stream finished. Total bytes read: {$total_bytes}, tool_calls: " . count( $tool_calls ) . ', remaining buffer: ' . substr( $buffer, 0, 200 ) );
-
 		if ( ! empty( $tool_calls ) ) {
 			return array( 'tool_calls' => array_values( $tool_calls ) );
 		}
@@ -609,42 +423,6 @@ class WPAIC_Chat {
 		return "Provider returned HTTP {$http_status}";
 	}
 
-	/**
-	 * @param array<int, array<string, mixed>> $messages
-	 * @return array<int, array<string, mixed>>
-	 */
-	private function format_messages( array $messages ): array {
-		$formatted = array(
-			array(
-				'role'    => 'system',
-				'content' => $this->get_system_prompt(),
-			),
-		);
-
-		foreach ( $messages as $msg ) {
-			if ( isset( $msg['tool_calls'] ) ) {
-				$formatted[] = array(
-					'role'       => 'assistant',
-					'content'    => $msg['content'] ?? null,
-					'tool_calls' => $msg['tool_calls'],
-				);
-			} elseif ( isset( $msg['role'] ) && 'tool' === $msg['role'] ) {
-				$formatted[] = array(
-					'role'         => 'tool',
-					'tool_call_id' => $msg['tool_call_id'] ?? '',
-					'content'      => $msg['content'] ?? '',
-				);
-			} else {
-				$formatted[] = array(
-					'role'    => $msg['role'] ?? 'user',
-					'content' => $msg['content'] ?? '',
-				);
-			}
-		}
-
-		return $formatted;
-	}
-
 	private function should_emit_stream_content( mixed $content ): bool {
 		return is_string( $content ) && '' !== $content;
 	}
@@ -660,6 +438,17 @@ class WPAIC_Chat {
 	 */
 	private function is_handoff_enabled(): bool {
 		return ! empty( $this->settings['handoff_enabled'] );
+	}
+
+	/**
+	 * Check if advertising coupons in chat is enabled. Off by default: published
+	 * coupons can include codes the merchant never meant to expose (support
+	 * credits, partner codes), so the promotions tool is opt-in.
+	 *
+	 * @return bool True if the promotions tool is enabled.
+	 */
+	private function is_promotions_enabled(): bool {
+		return ! empty( $this->settings['promotions_enabled'] );
 	}
 
 	/**
@@ -737,9 +526,13 @@ class WPAIC_Chat {
 								'type'        => 'number',
 								'description' => 'Max price',
 							),
+							'on_sale'   => array(
+								'type'        => 'boolean',
+								'description' => 'Only return products currently on sale. Use for "what is on sale", "any deals", or "discounted products" requests.',
+							),
 							'limit'     => array(
 								'type'        => 'integer',
-								'description' => 'Max results (default 10)',
+								'description' => 'Max results (default 6, max 10)',
 							),
 						),
 					),
@@ -759,7 +552,7 @@ class WPAIC_Chat {
 							),
 							'limit'    => array(
 								'type'        => 'integer',
-								'description' => 'Max results, default 10',
+								'description' => 'Max results (default 6, max 10)',
 							),
 						),
 					),
@@ -922,6 +715,19 @@ class WPAIC_Chat {
 					),
 				),
 			);
+			if ( $this->is_promotions_enabled() ) {
+				$tools[] = array(
+					'type'     => 'function',
+					'function' => array(
+						'name'        => 'get_active_promotions',
+						'description' => 'Get the store\'s currently active coupons and promotions (code, discount amount and type, restrictions, expiry). Use whenever the shopper asks about discounts, coupons, promo codes, vouchers, offers, or current deals. Returns only real configured coupons — if none are returned, tell the shopper there are no current promotions.',
+						'parameters'  => array(
+							'type'       => 'object',
+							'properties' => new \stdClass(),
+						),
+					),
+				);
+			}
 		}
 
 		if ( $this->is_handoff_enabled() ) {
@@ -1029,161 +835,40 @@ class WPAIC_Chat {
 	}
 
 	/**
-	 * @param array<int, array<string, mixed>> $messages
-	 * @param object $assistant_message
-	 * @return array<string, mixed>|WP_Error
+	 * Execute a tool, converting any Throwable (e.g. a third-party-plugin fatal
+	 * inside a WooCommerce call) into an error result so the conversation loop
+	 * keeps streaming instead of dying mid-request.
+	 *
+	 * @param string $name
+	 * @param array<string, mixed> $arguments
+	 * @return array<string, mixed>|array<int, array<string, mixed>>
 	 */
-	private function handle_tool_calls( array $messages, object $assistant_message ): array|WP_Error {
-		/** @var array<int, array{id: string, type: string, function: array{name: string, arguments: string}}> $tool_calls_arr */
-		$tool_calls_arr = array();
-
-		/** @var object{id: string, function: object{name: string, arguments: string}} $tc */
-		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OpenAI SDK property.
-		foreach ( $assistant_message->toolCalls as $tc ) {
-			$tool_calls_arr[] = array(
-				'id'       => $tc->id,
-				'type'     => 'function',
-				'function' => array(
-					'name'      => $tc->function->name,
-					'arguments' => $tc->function->arguments,
-				),
-			);
-		}
-
-		$messages[] = array(
-			'role'       => 'assistant',
-			'content'    => $assistant_message->content ?? null,
-			'tool_calls' => $tool_calls_arr,
-		);
-
-		foreach ( $tool_calls_arr as $tc ) {
-			$args       = json_decode( $tc['function']['arguments'], true );
-			$result     = $this->execute_tool( $tc['function']['name'], is_array( $args ) ? $args : array() );
-			$messages[] = array(
-				'role'         => 'tool',
-				'tool_call_id' => $tc['id'],
-				'content'      => (string) wp_json_encode( $result ),
-			);
-		}
-
-		if ( null === $this->client ) {
-			return new WP_Error( 'no_api_key', 'OpenAI API key not configured', array( 'status' => 500 ) );
-		}
-
-		$model = $this->settings['model'] ?? 'gpt-5-mini';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5-mini';
-		}
-
+	private function execute_tool( string $name, array $arguments ): array {
 		try {
-			$response = $this->client->chat()->create(
-				array(
-					'model'    => $model,
-					'messages' => $this->format_messages( $messages ),
-				)
-			);
-
-			return array( 'content' => $response->choices[0]->message->content ?? '' );
-		} catch ( \Exception $e ) {
-			return new WP_Error( 'openai_error', $e->getMessage(), array( 'status' => 500 ) );
-		}
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $messages
-	 * @param array<int, array{id: string|null, type: string, function: array{name: string, arguments: string}, started?: bool}> $tool_calls
-	 * @param callable(array<string, mixed>): void $on_chunk
-	 */
-	private function handle_tool_calls_stream( array $messages, array $tool_calls, callable $on_chunk ): void {
-		$tool_calls_for_messages = array_map(
-			function ( $tc ) {
-				return array(
-					'id'       => $tc['id'],
-					'type'     => $tc['type'],
-					'function' => $tc['function'],
-				);
-			},
-			array_values( $tool_calls )
-		);
-
-		$messages[] = array(
-			'role'       => 'assistant',
-			'content'    => null,
-			'tool_calls' => $tool_calls_for_messages,
-		);
-
-		foreach ( $tool_calls as $tc ) {
-			$args        = json_decode( $tc['function']['arguments'], true );
-			$parsed_args = is_array( $args ) ? $args : array();
-
-			$on_chunk(
-				array(
-					'tool_input_available' => array(
-						'toolCallId' => $tc['id'] ?? '',
-						'toolName'   => $tc['function']['name'],
-						'input'      => $parsed_args,
-					),
-				)
-			);
-
-			$result = $this->execute_tool( $tc['function']['name'], $parsed_args );
-
-			$on_chunk(
-				array(
-					'tool_output_available' => array(
-						'toolCallId' => $tc['id'] ?? '',
-						'output'     => $result,
-					),
-				)
-			);
-
-			$messages[] = array(
-				'role'         => 'tool',
-				'tool_call_id' => $tc['id'] ?? '',
-				'content'      => (string) wp_json_encode( $result ),
-			);
-		}
-
-		if ( null === $this->client ) {
-			$on_chunk( array( 'error' => 'Chat is currently unavailable. Please try again later.' ) );
-			return;
-		}
-
-		$model = $this->settings['model'] ?? 'gpt-5-mini';
-		if ( ! is_string( $model ) ) {
-			$model = 'gpt-5-mini';
-		}
-
-		try {
-			$stream = $this->client->chat()->createStreamed(
-				array(
-					'model'    => $model,
-					'messages' => $this->format_messages( $messages ),
-				)
-			);
-
-			foreach ( $stream as $response ) {
-				if ( $this->should_emit_stream_content( $response->choices[0]->delta->content ?? null ) ) {
-					$on_chunk( array( 'content' => $response->choices[0]->delta->content ) );
-				}
-			}
-
-			$on_chunk( array( 'done' => true ) );
-		} catch ( \Exception $e ) {
-			$on_chunk( array( 'error' => 'Something went wrong. Please try again.' ) );
+			return $this->dispatch_tool( $name, $arguments );
+		} catch ( \Throwable $throwable ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( "[WPAIC] Tool {$name} failed: " . $throwable->getMessage() );
+			return array( 'error' => 'Tool execution failed unexpectedly.' );
 		}
 	}
 
 	/**
 	 * @param string $name
 	 * @param array<string, mixed> $arguments
-	 * @return array<string, mixed>|array<int, array<string, mixed>>|null
+	 * @return array<string, mixed>|array<int, array<string, mixed>>
 	 */
-	private function execute_tool( string $name, array $arguments ): array|null {
+	private function dispatch_tool( string $name, array $arguments ): array {
 		// Handoff and custom data tools work without WooCommerce
 		if ( 'create_handoff_request' === $name ) {
-			$tools = new WPAIC_Tools();
-			return $tools->create_handoff_request( $arguments );
+			if ( $this->conversation_id > 0 ) {
+				// Link the originating conversation; never part of the model-facing schema.
+				$arguments['conversation_id'] = $this->conversation_id;
+			}
+			$tools  = new WPAIC_Tools();
+			$result = $tools->create_handoff_request( $arguments );
+			$this->record_tool_event( $name, $arguments, $result );
+			return $result;
 		}
 
 		if ( 'query_custom_data' === $name ) {
@@ -1201,11 +886,11 @@ class WPAIC_Chat {
 			return $tools->get_page_content( $arguments );
 		}
 
-		if ( null === $this->tools || null === $this->product_tools ) {
+		if ( null === $this->tools || null === $this->product_tools || null === $this->promotion_tools ) {
 			return array( 'error' => 'Product tools unavailable' );
 		}
 
-		return match ( $name ) {
+		$result = match ( $name ) {
 			'search_products' => $this->product_tools->search_products( $arguments ),
 			'get_popular_products' => $this->product_tools->get_popular_products( $arguments ),
 			'get_product_details' => $this->product_tools->get_product_details( (int) ( $arguments['product_id'] ?? 0 ) ),
@@ -1217,7 +902,247 @@ class WPAIC_Chat {
 			'compare_products' => $this->product_tools->compare_products( isset( $arguments['product_ids'] ) && is_array( $arguments['product_ids'] ) ? $arguments['product_ids'] : array() ),
 			'get_order_status' => $this->tools->get_order_status( $arguments ),
 			'get_shipping_info' => $this->tools->get_shipping_info(),
+			// Gated at dispatch too, not only at tool registration: a crafted or
+			// stale tool call must not leak coupon codes when promotions are off.
+			'get_active_promotions' => $this->is_promotions_enabled()
+				? $this->promotion_tools->get_active_promotions()
+				: array( 'error' => 'Promotions are not enabled.' ),
 			default => array( 'error' => 'Unknown tool' ),
 		};
+
+		$this->record_tool_event( $name, $arguments, $result );
+
+		return $result;
+	}
+
+	/**
+	 * Record compact per-conversation analytics events for shopper-meaningful
+	 * tool calls: searches, products shown, add-to-cart, checkout, handoffs.
+	 * No-op when no conversation is attached (e.g. direct tool invocations).
+	 *
+	 * @param string $name Tool name.
+	 * @param array<string, mixed> $arguments Parsed tool arguments.
+	 * @param array<string, mixed>|array<int, array<string, mixed>>|null $result Tool result.
+	 */
+	private function record_tool_event( string $name, array $arguments, array|null $result ): void {
+		if ( $this->conversation_id <= 0 || ! class_exists( 'WPAIC_Events' ) ) {
+			return;
+		}
+
+		switch ( $name ) {
+			case 'search_products':
+				$products = is_array( $result ) ? array_values( array_filter( $result, 'is_array' ) ) : array();
+				WPAIC_Events::record(
+					$this->conversation_id,
+					WPAIC_Events::SEARCH_PERFORMED,
+					array(
+						'query'        => isset( $arguments['search'] ) && is_string( $arguments['search'] ) ? $arguments['search'] : '',
+						'result_count' => count( $products ),
+					)
+				);
+				$this->record_products_shown_event( $products );
+				break;
+
+			case 'get_popular_products':
+				$products = is_array( $result ) ? array_values( array_filter( $result, 'is_array' ) ) : array();
+				$this->record_products_shown_event( $products );
+				break;
+
+			case 'add_to_cart':
+				if ( ! is_array( $result ) || empty( $result['success'] ) ) {
+					break;
+				}
+				$product_id   = isset( $result['product_id'] ) && is_numeric( $result['product_id'] ) ? (int) $result['product_id'] : 0;
+				$variation_id = isset( $result['variation_id'] ) && is_numeric( $result['variation_id'] ) ? (int) $result['variation_id'] : 0;
+				WPAIC_Events::record(
+					$this->conversation_id,
+					WPAIC_Events::PRODUCT_ADDED_TO_CART,
+					array(
+						'id'    => $product_id,
+						'name'  => isset( $result['name'] ) && is_string( $result['name'] ) ? $result['name'] : '',
+						'price' => $this->get_product_price_for_event( $variation_id > 0 ? $variation_id : $product_id ),
+					)
+				);
+				break;
+
+			case 'get_checkout_action':
+				WPAIC_Events::record( $this->conversation_id, WPAIC_Events::CHECKOUT_STARTED, array() );
+				break;
+
+			case 'create_handoff_request':
+				if ( is_array( $result ) && ! empty( $result['success'] ) ) {
+					WPAIC_Events::record(
+						$this->conversation_id,
+						WPAIC_Events::HANDOFF_CREATED,
+						array( 'request_id' => isset( $result['request_id'] ) && is_numeric( $result['request_id'] ) ? (int) $result['request_id'] : 0 )
+					);
+				}
+				break;
+		}
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $products Product payloads (id/name fields).
+	 */
+	private function record_products_shown_event( array $products ): void {
+		$ids   = array();
+		$names = array();
+		foreach ( $products as $product ) {
+			if ( ! isset( $product['id'] ) || ! is_numeric( $product['id'] ) ) {
+				continue;
+			}
+			$ids[]   = (int) $product['id'];
+			$names[] = isset( $product['name'] ) && is_string( $product['name'] ) ? $product['name'] : '';
+		}
+
+		if ( empty( $ids ) ) {
+			return;
+		}
+
+		WPAIC_Events::record(
+			$this->conversation_id,
+			WPAIC_Events::PRODUCTS_SHOWN,
+			array(
+				'ids'   => $ids,
+				'names' => $names,
+			)
+		);
+	}
+
+	private function get_product_price_for_event( int $product_id ): ?string {
+		if ( $product_id <= 0 || ! function_exists( 'wc_get_product' ) ) {
+			return null;
+		}
+
+		$product = wc_get_product( $product_id );
+		if ( ! is_object( $product ) || ! method_exists( $product, 'get_price' ) ) {
+			return null;
+		}
+
+		return (string) $product->get_price();
+	}
+
+	/**
+	 * Build the model-facing copy of a tool result. The same result also feeds the
+	 * frontend (tool_output_available), which renders cards and needs URLs and
+	 * images — that copy must stay untouched. The model never needs them: they
+	 * waste tokens on every loop iteration and tempt it to type out links the UI
+	 * already renders. Product payloads lose url/add_to_cart_url/image/external_url
+	 * and full variation objects collapse to the essentials; checkout payloads
+	 * lose their URLs.
+	 *
+	 * @param string $tool_name
+	 * @param array<string, mixed>|array<int, array<string, mixed>>|null $tool_result
+	 * @return array<string, mixed>|array<int, array<string, mixed>>|null
+	 */
+	private function to_model_payload( string $tool_name, array|null $tool_result ): array|null {
+		if ( null === $tool_result ) {
+			return null;
+		}
+
+		switch ( $tool_name ) {
+			case 'search_products':
+			case 'get_popular_products':
+				return array_map(
+					fn( $product ) => is_array( $product ) ? $this->slim_product_for_model( $product ) : $product,
+					$tool_result
+				);
+
+			case 'get_product_details':
+				return $this->slim_product_for_model( $tool_result );
+
+			case 'compare_products':
+				if ( isset( $tool_result['products'] ) && is_array( $tool_result['products'] ) ) {
+					$tool_result['products'] = array_map(
+						fn( $product ) => is_array( $product ) ? $this->slim_product_for_model( $product ) : $product,
+						$tool_result['products']
+					);
+				}
+				return $tool_result;
+
+			case 'get_checkout_action':
+				unset( $tool_result['checkout_url'], $tool_result['cart_url'] );
+				return $tool_result;
+
+			default:
+				return $tool_result;
+		}
+	}
+
+	/**
+	 * @param array<string, mixed> $product
+	 * @return array<string, mixed>
+	 */
+	private function slim_product_for_model( array $product ): array {
+		unset( $product['url'], $product['add_to_cart_url'], $product['image'], $product['external_url'] );
+
+		if ( isset( $product['attributes'] ) && is_array( $product['attributes'] ) ) {
+			$product['attributes'] = array_map(
+				fn( $attribute ) => is_array( $attribute ) ? $this->slim_attribute_for_model( $attribute ) : $attribute,
+				$product['attributes']
+			);
+		}
+
+		if ( isset( $product['variations'] ) && is_array( $product['variations'] ) ) {
+			$product['variations'] = array_map(
+				fn( $variation ) => is_array( $variation ) ? $this->slim_variation_for_model( $variation ) : $variation,
+				$product['variations']
+			);
+		}
+
+		return $product;
+	}
+
+	/**
+	 * The model only ever passes variation_id (never attribute slugs), so swap
+	 * slug options for their human labels ("blue" -> "Blue") and drop the
+	 * frontend-only option_labels map to save tokens.
+	 *
+	 * @param array<string, mixed> $attribute
+	 * @return array<string, mixed>
+	 */
+	private function slim_attribute_for_model( array $attribute ): array {
+		if ( isset( $attribute['options'], $attribute['option_labels'] ) && is_array( $attribute['options'] ) && is_array( $attribute['option_labels'] ) ) {
+			$option_labels        = $attribute['option_labels'];
+			$attribute['options'] = array_values(
+				array_map(
+					static fn( $option ) => $option_labels[ $option ] ?? $option,
+					$attribute['options']
+				)
+			);
+		}
+
+		unset( $attribute['option_labels'] );
+
+		return $attribute;
+	}
+
+	/**
+	 * Collapse a full variation object to what the model needs to resolve and
+	 * confirm a choice: variation_id, a short attribute summary, price, and
+	 * stock. Variation images and regular prices stay frontend-only.
+	 *
+	 * @param array<string, mixed> $variation
+	 * @return array<string, mixed>
+	 */
+	private function slim_variation_for_model( array $variation ): array {
+		// Prefer the human option labels ("Blue") over the slug values ("blue")
+		// so the model's copy reads naturally; both carry the same keys.
+		$attribute_values = isset( $variation['attribute_labels'] ) && is_array( $variation['attribute_labels'] ) && ! empty( $variation['attribute_labels'] )
+			? $variation['attribute_labels']
+			: ( isset( $variation['attributes'] ) && is_array( $variation['attributes'] ) ? $variation['attributes'] : array() );
+
+		$attribute_parts = array();
+		foreach ( $attribute_values as $attribute_name => $attribute_value ) {
+			$label             = str_replace( array( 'attribute_pa_', 'attribute_' ), '', (string) $attribute_name );
+			$attribute_parts[] = $label . ': ' . (string) $attribute_value;
+		}
+
+		return array(
+			'variation_id' => $variation['variation_id'] ?? null,
+			'attributes'   => implode( ', ', $attribute_parts ),
+			'price'        => $variation['price'] ?? null,
+			'is_in_stock'  => $variation['is_in_stock'] ?? null,
+		);
 	}
 }

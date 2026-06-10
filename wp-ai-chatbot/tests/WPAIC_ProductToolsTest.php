@@ -128,6 +128,26 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertCount( 2, $result );
 	}
 
+	public function test_search_products_defaults_to_six_results(): void {
+		for ( $i = 1; $i <= 8; $i++ ) {
+			$this->create_mock_product( $i, "Product {$i}", '10' );
+		}
+
+		$result = $this->tools->search_products( array() );
+
+		$this->assertCount( 6, $result );
+	}
+
+	public function test_search_products_clamps_limit_to_ten(): void {
+		for ( $i = 1; $i <= 12; $i++ ) {
+			$this->create_mock_product( $i, "Product {$i}", '10' );
+		}
+
+		$result = $this->tools->search_products( array( 'limit' => 15 ) );
+
+		$this->assertCount( 10, $result );
+	}
+
 	public function test_search_products_filters_by_category(): void {
 		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
 		$this->create_mock_product( 2, 'Blue Pants', '29.99' );
@@ -197,6 +217,59 @@ class WPAIC_ProductToolsTest extends TestCase {
 
 		$this->assertCount( 1, $result );
 		$this->assertEquals( 'Mid Item', $result[0]['name'] );
+	}
+
+	public function test_search_products_max_price_drops_item_whose_sale_price_exceeds_cap(): void {
+		// Stale `_price` meta (9.50) slips through the meta query, but the
+		// effective (sale) price 10.82 is over the $10 cap and must not ship.
+		$this->create_mock_product( 1, 'Kitchen Rolling Pin', '9.50', '12.99', '10.82' );
+		$this->create_mock_product( 2, 'Kitchen Spoon', '4.91', '4.99', '4.91' );
+
+		$result = $this->tools->search_products(
+			array(
+				'search'    => 'kitchen',
+				'max_price' => 10,
+			)
+		);
+
+		$names = array_map( fn( $p ) => $p['name'], $result );
+		$this->assertNotContains( 'Kitchen Rolling Pin', $names );
+		$this->assertContains( 'Kitchen Spoon', $names );
+	}
+
+	public function test_search_products_category_path_enforces_effective_price_cap(): void {
+		$this->create_mock_product( 1, 'Rolling Pin', '9.50', '12.99', '10.82' );
+		$this->create_mock_product( 2, 'Peeler', '5.24', '5.99', '5.24' );
+
+		WPAICTestHelper::set_post_terms( 1, 'product_cat', array( 'kitchen-accessories' ) );
+		WPAICTestHelper::set_post_terms( 2, 'product_cat', array( 'kitchen-accessories' ) );
+
+		$result = $this->tools->search_products(
+			array(
+				'category'  => 'kitchen-accessories',
+				'max_price' => 10,
+			)
+		);
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Peeler', $result[0]['name'] );
+	}
+
+	public function test_search_products_min_price_enforced_against_effective_price(): void {
+		// Stale `_price` 9.00 passes the >= 8 meta query, but the shopper pays
+		// the sale price 5.00, which is below the requested minimum.
+		$this->create_mock_product( 1, 'Discounted Mug', '9.00', '9.00', '5.00' );
+		$this->create_mock_product( 2, 'Premium Mug', '15.00' );
+
+		$result = $this->tools->search_products(
+			array(
+				'search'    => 'mug',
+				'min_price' => 8,
+			)
+		);
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Premium Mug', $result[0]['name'] );
 	}
 
 	public function test_search_products_combines_category_and_price_filter(): void {
@@ -327,13 +400,35 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertCount( 1, $result );
 	}
 
-	public function test_get_product_details_returns_null_for_nonexistent_product(): void {
-		$result = $this->tools->get_product_details( 999 );
+	public function test_get_popular_products_defaults_to_six_results(): void {
+		for ( $i = 1; $i <= 8; $i++ ) {
+			$this->create_mock_product( $i, "Seller {$i}", '10' );
+			WPAICTestHelper::set_post_meta( $i, 'total_sales', (string) ( 100 - $i ) );
+		}
 
-		$this->assertNull( $result );
+		$result = $this->tools->get_popular_products( array() );
+
+		$this->assertCount( 6, $result );
 	}
 
-	public function test_get_product_details_returns_null_for_non_product_post(): void {
+	public function test_get_popular_products_clamps_limit_to_ten(): void {
+		for ( $i = 1; $i <= 12; $i++ ) {
+			$this->create_mock_product( $i, "Seller {$i}", '10' );
+			WPAICTestHelper::set_post_meta( $i, 'total_sales', (string) ( 100 - $i ) );
+		}
+
+		$result = $this->tools->get_popular_products( array( 'limit' => 24 ) );
+
+		$this->assertCount( 10, $result );
+	}
+
+	public function test_get_product_details_returns_error_for_nonexistent_product(): void {
+		$result = $this->tools->get_product_details( 999 );
+
+		$this->assertSame( array( 'error' => 'Product not found' ), $result );
+	}
+
+	public function test_get_product_details_returns_error_for_non_product_post(): void {
 		WPAICTestHelper::add_mock_post(
 			array(
 				'ID'          => 1,
@@ -345,7 +440,7 @@ class WPAIC_ProductToolsTest extends TestCase {
 
 		$result = $this->tools->get_product_details( 1 );
 
-		$this->assertNull( $result );
+		$this->assertSame( array( 'error' => 'Product not found' ), $result );
 	}
 
 	public function test_search_products_includes_stock_status_and_purchasable(): void {
@@ -422,6 +517,32 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertArrayHasKey( 'categories', $result );
 	}
 
+	public function test_get_product_details_strips_html_and_shortcodes_from_description(): void {
+		$this->create_mock_product(
+			1,
+			'Formatted Product',
+			'10.00',
+			'10.00',
+			'',
+			'<p>Great <strong>fit</strong></p>[gallery] and comfort',
+			'<em>Soft</em> tee',
+			'SKU1',
+			'instock',
+			'5'
+		);
+
+		$result = $this->tools->get_product_details( 1 );
+
+		$this->assertNotNull( $result );
+		$this->assertStringNotContainsString( '<p>', $result['description'] );
+		$this->assertStringNotContainsString( '<strong>', $result['description'] );
+		$this->assertStringNotContainsString( '[gallery]', $result['description'] );
+		$this->assertStringContainsString( 'Great', $result['description'] );
+		$this->assertStringContainsString( 'comfort', $result['description'] );
+		$this->assertStringNotContainsString( '<em>', $result['short_description'] );
+		$this->assertStringContainsString( 'Soft', $result['short_description'] );
+	}
+
 	public function test_get_categories_returns_empty_when_no_categories(): void {
 		$result = $this->tools->get_categories();
 
@@ -454,6 +575,84 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertEquals( 5, $result[0]['count'] );
 		$this->assertEquals( 'Electronics', $result[1]['name'] );
 	}
+
+	// --- Slug-like category name humanization (FIX-2) ---
+
+	public function test_get_categories_humanizes_slug_like_names(): void {
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id' => 1,
+				'name'    => 'kitchen-accessories',
+				'slug'    => 'kitchen-accessories',
+				'count'   => 7,
+			)
+		);
+
+		$result = $this->tools->get_categories();
+
+		$this->assertEquals( 'Kitchen Accessories', $result[0]['name'] );
+		// Tool parameters keep using the real slug.
+		$this->assertEquals( 'kitchen-accessories', $result[0]['slug'] );
+	}
+
+	public function test_get_categories_keeps_curated_and_hyphenless_names_verbatim(): void {
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id' => 1,
+				'name'    => 'Mens Shoes',
+				'slug'    => 'mens-shoes',
+				'count'   => 3,
+			)
+		);
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id' => 2,
+				'name'    => 'beauty',
+				'slug'    => 'beauty',
+				'count'   => 2,
+			)
+		);
+
+		$result = $this->tools->get_categories();
+
+		$this->assertEquals( 'Mens Shoes', $result[0]['name'] );
+		$this->assertEquals( 'beauty', $result[1]['name'] );
+	}
+
+	public function test_search_products_card_categories_humanize_slug_like_names(): void {
+		$this->create_mock_product( 1, 'Bamboo Spatula', '7.99' );
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id'  => 1,
+				'name'     => 'kitchen-accessories',
+				'slug'     => 'kitchen-accessories',
+				'taxonomy' => 'product_cat',
+			)
+		);
+
+		$result = $this->tools->search_products( array() );
+
+		$this->assertSame( array( 'Kitchen Accessories' ), $result[0]['categories'] );
+	}
+
+	public function test_compare_products_categories_humanize_slug_like_names(): void {
+		$this->create_mock_product( 1, 'Bamboo Spatula', '7.99' );
+		$this->create_mock_product( 2, 'Steel Whisk', '5.99' );
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id'  => 1,
+				'name'     => 'kitchen-accessories',
+				'slug'     => 'kitchen-accessories',
+				'taxonomy' => 'product_cat',
+			)
+		);
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		$this->assertSame( array( 'Kitchen Accessories' ), $result['products'][0]['categories'] );
+	}
+
+	// --- End slug-like category name humanization tests ---
 
 	public function test_compare_products_returns_empty_when_no_ids(): void {
 		$result = $this->tools->compare_products( array() );
@@ -549,9 +748,693 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertArrayHasKey( 'add_to_cart_url', $product );
 	}
 
+	public function test_compare_products_differences_describe_price_gap(): void {
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+		$this->create_mock_product( 2, 'Product B', '29.99' );
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		$this->assertContains(
+			'Price: Product A is cheapest at 19.99; Product B is most expensive at 29.99 (10.00 difference).',
+			$result['differences']
+		);
+	}
+
+	public function test_compare_products_differences_describe_equal_prices(): void {
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+		$this->create_mock_product( 2, 'Product B', '19.99' );
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		$this->assertContains( 'Price: all compared products cost 19.99.', $result['differences'] );
+	}
+
+	public function test_compare_products_differences_describe_rating_delta(): void {
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+		$this->create_mock_product( 2, 'Product B', '29.99' );
+		WPAICTestHelper::set_post_meta( 1, '_wc_average_rating', '4.0' );
+		WPAICTestHelper::set_post_meta( 2, '_wc_average_rating', '3.0' );
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		$this->assertContains(
+			'Rating: Product A 4.0, Product B 3.0 — Product A is rated highest.',
+			$result['differences']
+		);
+	}
+
+	public function test_compare_products_differences_note_unrated_products(): void {
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+		$this->create_mock_product( 2, 'Product B', '29.99' );
+		$this->create_mock_product( 3, 'Product C', '39.99' );
+		WPAICTestHelper::set_post_meta( 1, '_wc_average_rating', '4.0' );
+		WPAICTestHelper::set_post_meta( 2, '_wc_average_rating', '3.0' );
+
+		$result = $this->tools->compare_products( array( 1, 2, 3 ) );
+
+		$this->assertContains(
+			'Rating: Product A 4.0, Product B 3.0 — Product A is rated highest; no rating: Product C.',
+			$result['differences']
+		);
+	}
+
+	public function test_compare_products_differences_skip_rating_when_fewer_than_two_rated(): void {
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+		$this->create_mock_product( 2, 'Product B', '29.99' );
+		WPAICTestHelper::set_post_meta( 1, '_wc_average_rating', '4.0' );
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		foreach ( $result['differences'] as $difference ) {
+			$this->assertStringNotContainsString( 'Rating:', $difference );
+		}
+	}
+
+	public function test_compare_products_differences_describe_stock_mismatch(): void {
+		$this->create_mock_product( 1, 'In Stock Item', '19.99', '', '', '', '', '', 'instock' );
+		$this->create_mock_product( 2, 'Out of Stock Item', '29.99', '', '', '', '', '', 'outofstock' );
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		$this->assertContains(
+			'Stock: In Stock Item: in stock; Out of Stock Item: out of stock.',
+			$result['differences']
+		);
+	}
+
+	public function test_compare_products_differences_omit_stock_when_statuses_match(): void {
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+		$this->create_mock_product( 2, 'Product B', '29.99' );
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		foreach ( $result['differences'] as $difference ) {
+			$this->assertStringNotContainsString( 'Stock:', $difference );
+		}
+	}
+
+	public function test_compare_products_differences_empty_for_single_product(): void {
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+
+		$result = $this->tools->compare_products( array( 1 ) );
+
+		$this->assertSame( array(), $result['differences'] );
+	}
+
+	public function test_compare_products_includes_attributes_with_human_labels(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+		$this->create_mock_product( 2, 'Product B', '29.99' );
+
+		$product = new MockWCProduct( 1 );
+		$product->set_attribute_values(
+			array(
+				'pa_color' => 'Blue, Red',
+				'Warranty' => '3 years',
+			)
+		);
+		$mock_wc_products[1] = $product;
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		$this->assertSame(
+			array(
+				'Color'    => 'Blue, Red',
+				'Warranty' => '3 years',
+			),
+			$result['products'][0]['attributes']
+		);
+		$this->assertSame( array(), $result['products'][1]['attributes'] );
+	}
+
+	public function test_compare_products_includes_weight_and_dimensions(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Product A', '19.99' );
+		$this->create_mock_product( 2, 'Product B', '29.99' );
+
+		$product = new MockWCProduct( 1 );
+		$product->set_weight( '1.5' );
+		$product->set_dimensions(
+			array(
+				'length' => '10',
+				'width'  => '5',
+				'height' => '',
+			)
+		);
+		$mock_wc_products[1] = $product;
+
+		$result = $this->tools->compare_products( array( 1, 2 ) );
+
+		$this->assertSame( '1.5 kg', $result['products'][0]['weight'] );
+		$this->assertSame( '10 x 5 cm', $result['products'][0]['dimensions'] );
+		$this->assertArrayNotHasKey( 'weight', $result['products'][1] );
+		$this->assertArrayNotHasKey( 'dimensions', $result['products'][1] );
+	}
+
 	/**
 	 * Creates a mock WooCommerce product with metadata.
 	 */
+	// --- Zero-result search retry tests ---
+
+	public function test_search_products_plural_hyphen_query_matches_variable_product(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'V-Neck T-Shirt', '24.99' );
+		$mock_wc_products[1] = new MockWCProduct( 1, true, true, 'variable' );
+
+		$result = $this->tools->search_products( array( 'search' => 't-shirts' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'V-Neck T-Shirt', $result[0]['name'] );
+		$this->assertEquals( 'variable', $result[0]['product_type'] );
+	}
+
+	public function test_variable_product_attribute_names_match_variation_attribute_keys(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Hoodie', '42.00' );
+
+		// Custom (non-taxonomy) attribute "Logo": WooCommerce keys the variation
+		// payload by the sanitized name (attribute_logo), so the payload's
+		// attribute names must be sanitized too or the frontend never matches.
+		$variable = new WC_Product_Variable( 1 );
+		$variable->set_variation_attributes(
+			array(
+				'pa_color' => array( 'blue', 'green' ),
+				'Logo'     => array( 'Yes', 'No' ),
+			)
+		);
+		$variable->set_available_variations(
+			array(
+				array(
+					'variation_id'          => 201,
+					'attributes'            => array(
+						'attribute_pa_color' => 'blue',
+						'attribute_logo'     => 'Yes',
+					),
+					'display_price'         => 45.0,
+					'display_regular_price' => 45.0,
+					'is_in_stock'           => true,
+					'image'                 => array( 'url' => 'http://example.com/hoodie-blue.jpg' ),
+				),
+			)
+		);
+		$mock_wc_products[1] = $variable;
+
+		$result = $this->tools->search_products( array( 'search' => 'hoodie' ) );
+
+		$this->assertCount( 1, $result );
+		$product = $result[0];
+		$this->assertEquals( 'variable', $product['product_type'] );
+
+		$attribute_names = array_column( $product['attributes'], 'name' );
+		$this->assertEquals( array( 'pa_color', 'logo' ), $attribute_names );
+
+		foreach ( $attribute_names as $attribute_name ) {
+			$this->assertArrayHasKey( 'attribute_' . $attribute_name, $product['variations'][0]['attributes'] );
+		}
+
+		$this->assertEquals( 201, $product['variations'][0]['variation_id'] );
+		$this->assertEquals( 45.0, $product['variations'][0]['price'] );
+	}
+
+	public function test_variable_product_payload_carries_human_option_labels(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Hoodie', '42.00' );
+
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id'  => 7,
+				'name'     => 'Navy Blue',
+				'slug'     => 'navy-blue',
+				'taxonomy' => 'pa_color',
+			)
+		);
+
+		$variable = new WC_Product_Variable( 1 );
+		$variable->set_variation_attributes(
+			array(
+				'pa_color' => array( 'navy-blue' ),
+				'Logo'     => array( 'Yes' ),
+			)
+		);
+		$variable->set_available_variations(
+			array(
+				array(
+					'variation_id'          => 201,
+					'attributes'            => array(
+						'attribute_pa_color' => 'navy-blue',
+						'attribute_logo'     => 'Yes',
+					),
+					'display_price'         => 45.0,
+					'display_regular_price' => 45.0,
+					'is_in_stock'           => true,
+					'image'                 => array( 'url' => 'http://example.com/hoodie-navy.jpg' ),
+				),
+			)
+		);
+		$mock_wc_products[1] = $variable;
+
+		$result  = $this->tools->search_products( array( 'search' => 'hoodie' ) );
+		$product = $result[0];
+
+		// Taxonomy attribute: slug options stay intact for WC AJAX adds, with a
+		// term-name label map alongside for display.
+		$color_attribute = $product['attributes'][0];
+		$this->assertSame( array( 'navy-blue' ), $color_attribute['options'] );
+		$this->assertSame( array( 'navy-blue' => 'Navy Blue' ), $color_attribute['option_labels'] );
+
+		// Custom attribute: options are already display values, labels map to themselves.
+		$logo_attribute = $product['attributes'][1];
+		$this->assertSame( array( 'Yes' ), $logo_attribute['options'] );
+		$this->assertSame( array( 'Yes' => 'Yes' ), $logo_attribute['option_labels'] );
+
+		// Variation: slug attributes intact, human labels keyed identically.
+		$variation = $product['variations'][0];
+		$this->assertSame( 'navy-blue', $variation['attributes']['attribute_pa_color'] );
+		$this->assertSame(
+			array(
+				'attribute_pa_color' => 'Navy Blue',
+				'attribute_logo'     => 'Yes',
+			),
+			$variation['attribute_labels']
+		);
+	}
+
+	public function test_variable_product_option_label_falls_back_to_slug_for_unknown_term(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Hoodie', '42.00' );
+
+		$variable = new WC_Product_Variable( 1 );
+		$variable->set_variation_attributes(
+			array(
+				'pa_color' => array( 'blue' ),
+			)
+		);
+		$variable->set_available_variations( array() );
+		$mock_wc_products[1] = $variable;
+
+		$result  = $this->tools->search_products( array( 'search' => 'hoodie' ) );
+		$product = $result[0];
+
+		$this->assertSame( array( 'blue' => 'blue' ), $product['attributes'][0]['option_labels'] );
+	}
+
+	public function test_search_products_retries_brand_token_alone(): void {
+		$this->create_mock_product( 1, 'Chanel Coco Noir Eau De', '129.99' );
+		$this->create_mock_product( 2, 'Dior Lipstick', '39.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'chanel perfume' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Chanel Coco Noir Eau De', $result[0]['name'] );
+	}
+
+	public function test_search_products_retries_perfume_fragrance_synonym(): void {
+		$this->create_mock_product( 1, 'Elegant Fragrance Spray', '59.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'perfume' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Elegant Fragrance Spray', $result[0]['name'] );
+	}
+
+	public function test_search_products_retries_sneakers_shoes_synonym(): void {
+		$this->create_mock_product( 1, 'Running Shoes', '89.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'sneakers' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Running Shoes', $result[0]['name'] );
+	}
+
+	public function test_search_products_retries_tee_tshirt_synonym(): void {
+		$this->create_mock_product( 1, 'Classic Cotton Tee', '14.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 't-shirt' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Classic Cotton Tee', $result[0]['name'] );
+	}
+
+	public function test_search_products_falls_back_to_parent_category(): void {
+		$this->create_mock_product( 1, 'Gourmet Coffee Beans', '12.99' );
+		WPAICTestHelper::set_post_terms( 1, 'product_cat', array( 'kitchen' ) );
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id'  => 9,
+				'name'     => 'Kitchen',
+				'slug'     => 'kitchen',
+				'taxonomy' => 'product_cat',
+			)
+		);
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id'  => 10,
+				'name'     => 'Kitchen Gadgets',
+				'slug'     => 'kitchen-gadgets',
+				'taxonomy' => 'product_cat',
+				'parent'   => 9,
+			)
+		);
+
+		$result = $this->tools->search_products(
+			array(
+				'search'   => 'coffee',
+				'category' => 'kitchen-gadgets',
+			)
+		);
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Gourmet Coffee Beans', $result[0]['name'] );
+	}
+
+	public function test_search_products_drops_category_filter_when_nothing_matches(): void {
+		$this->create_mock_product( 1, 'Chanel Perfume Spray', '129.99' );
+		WPAICTestHelper::set_post_terms( 1, 'product_cat', array( 'fragrances' ) );
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id'  => 11,
+				'name'     => 'Beauty',
+				'slug'     => 'beauty',
+				'taxonomy' => 'product_cat',
+			)
+		);
+
+		$result = $this->tools->search_products(
+			array(
+				'search'   => 'chanel',
+				'category' => 'beauty',
+			)
+		);
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Chanel Perfume Spray', $result[0]['name'] );
+	}
+
+	public function test_search_products_returns_empty_when_nothing_close(): void {
+		$this->create_mock_product( 1, 'Kitchen Sieve', '8.99' );
+		$this->create_mock_product( 2, 'Garden Hose', '19.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'unicorn saddle' ) );
+
+		$this->assertEmpty( $result );
+	}
+
+	// Variant generation and ordering (formerly expand_query_variants) is
+	// covered by WPAIC_QueryExpanderTest against WPAIC_Query_Expander.
+
+	public function test_search_caps_search_passes_per_filter_set(): void {
+		// Empty catalog: every variant misses in every filter set. The pass
+		// counter resets per filter set, so after search() it holds the last
+		// set's count, capped at WPAIC_Search_Index's per-set cap (4).
+		$index  = new WPAIC_Search_Index();
+		$result = $index->search( 'chanel perfumes sneakers', array( 'category' => 'beauty' ), 6 );
+
+		$this->assertSame( array(), $result );
+
+		$property = new ReflectionProperty( WPAIC_Search_Index::class, 'search_pass_count' );
+		$property->setAccessible( true );
+		$this->assertSame( 4, $property->getValue( $index ) );
+	}
+
+	public function test_search_with_wrong_category_and_many_variants_still_reaches_no_category_fallback(): void {
+		// "chanel perfumes sprays" expands to 9 variants — more than a shared
+		// 8-pass cap could spread across two filter sets — so a cap shared
+		// across filter sets would burn every pass inside the wrong 'beauty'
+		// category and starve the no-category rescue set. The per-set cap must
+		// leave the rescue set enough passes to find the product.
+		$this->create_mock_product( 1, 'Chanel Perfume Spray', '129.99' );
+		WPAICTestHelper::set_post_terms( 1, 'product_cat', array( 'fragrances' ) );
+		WPAICTestHelper::add_mock_term(
+			array(
+				'term_id'  => 11,
+				'name'     => 'Beauty',
+				'slug'     => 'beauty',
+				'taxonomy' => 'product_cat',
+			)
+		);
+
+		$index  = new WPAIC_Search_Index();
+		$result = $index->search( 'chanel perfumes sprays', array( 'category' => 'beauty' ), 6 );
+
+		$this->assertSame( array( 1 ), $result );
+	}
+
+	public function test_relevance_filter_matches_plural_query_against_singular_title(): void {
+		$this->create_mock_product( 1, 'V-Neck T-Shirt', '24.99' );
+
+		$index   = new WPAIC_Search_Index();
+		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'filter_by_relevance' );
+		$reflect->setAccessible( true );
+
+		$this->assertSame( array( 1 ), $reflect->invoke( $index, array( 1 ), 't-shirts' ) );
+		$this->assertSame( array( 1 ), $reflect->invoke( $index, array( 1 ), 'shirts' ) );
+	}
+
+	public function test_search_index_includes_variable_products(): void {
+		global $mock_wc_products;
+
+		$this->create_mock_product( 1, 'Hoodie', '45.00' );
+		$mock_wc_products[1] = new MockWCProduct( 1, true, true, 'variable' );
+
+		$index   = new WPAIC_Search_Index();
+		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'get_products_data' );
+		$reflect->setAccessible( true );
+
+		$products = $reflect->invoke( $index );
+
+		$this->assertCount( 1, $products );
+		$this->assertSame( 1, $products[0]['id'] );
+		$this->assertSame( 'Hoodie', $products[0]['title'] );
+	}
+
+	// --- End zero-result search retry tests ---
+
+	// --- on_sale filter ---
+
+	public function test_search_products_on_sale_filters_keyword_results(): void {
+		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
+		$this->create_mock_product( 2, 'Blue Shirt', '29.99' );
+		WPAICTestHelper::set_option( 'test_product_ids_on_sale', array( 1 ) );
+
+		$result = $this->tools->search_products(
+			array(
+				'search'  => 'shirt',
+				'on_sale' => true,
+			)
+		);
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Red Shirt', $result[0]['name'] );
+	}
+
+	public function test_search_products_on_sale_filters_query_without_keyword(): void {
+		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
+		$this->create_mock_product( 2, 'Blue Shirt', '29.99' );
+		WPAICTestHelper::set_option( 'test_product_ids_on_sale', array( 2 ) );
+
+		$result = $this->tools->search_products( array( 'on_sale' => true ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Blue Shirt', $result[0]['name'] );
+	}
+
+	public function test_search_products_on_sale_returns_empty_when_nothing_on_sale(): void {
+		$this->create_mock_product( 1, 'Red Shirt', '19.99' );
+		WPAICTestHelper::set_option( 'test_product_ids_on_sale', array() );
+
+		$result = $this->tools->search_products( array( 'on_sale' => true ) );
+
+		$this->assertEmpty( $result );
+	}
+
+	// --- Zero-priced down-ranking ---
+
+	public function test_search_products_down_ranks_zero_priced_keyword_results(): void {
+		$this->create_mock_product( 1, 'Sample Shirt', '0' );
+		$this->create_mock_product( 2, 'Red Shirt', '19.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'shirt' ) );
+
+		$this->assertCount( 2, $result );
+		$this->assertEquals( 'Red Shirt', $result[0]['name'] );
+		$this->assertEquals( 'Sample Shirt', $result[1]['name'] );
+	}
+
+	public function test_search_products_down_ranks_priceless_results_without_keyword(): void {
+		$this->create_mock_product( 1, 'Priceless Hoodie', '' );
+		$this->create_mock_product( 2, 'Priced Hoodie', '45.00' );
+
+		$result = $this->tools->search_products( array() );
+
+		$this->assertCount( 2, $result );
+		$this->assertEquals( 'Priced Hoodie', $result[0]['name'] );
+		$this->assertEquals( 'Priceless Hoodie', $result[1]['name'] );
+	}
+
+	// --- Weak-result synonym merge (NEW-A) ---
+
+	public function test_search_products_merges_synonym_results_when_no_title_match(): void {
+		$this->create_mock_product(
+			1,
+			'Elegant Heels',
+			'59.99',
+			'',
+			'',
+			'classy shoes for evening parties'
+		);
+		$this->create_mock_product( 2, 'Sports Sneakers Off White Red', '89.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'shoes' ) );
+
+		$names = array_map( fn( $p ) => $p['name'], $result );
+		$this->assertContains( 'Elegant Heels', $names );
+		$this->assertContains( 'Sports Sneakers Off White Red', $names );
+	}
+
+	public function test_search_products_skips_synonym_merge_when_title_matches(): void {
+		$this->create_mock_product( 1, 'Running Shoes', '79.99' );
+		$this->create_mock_product( 2, 'Sports Sneakers', '89.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'shoes' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Running Shoes', $result[0]['name'] );
+	}
+
+	// Typo-tolerant token-synonym variant generation (formerly
+	// synonym_variants_for_unmatched_title_tokens) is covered by
+	// WPAIC_QueryExpanderTest; the title-match gate lives in
+	// WPAIC_Search_Index::token_in_result_titles.
+
+	public function test_token_synonym_merge_gate_blocks_nouns_already_in_a_title(): void {
+		$this->create_mock_product( 1, 'Running Shoes', '79.99' );
+
+		$index   = new WPAIC_Search_Index();
+		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'token_in_result_titles' );
+		$reflect->setAccessible( true );
+
+		// Singular token matches the plural title, so the merge is blocked.
+		$this->assertTrue( $reflect->invoke( $index, array( 1 ), 'shoe' ) );
+		// Unrelated noun: the synonym variant may merge.
+		$this->assertFalse( $reflect->invoke( $index, array( 1 ), 'sneaker' ) );
+	}
+
+	// --- End weak-result synonym merge tests ---
+
+	// --- Phrase-level synonym merge (FIX-3) ---
+
+	public function test_search_products_running_shoes_always_merges_sneakers_despite_title_match(): void {
+		// "shoes" carries a title match (heels), which used to suppress the
+		// synonym merge entirely; phrase synonyms must merge regardless.
+		$this->create_mock_product(
+			1,
+			'Elegant Heels Shoes',
+			'59.99',
+			'',
+			'',
+			'great for running errands'
+		);
+		$this->create_mock_product( 2, 'Sports Sneakers Off White Red', '89.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'running shoes' ) );
+
+		$names = array_map( fn( $p ) => $p['name'], $result );
+		$this->assertContains( 'Elegant Heels Shoes', $names );
+		$this->assertContains( 'Sports Sneakers Off White Red', $names );
+	}
+
+	public function test_search_products_typo_running_shoos_surfaces_sneakers(): void {
+		$this->create_mock_product( 1, 'Sports Sneakers Off White Red', '89.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'running shoos' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Sports Sneakers Off White Red', $result[0]['name'] );
+	}
+
+	public function test_search_products_kicks_surfaces_sneakers(): void {
+		$this->create_mock_product( 1, 'Sports Sneakers Off White & Red', '89.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'kicks' ) );
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Sports Sneakers Off White & Red', $result[0]['name'] );
+	}
+
+	public function test_search_products_trainers_merge_sneakers_despite_title_match(): void {
+		$this->create_mock_product( 1, 'Gym Trainers', '49.99' );
+		$this->create_mock_product( 2, 'Sports Sneakers', '89.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'trainers' ) );
+
+		$names = array_map( fn( $p ) => $p['name'], $result );
+		$this->assertContains( 'Gym Trainers', $names );
+		$this->assertContains( 'Sports Sneakers', $names );
+	}
+
+	public function test_search_products_sneakers_merge_shoes_as_fallback(): void {
+		$this->create_mock_product( 1, 'Casual Sneakers', '69.99' );
+		$this->create_mock_product( 2, 'Leather Shoes', '99.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'sneakers' ) );
+
+		$names = array_map( fn( $p ) => $p['name'], $result );
+		$this->assertContains( 'Casual Sneakers', $names );
+		$this->assertContains( 'Leather Shoes', $names );
+	}
+
+	public function test_search_products_phrase_merge_capped_at_limit_with_primary_first(): void {
+		$this->create_mock_product( 1, 'Running Shoes', '79.99' );
+		$this->create_mock_product( 2, 'Sports Sneakers', '89.99' );
+
+		$result = $this->tools->search_products(
+			array(
+				'search' => 'running shoes',
+				'limit'  => 1,
+			)
+		);
+
+		$this->assertCount( 1, $result );
+		$this->assertEquals( 'Running Shoes', $result[0]['name'] );
+	}
+
+	public function test_search_products_phrase_merged_results_still_down_rank_zero_priced(): void {
+		$this->create_mock_product( 1, 'Running Shoes', '0' );
+		$this->create_mock_product( 2, 'Sports Sneakers', '89.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'running shoes' ) );
+
+		$this->assertCount( 2, $result );
+		$this->assertEquals( 'Sports Sneakers', $result[0]['name'] );
+		$this->assertEquals( 'Running Shoes', $result[1]['name'] );
+	}
+
+	// Phrase substitution itself (formerly phrase_synonym_variants) is covered
+	// by WPAIC_QueryExpanderTest::test_phrase_tier_substitutes_matched_phrases.
+
+	public function test_search_products_ranks_primary_tier_results_before_phrase_merges(): void {
+		// Created in reverse order so the assertion proves tier ranking, not
+		// insertion order: the primary "running shoes" match must lead, the
+		// phrase-synonym ("sneaker") merge follows.
+		$this->create_mock_product( 1, 'Sports Sneakers', '89.99' );
+		$this->create_mock_product( 2, 'Running Shoes', '79.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'running shoes' ) );
+
+		$this->assertSame(
+			array( 'Running Shoes', 'Sports Sneakers' ),
+			array_map( fn( $p ) => $p['name'], $result )
+		);
+	}
+
+	// --- End phrase-level synonym merge tests ---
+
 	private function create_mock_product(
 		int $id,
 		string $title,

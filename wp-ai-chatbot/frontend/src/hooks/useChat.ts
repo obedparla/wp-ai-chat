@@ -7,6 +7,7 @@ import { ComparisonData, ComparisonProduct } from '../components/ComparisonTable
 import { CheckoutAction } from '../components/CheckoutButton'
 import { isProductTool } from './tools'
 import { clearStoredClearCartStatuses } from './useClearCart'
+import { clearStoredAddToCartStatuses, markAddToCartToolCallsRestored } from './useAddToCart'
 
 export interface AddToCartIntent {
   toolCallId: string
@@ -52,7 +53,7 @@ interface PendingUserMessage {
   createdAt: number
 }
 
-const MESSAGE_DEBOUNCE_MS = 3000
+const MESSAGE_DEBOUNCE_MS = 400
 
 function generateSessionId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -70,7 +71,7 @@ function generateClientMessageId(): string {
   return generateSessionId()
 }
 
-function getOrCreateSessionId(): string {
+export function getOrCreateSessionId(): string {
   const key = 'wpaic_session_id'
   let sessionId = sessionStorage.getItem(key)
   if (!sessionId) {
@@ -154,6 +155,27 @@ function loadMessagesFromStorage(): StoredMessage[] | null {
 
 function clearStoredMessages(): void {
   sessionStorage.removeItem(CHAT_HISTORY_KEY)
+}
+
+// Tool-call ids of add_to_cart parts in restored history. These already mutated the
+// cart in a previous page life, so the add-to-cart trigger must never re-execute them.
+function collectAddToCartToolCallIds(messages: StoredMessage[]): string[] {
+  const toolCallIds: string[] = []
+  for (const message of messages) {
+    if (!Array.isArray(message.parts)) continue
+    for (const part of message.parts) {
+      if (typeof part !== 'object' || part === null) continue
+      const toolPart = part as { type?: string; toolName?: string; toolCallId?: string }
+      if (
+        toolPart.type === 'dynamic-tool' &&
+        toolPart.toolName === 'add_to_cart' &&
+        typeof toolPart.toolCallId === 'string'
+      ) {
+        toolCallIds.push(toolPart.toolCallId)
+      }
+    }
+  }
+  return toolCallIds
 }
 
 // Initialize session ID once at module level to avoid ref access during render
@@ -449,6 +471,7 @@ export function useChat() {
 
     const stored = loadMessagesFromStorage()
     if (stored && stored.length > 0) {
+      markAddToCartToolCallsRestored(collectAddToCartToolCallIds(stored))
       setMessages(stored as UIMessage[])
       return
     }
@@ -656,6 +679,7 @@ export function useChat() {
     clearStoredMessages()
     clearStoredTimestamps()
     clearStoredClearCartStatuses()
+    clearStoredAddToCartStatuses()
     timestampsRef.current = {}
     setTimestampsVersion((v) => v + 1)
     setPendingMessages([])

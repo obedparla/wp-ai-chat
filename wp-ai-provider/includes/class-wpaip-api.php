@@ -6,10 +6,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WPAIP_API {
 
+	private const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
+	private const MAX_INPUT_ITEMS           = 100;
+	private const MAX_INSTRUCTIONS_LENGTH   = 32768;
+	private const MAX_INPUT_ITEM_LENGTH     = 65536;
+
 	private ?WPAIP_Streamer $streamer = null;
 	/** @var array<string, mixed> */
 	private array $request_context = array();
 	private ?WPAIP_License_Validator $license_validator = null;
+	private ?WPAIP_Usage_Tracker $usage_tracker = null;
 
 	public function set_streamer( WPAIP_Streamer $streamer ): void {
 		$this->streamer = $streamer;
@@ -17,6 +23,10 @@ class WPAIP_API {
 
 	public function set_license_validator( WPAIP_License_Validator $license_validator ): void {
 		$this->license_validator = $license_validator;
+	}
+
+	public function set_usage_tracker( WPAIP_Usage_Tracker $usage_tracker ): void {
+		$this->usage_tracker = $usage_tracker;
 	}
 
 	private function get_streamer(): WPAIP_Streamer {
@@ -32,6 +42,14 @@ class WPAIP_API {
 		}
 
 		return $this->license_validator;
+	}
+
+	private function get_usage_tracker(): WPAIP_Usage_Tracker {
+		if ( null === $this->usage_tracker ) {
+			$this->usage_tracker = new WPAIP_Usage_Tracker();
+		}
+
+		return $this->usage_tracker;
 	}
 
 	public function init(): void {
@@ -87,11 +105,28 @@ class WPAIP_API {
 			);
 		}
 
+		if ( count( $input ) > self::MAX_INPUT_ITEMS ) {
+			return new WP_Error(
+				'invalid_request',
+				sprintf( 'input must not exceed %d items', self::MAX_INPUT_ITEMS ),
+				array( 'status' => 400 )
+			);
+		}
+
 		foreach ( $input as $item ) {
 			if ( ! is_array( $item ) ) {
 				return new WP_Error(
 					'invalid_request',
 					'Each input item must be an object',
+					array( 'status' => 400 )
+				);
+			}
+			// Cap the serialized size of every item — covers message content,
+			// function_call arguments, and function_call_output payloads alike.
+			if ( strlen( (string) wp_json_encode( $item ) ) > self::MAX_INPUT_ITEM_LENGTH ) {
+				return new WP_Error(
+					'invalid_request',
+					sprintf( 'Each input item must not exceed %d characters', self::MAX_INPUT_ITEM_LENGTH ),
 					array( 'status' => 400 )
 				);
 			}
@@ -120,6 +155,14 @@ class WPAIP_API {
 			return new WP_Error(
 				'invalid_request',
 				'instructions must be a string when provided',
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( is_string( $instructions ) && strlen( $instructions ) > self::MAX_INSTRUCTIONS_LENGTH ) {
+			return new WP_Error(
+				'invalid_request',
+				sprintf( 'instructions must not exceed %d characters', self::MAX_INSTRUCTIONS_LENGTH ),
 				array( 'status' => 400 )
 			);
 		}
@@ -165,6 +208,30 @@ class WPAIP_API {
 			);
 		}
 
+		$usage_bucket = $this->request_context['usage_bucket'] ?? '';
+		$usage_bucket = is_string( $usage_bucket ) ? $usage_bucket : '';
+
+		// Per-install daily budget: reject before spending OpenAI tokens. The
+		// chatbot surfaces this message to the shopper in-chat.
+		if ( '' !== $usage_bucket ) {
+			$usage_tracker = $this->get_usage_tracker();
+
+			if ( $usage_tracker->is_over_budget( $usage_bucket ) ) {
+				return new WP_Error(
+					'rate_limited',
+					'The chat assistant has reached its daily limit. Please try again tomorrow, or contact the store directly for help.',
+					array( 'status' => 429 )
+				);
+			}
+
+			$usage_tracker->record_message( $usage_bucket );
+			$streamer->set_on_response_completed(
+				static function ( array $usage ) use ( $usage_tracker, $usage_bucket ): void {
+					$usage_tracker->record_tokens( $usage_bucket, $usage );
+				}
+			);
+		}
+
 		$input        = $request->get_param( 'input' );
 		$tools        = $request->get_param( 'tools' );
 		$instructions = $request->get_param( 'instructions' );
@@ -178,7 +245,20 @@ class WPAIP_API {
 		$params = array(
 			'model' => $resolved['model'],
 			'input' => $input,
+			// Responses API stores conversations on OpenAI for 30 days by default.
+			'store' => false,
+			// Hard per-response output ceiling (reasoning + visible tokens) so a
+			// single runaway request cannot burn unbounded output tokens. OpenAI
+			// requires a minimum of 16.
+			'max_output_tokens' => max( 16, (int) apply_filters( 'wpaip_max_output_tokens', self::DEFAULT_MAX_OUTPUT_TOKENS ) ),
 		);
+
+		// Route requests from the same install to the same cache shard so the
+		// static prompt + tool definitions hit OpenAI's prompt cache (~90%
+		// cheaper cached input on the GPT-5 family).
+		if ( '' !== $usage_bucket ) {
+			$params['prompt_cache_key'] = $usage_bucket;
+		}
 
 		if ( is_string( $instructions ) && '' !== $instructions ) {
 			$params['instructions'] = $instructions;
@@ -188,10 +268,12 @@ class WPAIP_API {
 			$params['tools'] = $this->fix_tool_schemas( $tools );
 		}
 
-		// Responses API takes reasoning effort nested under `reasoning`. 'none'
-		// is not a valid Responses effort, so we omit it and let the model default.
-		if ( '' !== $resolved['reasoning_effort'] && 'none' !== $resolved['reasoning_effort'] ) {
-			$params['reasoning'] = array( 'effort' => $resolved['reasoning_effort'] );
+		// Responses API takes reasoning effort nested under `reasoning`. It has
+		// no 'none' level, and omitting the param makes GPT-5 silently default
+		// to medium — so map 'none' to 'minimal', the lowest Responses effort.
+		$reasoning_effort = 'none' === $resolved['reasoning_effort'] ? 'minimal' : $resolved['reasoning_effort'];
+		if ( '' !== $reasoning_effort ) {
+			$params['reasoning'] = array( 'effort' => $reasoning_effort );
 		}
 
 		// @codeCoverageIgnoreStart

@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Message } from '../hooks/useChat'
+import { getOrCreateSessionId } from '../hooks/useChat'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 interface SendTranscriptDialogProps {
   messages: Message[]
@@ -23,6 +25,7 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
   const [dialogState, setDialogState] = useState<DialogState>('input')
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useFocusTrap<HTMLDivElement>()
   const config = window.wpaicConfig
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
         body: JSON.stringify({
           email: trimmed,
           transcript: formatTranscript(messages),
+          session_id: getOrCreateSessionId(),
         }),
       })
 
@@ -83,6 +87,7 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
 
   return (
     <div
+      ref={dialogRef}
       className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 rounded-2xl animate-wpaic-fadeIn"
       onClick={onClose}
       role="dialog"

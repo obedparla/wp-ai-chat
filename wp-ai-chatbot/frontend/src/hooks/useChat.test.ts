@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useChat } from './useChat'
+import { useAddToCart, clearStoredAddToCartStatuses } from './useAddToCart'
 
 // Mock the Vercel AI SDK
 vi.mock('@ai-sdk/react', () => ({
@@ -37,6 +38,7 @@ describe('useChat', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     sessionStorage.clear()
+    clearStoredAddToCartStatuses()
     mockSetMessages = vi.fn()
     mockSendMessage = vi.fn()
     mockStop = vi.fn()
@@ -1204,6 +1206,74 @@ describe('useChat', () => {
       })
 
       expect(sessionStorage.getItem('wpaic_clear_cart_status')).toBeNull()
+    })
+
+    it('startNewConversation clears stored add-to-cart statuses', async () => {
+      sessionStorage.setItem('wpaic_add_to_cart_status', JSON.stringify({ 'tc-1': 'added' }))
+
+      const { result } = renderHook(() => useChat())
+
+      act(() => {
+        result.current.startNewConversation()
+      })
+
+      expect(sessionStorage.getItem('wpaic_add_to_cart_status')).toBeNull()
+    })
+
+    it('never re-fires cart requests for add_to_cart intents in a restored conversation', async () => {
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+
+      window.wpaicConfig = {
+        apiUrl: '/wp-json/wpaic/v1',
+        nonce: 'test-nonce',
+        greeting: 'Hello!',
+        wcAjaxUrl: 'https://shop.test/admin-ajax.php',
+      }
+
+      sessionStorage.setItem(
+        'wpaic_chat_history',
+        JSON.stringify([
+          { id: '1', role: 'user', parts: [{ type: 'text', text: 'add water to my cart' }] },
+          {
+            id: '2',
+            role: 'assistant',
+            parts: [
+              {
+                type: 'dynamic-tool',
+                toolName: 'add_to_cart',
+                toolCallId: 'tc-restored',
+                state: 'output-available',
+                output: {
+                  success: true,
+                  action: 'add_to_cart',
+                  product_id: 55,
+                  quantity: 2,
+                  name: 'Water',
+                },
+              },
+            ],
+          },
+        ])
+      )
+
+      renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(mockSetMessages).toHaveBeenCalled()
+      })
+
+      // MessageList mounts an AddToCartTrigger (useAddToCart) for the restored intent.
+      const { result } = renderHook(() =>
+        useAddToCart({ toolCallId: 'tc-restored', productId: 55, quantity: 2 })
+      )
+
+      expect(result.current).toBe('added')
+      await waitFor(() => {
+        expect(fetchMock).not.toHaveBeenCalled()
+      })
+
+      vi.unstubAllGlobals()
     })
   })
 })

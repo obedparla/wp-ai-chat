@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import * as useChatModule from './hooks/useChat'
@@ -63,6 +63,15 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
+  })
+
+  it('returns focus to the launcher when the widget closes', async () => {
+    render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.getByRole('button', { name: 'Open chat' })).toHaveFocus()
   })
 
   it('shows greeting message when widget opened', async () => {
@@ -141,6 +150,34 @@ describe('App', () => {
     expect(mockSendMessage).toHaveBeenCalledWith('Test message')
   })
 
+  it('opens the widget immediately when mounted with openOnMount (loader handoff)', () => {
+    render(<App openOnMount />)
+
+    expect(screen.getByText('AI Assistant')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open chat' })).not.toBeInTheDocument()
+  })
+
+  it('seeds the proactive greeting when mounted via the loader teaser', () => {
+    const mockChat = createMockChat()
+    vi.mocked(useChatModule.useChat).mockReturnValue(mockChat)
+
+    render(<App openOnMount viaProactiveTeaser />)
+
+    expect(screen.getByText('AI Assistant')).toBeInTheDocument()
+    expect(mockChat.showProactiveGreeting).toHaveBeenCalled()
+  })
+
+  it('does not seed the proactive greeting over a stored conversation', () => {
+    sessionStorage.setItem('wpaic_chat_history', '[{"id":"1"}]')
+    const mockChat = createMockChat()
+    vi.mocked(useChatModule.useChat).mockReturnValue(mockChat)
+
+    render(<App openOnMount viaProactiveTeaser />)
+
+    expect(mockChat.showProactiveGreeting).not.toHaveBeenCalled()
+    sessionStorage.removeItem('wpaic_chat_history')
+  })
+
   it('passes configured conversation starters into the widget', async () => {
     window.wpaicConfig = {
       apiUrl: 'http://test.local/wp-json/wpaic/v1',
@@ -195,59 +232,50 @@ describe('ChatButton', () => {
   })
 })
 
-describe('Proactive engagement', () => {
+describe('Proactive engagement teaser', () => {
+  const proactiveConfig = {
+    apiUrl: 'http://test.local/wp-json/wpaic/v1',
+    nonce: 'test-nonce',
+    greeting: 'Hello!',
+    proactiveEnabled: true,
+    proactiveDelay: 5,
+    proactiveMessage: 'Need help?',
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
     sessionStorage.clear()
-    vi.mocked(useChatModule.useChat).mockReturnValue({
-      messages: [{ role: 'assistant', content: 'Hello!' }],
-      sendMessage: vi.fn(),
-      isLoading: false,
-      showProactiveGreeting: vi.fn(),
-      startNewConversation: vi.fn(),
-      activeTools: [],
-      retry: vi.fn(),
-    })
+    vi.mocked(useChatModule.useChat).mockReturnValue(createMockChat())
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it('auto-opens chat after proactive delay', async () => {
-    window.wpaicConfig = {
-      apiUrl: 'http://test.local/wp-json/wpaic/v1',
-      nonce: 'test-nonce',
-      greeting: 'Hello!',
-      proactiveEnabled: true,
-      proactiveDelay: 5,
-      proactiveMessage: 'Need help?',
-    }
+  it('shows the teaser bubble after the configured delay without opening the widget', async () => {
+    window.wpaicConfig = { ...proactiveConfig }
 
     render(<App />)
 
-    expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
+    await act(async () => {
+      vi.advanceTimersByTime(4999)
+    })
+    expect(screen.queryByText('Need help?')).not.toBeInTheDocument()
 
     await act(async () => {
-      vi.advanceTimersByTime(5000)
+      vi.advanceTimersByTime(1)
     })
 
-    expect(screen.getByText('AI Assistant')).toBeInTheDocument()
+    expect(screen.getByText('Need help?')).toBeInTheDocument()
+    expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open chat' })).toBeInTheDocument()
   })
 
-  it('applies the proactive greeting when auto-opening the chat', async () => {
+  it('expands the full chat with the proactive greeting when the teaser is clicked', async () => {
     const mockChat = createMockChat()
     vi.mocked(useChatModule.useChat).mockReturnValue(mockChat)
-
-    window.wpaicConfig = {
-      apiUrl: 'http://test.local/wp-json/wpaic/v1',
-      nonce: 'test-nonce',
-      greeting: 'Hello!',
-      proactiveEnabled: true,
-      proactiveDelay: 5,
-      proactiveMessage: 'Need help?',
-    }
+    window.wpaicConfig = { ...proactiveConfig }
 
     render(<App />)
 
@@ -255,18 +283,32 @@ describe('Proactive engagement', () => {
       vi.advanceTimersByTime(5000)
     })
 
+    fireEvent.click(screen.getByRole('button', { name: 'Need help?' }))
+
+    expect(screen.getByText('AI Assistant')).toBeInTheDocument()
     expect(mockChat.showProactiveGreeting).toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Need help?' })).not.toBeInTheDocument()
   })
 
-  it('does not auto-open when proactive is disabled', async () => {
-    window.wpaicConfig = {
-      apiUrl: 'http://test.local/wp-json/wpaic/v1',
-      nonce: 'test-nonce',
-      greeting: 'Hello!',
-      proactiveEnabled: false,
-      proactiveDelay: 5,
-      proactiveMessage: 'Need help?',
-    }
+  it('dismisses the teaser and persists dismissal for the session', async () => {
+    window.wpaicConfig = { ...proactiveConfig }
+
+    render(<App />)
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss message' }))
+
+    expect(screen.queryByText('Need help?')).not.toBeInTheDocument()
+    expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
+    expect(sessionStorage.getItem('wpaic_proactive_dismissed')).toBe('true')
+  })
+
+  it('does not show the teaser when dismissed earlier in the session', async () => {
+    window.wpaicConfig = { ...proactiveConfig }
+    sessionStorage.setItem('wpaic_proactive_dismissed', 'true')
 
     render(<App />)
 
@@ -274,18 +316,23 @@ describe('Proactive engagement', () => {
       vi.advanceTimersByTime(10000)
     })
 
-    expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
+    expect(screen.queryByText('Need help?')).not.toBeInTheDocument()
   })
 
-  it('does not auto-open if user interacted before delay', async () => {
-    window.wpaicConfig = {
-      apiUrl: 'http://test.local/wp-json/wpaic/v1',
-      nonce: 'test-nonce',
-      greeting: 'Hello!',
-      proactiveEnabled: true,
-      proactiveDelay: 10,
-      proactiveMessage: 'Need help?',
-    }
+  it('does not show the teaser when proactive is disabled', async () => {
+    window.wpaicConfig = { ...proactiveConfig, proactiveEnabled: false }
+
+    render(<App />)
+
+    await act(async () => {
+      vi.advanceTimersByTime(10000)
+    })
+
+    expect(screen.queryByText('Need help?')).not.toBeInTheDocument()
+  })
+
+  it('does not show the teaser if the user interacted before the delay', async () => {
+    window.wpaicConfig = { ...proactiveConfig, proactiveDelay: 10 }
 
     vi.useRealTimers()
     render(<App />)
@@ -293,18 +340,46 @@ describe('Proactive engagement', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
 
+    expect(screen.queryByText('Need help?')).not.toBeInTheDocument()
     expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
   })
 
-  it('stores shown state in sessionStorage', async () => {
-    window.wpaicConfig = {
-      apiUrl: 'http://test.local/wp-json/wpaic/v1',
-      nonce: 'test-nonce',
-      greeting: 'Hello!',
-      proactiveEnabled: true,
-      proactiveDelay: 5,
-      proactiveMessage: 'Need help?',
-    }
+  it('falls back to the 10s default when the configured delay is empty (no instant teaser)', async () => {
+    // wp_localize_script delivers settings as strings; an empty delay must not
+    // coerce to a 0ms timer.
+    window.wpaicConfig = { ...proactiveConfig, proactiveDelay: '' as unknown as number }
+
+    render(<App />)
+
+    await act(async () => {
+      vi.advanceTimersByTime(9999)
+    })
+    expect(screen.queryByText('Need help?')).not.toBeInTheDocument()
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(screen.getByText('Need help?')).toBeInTheDocument()
+  })
+
+  it('honors a string-valued configured delay', async () => {
+    window.wpaicConfig = { ...proactiveConfig, proactiveDelay: '5' as unknown as number }
+
+    render(<App />)
+
+    await act(async () => {
+      vi.advanceTimersByTime(4999)
+    })
+    expect(screen.queryByText('Need help?')).not.toBeInTheDocument()
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(screen.getByText('Need help?')).toBeInTheDocument()
+  })
+
+  it('falls back to the greeting when no proactive message is configured', async () => {
+    window.wpaicConfig = { ...proactiveConfig, proactiveMessage: undefined }
 
     render(<App />)
 
@@ -312,27 +387,55 @@ describe('Proactive engagement', () => {
       vi.advanceTimersByTime(5000)
     })
 
-    expect(sessionStorage.getItem('wpaic_proactive_shown')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Hello!' })).toBeInTheDocument()
+  })
+})
+
+describe('Unread badge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sessionStorage.clear()
   })
 
-  it('does not auto-open if already shown in session', async () => {
-    window.wpaicConfig = {
-      apiUrl: 'http://test.local/wp-json/wpaic/v1',
-      nonce: 'test-nonce',
-      greeting: 'Hello!',
-      proactiveEnabled: true,
-      proactiveDelay: 5,
-      proactiveMessage: 'Need help?',
-    }
+  it('shows an unread badge when a response completes while the widget is closed', () => {
+    vi.mocked(useChatModule.useChat).mockReturnValue({ ...createMockChat(), isLoading: true })
+    const { rerender } = render(<App />)
 
-    sessionStorage.setItem('wpaic_proactive_shown', 'true')
+    expect(screen.queryByText('1')).not.toBeInTheDocument()
 
-    render(<App />)
+    vi.mocked(useChatModule.useChat).mockReturnValue({ ...createMockChat(), isLoading: false })
+    rerender(<App />)
 
-    await act(async () => {
-      vi.advanceTimersByTime(10000)
-    })
+    expect(screen.getByRole('button', { name: 'Open chat (1 unread message)' })).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+  })
 
-    expect(screen.queryByText('AI Assistant')).not.toBeInTheDocument()
+  it('clears the badge when the chat is opened', async () => {
+    vi.mocked(useChatModule.useChat).mockReturnValue({ ...createMockChat(), isLoading: true })
+    const { rerender } = render(<App />)
+
+    vi.mocked(useChatModule.useChat).mockReturnValue({ ...createMockChat(), isLoading: false })
+    rerender(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open chat (1 unread message)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.getByRole('button', { name: 'Open chat' })).toBeInTheDocument()
+    expect(screen.queryByText('1')).not.toBeInTheDocument()
+  })
+
+  it('does not show a badge when the response completes while the widget is open', async () => {
+    vi.mocked(useChatModule.useChat).mockReturnValue({ ...createMockChat(), isLoading: true })
+    const { rerender } = render(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open chat' }))
+
+    vi.mocked(useChatModule.useChat).mockReturnValue({ ...createMockChat(), isLoading: false })
+    rerender(<App />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.getByRole('button', { name: 'Open chat' })).toBeInTheDocument()
+    expect(screen.queryByText('1')).not.toBeInTheDocument()
   })
 })

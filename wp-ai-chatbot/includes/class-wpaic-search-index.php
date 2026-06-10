@@ -6,15 +6,53 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use TeamTNT\TNTSearch\TNTSearch;
 
+require_once __DIR__ . '/class-wpaic-singular-stemmer.php';
+require_once __DIR__ . '/class-wpaic-query-expander.php';
+
 class WPAIC_Search_Index {
+
+	/**
+	 * Bump whenever index-time tokenization changes (e.g. the singularizing
+	 * stemmer added in version 2): indexes built by an older plugin version
+	 * are detected as stale via the wpaic_index_version option and rebuilt.
+	 */
+	public const INDEX_VERSION = 2;
+
+	/**
+	 * Hard cap on search passes (TNT or LIKE-fallback queries) per filter set
+	 * within one search() call. The expansion can produce a dozen variants;
+	 * without a cap a fully-missing query multiplies into dozens of
+	 * index/database hits. The cap is per filter set (not shared across the
+	 * up-to-three sets) so a miss-heavy expansion under a wrong category
+	 * filter can never starve the parent-category/no-category rescue sets of
+	 * passes; worst case is 3 sets x 4 = 12 passes.
+	 */
+	private const MAX_PASSES_PER_FILTER_SET = 4;
 
 	private ?TNTSearch $tnt = null;
 	private string $index_path;
 	private string $index_name = 'products.index';
+	private WPAIC_Query_Expander $query_expander;
+
+	/**
+	 * Per-request memo of get_product_data() results keyed by product ID:
+	 * relevance filtering re-reads the same candidates on every variant pass.
+	 * Reset at the start of each search().
+	 *
+	 * @var array<int, array<string, mixed>|null>
+	 */
+	private array $product_data_cache = array();
+
+	/** Search passes executed for the filter set currently being searched. */
+	private int $search_pass_count = 0;
+
+	/** Whether the TNT index returned any raw candidate during this search(). */
+	private bool $tnt_returned_candidates = false;
 
 	public function __construct() {
-		$upload_dir       = wp_upload_dir();
-		$this->index_path = $upload_dir['basedir'] . '/wpaic/search/';
+		$upload_dir           = wp_upload_dir();
+		$this->index_path     = $upload_dir['basedir'] . '/wpaic/search/';
+		$this->query_expander = new WPAIC_Query_Expander();
 	}
 
 	public function is_enabled(): bool {
@@ -125,6 +163,20 @@ class WPAIC_Search_Index {
 	}
 
 	/**
+	 * Per-request memoized variant of get_product_data() for the relevance
+	 * filter and title-token gating, which re-read the same products for
+	 * every variant pass of a single search().
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private function get_product_data_cached( int $product_id ): ?array {
+		if ( ! array_key_exists( $product_id, $this->product_data_cache ) ) {
+			$this->product_data_cache[ $product_id ] = $this->get_product_data( $product_id );
+		}
+		return $this->product_data_cache[ $product_id ];
+	}
+
+	/**
 	 * Build/rebuild the full search index.
 	 *
 	 * @return bool True on success.
@@ -145,7 +197,13 @@ class WPAIC_Search_Index {
 
 		$tnt     = $this->get_tnt();
 		$indexer = $tnt->createIndex( $this->index_name );
-		$indexer->setLanguage( 'no' );
+		// Singularize tokens at index time; TNT persists the stemmer class in the
+		// index and applies it to query tokens too, so plural product titles
+		// ("Sports Sneakers") and singular queries ("sneaker") meet on the same
+		// canonical term. Without this, TNT's fuzzy expansion — which only runs
+		// when a query term has NO exact wordlist match — never reaches the
+		// plural form once any product carries the singular one.
+		$indexer->setStemmer( new WPAIC_Singular_Stemmer() );
 
 		$products = $this->get_products_data();
 
@@ -169,6 +227,7 @@ class WPAIC_Search_Index {
 		}
 
 		$this->update_index_meta( count( $products ) );
+		update_option( 'wpaic_index_version', self::INDEX_VERSION );
 
 		return true;
 	}
@@ -180,12 +239,55 @@ class WPAIC_Search_Index {
 		}
 
 		$this->clear_index_meta();
+		delete_option( 'wpaic_index_version' );
 
 		return true;
 	}
 
 	/**
-	 * Search products using fuzzy matching.
+	 * Whether the on-disk index was built by an older plugin version whose
+	 * tokenization rules no longer match INDEX_VERSION (e.g. pre-stemmer
+	 * indexes store plural title tokens the singularizing query path can no
+	 * longer reach).
+	 */
+	public function needs_version_rebuild(): bool {
+		if ( ! $this->is_enabled() ) {
+			return false;
+		}
+		if ( ! file_exists( $this->index_path . $this->index_name ) ) {
+			return false;
+		}
+		return (int) get_option( 'wpaic_index_version', 0 ) !== self::INDEX_VERSION;
+	}
+
+	/**
+	 * Rebuild a version-stale index: asynchronously via a single cron event
+	 * when WP-Cron runs, inline (callers hook this on admin_init) when cron
+	 * is disabled.
+	 */
+	public function maybe_schedule_version_rebuild(): void {
+		if ( ! $this->needs_version_rebuild() ) {
+			return;
+		}
+
+		if ( ! defined( 'DISABLE_WP_CRON' ) || ! DISABLE_WP_CRON ) {
+			if ( ! wp_next_scheduled( 'wpaic_rebuild_product_index' ) ) {
+				wp_schedule_single_event( time(), 'wpaic_rebuild_product_index' );
+			}
+			return;
+		}
+
+		$this->build_index();
+	}
+
+	/**
+	 * Search products using fuzzy matching over the expansion produced by
+	 * WPAIC_Query_Expander: one ordered pass of (variant query, tier) pairs —
+	 * exact/normalized, singularized, phrase-synonym, token-synonym, then
+	 * single-token fallback — merged so earlier tiers rank first, deduped and
+	 * capped at limit. A single keyword miss therefore never reads as "the
+	 * store does not sell this". Filter fallbacks (parent category, then no
+	 * category) re-run the same pass when a filter set yields nothing.
 	 *
 	 * @param string              $query Search query.
 	 * @param array<string,mixed> $filters Optional filters (category, min_price, max_price).
@@ -193,6 +295,123 @@ class WPAIC_Search_Index {
 	 * @return array<int> Array of product IDs.
 	 */
 	public function search( string $query, array $filters = array(), int $limit = 20 ): array {
+		// Per-request state: product-data memo for relevance checks and
+		// whether TNT has produced candidates yet. The pass counter is reset
+		// per filter set inside search_variants().
+		$this->product_data_cache      = array();
+		$this->tnt_returned_candidates = false;
+
+		$variants = $this->query_expander->expand( $query );
+
+		foreach ( $this->filter_fallbacks( $filters ) as $candidate_filters ) {
+			$product_ids = $this->search_variants( $variants, $candidate_filters, $limit );
+			if ( ! empty( $product_ids ) ) {
+				return $product_ids;
+			}
+		}
+
+		return array();
+	}
+
+	/**
+	 * Run the tiered search-and-merge loop for one filter set: variants are
+	 * searched in tier order, results merged first-tier-first and deduped.
+	 * While results are empty every tier acts as a broader retry; once
+	 * results exist only the merge-capable tiers (see should_search_variant)
+	 * still run.
+	 *
+	 * @param array<int, array{query:string, tier:string, source:?string}> $variants
+	 * @param array<string,mixed>                                          $filters
+	 * @return array<int>
+	 */
+	private function search_variants( array $variants, array $filters, int $limit ): array {
+		$merged = array();
+
+		$this->search_pass_count = 0;
+
+		foreach ( $variants as $variant ) {
+			// MAX_PASSES_PER_FILTER_SET caps passes per filter set, so every
+			// filter fallback gets passes — see the constant's doc comment.
+			if ( $this->search_pass_count >= self::MAX_PASSES_PER_FILTER_SET ) {
+				break;
+			}
+			if ( ! $this->should_search_variant( $variant, $merged ) ) {
+				continue;
+			}
+
+			++$this->search_pass_count;
+			foreach ( $this->search_single( $variant['query'], $filters, $limit ) as $product_id ) {
+				if ( ! in_array( $product_id, $merged, true ) ) {
+					$merged[] = $product_id;
+				}
+			}
+		}
+
+		return array_slice( $merged, 0, $limit );
+	}
+
+	/**
+	 * Tier gating for the merge loop. While results are empty, every tier is
+	 * a broader zero-result retry. Once results exist:
+	 * - phrase synonyms always merge ("running shoes" always has SOME title
+	 *   match like heels, which must not stop sneakers from surfacing);
+	 * - token synonyms merge only when the substituted token has no
+	 *   result-title match (e.g. "shoos" fuzzy-matched heels via their
+	 *   description but no result names a shoe), and multi-word sources
+	 *   ("t shirt") only ever broaden zero-result searches;
+	 * - exact/singular/single-token tiers never merge into existing results.
+	 *
+	 * @param array{query:string, tier:string, source:?string} $variant
+	 * @param array<int>                                       $merged
+	 */
+	private function should_search_variant( array $variant, array $merged ): bool {
+		if ( empty( $merged ) ) {
+			return true;
+		}
+		if ( WPAIC_Query_Expander::TIER_PHRASE_SYNONYM === $variant['tier'] ) {
+			return true;
+		}
+		if ( WPAIC_Query_Expander::TIER_TOKEN_SYNONYM === $variant['tier'] ) {
+			$source = $variant['source'];
+			if ( ! is_string( $source ) || str_contains( $source, ' ' ) ) {
+				return false;
+			}
+			return ! $this->token_in_result_titles( $merged, $source );
+		}
+		return false;
+	}
+
+	/**
+	 * Whether the (singular) token appears in any result product title.
+	 * tokenize_haystack() indexes both raw and singularized title words, so a
+	 * singular token also matches plural-titled products.
+	 *
+	 * @param array<int> $product_ids
+	 */
+	private function token_in_result_titles( array $product_ids, string $token ): bool {
+		foreach ( $product_ids as $product_id ) {
+			$data = $this->get_product_data_cached( (int) $product_id );
+			if ( null === $data ) {
+				continue;
+			}
+			$title_tokens = $this->tokenize_haystack( (string) $data['title'] );
+			if ( isset( $title_tokens[ $token ] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Run one search pass (TNT index when available, WP_Query fallback otherwise)
+	 * for an exact query and filter set, with relevance filtering.
+	 *
+	 * @param string              $query Search query.
+	 * @param array<string,mixed> $filters Optional filters (category, min_price, max_price).
+	 * @param int                 $limit Max results.
+	 * @return array<int> Array of product IDs.
+	 */
+	private function search_single( string $query, array $filters, int $limit ): array {
 		$index_file = $this->index_path . $this->index_name;
 
 		if ( ! file_exists( $index_file ) ) {
@@ -208,7 +427,14 @@ class WPAIC_Search_Index {
 		$results     = $tnt->search( $query, $limit * 4 );
 		$product_ids = isset( $results['ids'] ) && is_array( $results['ids'] ) ? array_map( 'intval', $results['ids'] ) : array();
 
-		if ( empty( $product_ids ) ) {
+		if ( ! empty( $product_ids ) ) {
+			$this->tnt_returned_candidates = true;
+		} elseif ( ! $this->tnt_returned_candidates ) {
+			// The index exists but has not produced a single candidate this
+			// request (possibly empty or stale), so allow the LIKE fallback.
+			// Once TNT has returned candidates the index is authoritative:
+			// re-querying via WP_Query LIKE on every empty variant pass would
+			// only multiply slow queries.
 			$product_ids = $this->fallback_search( $query, $filters, $limit * 2 );
 		}
 
@@ -219,6 +445,53 @@ class WPAIC_Search_Index {
 		$product_ids = $this->filter_by_relevance( $product_ids, $query );
 
 		return array_slice( $product_ids, 0, $limit );
+	}
+
+	/**
+	 * Filter sets to try in order: as given; with the category swapped for its
+	 * parent (when one exists); with no category at all so close matches from
+	 * sibling categories still surface. Price filters are always preserved.
+	 *
+	 * @param array<string,mixed> $filters
+	 * @return array<int, array<string,mixed>>
+	 */
+	private function filter_fallbacks( array $filters ): array {
+		$fallbacks = array( $filters );
+
+		if ( empty( $filters['category'] ) || ! is_string( $filters['category'] ) ) {
+			return $fallbacks;
+		}
+
+		$parent_slug = $this->get_parent_category_slug( $filters['category'] );
+		if ( null !== $parent_slug && $parent_slug !== $filters['category'] ) {
+			$parent_filters             = $filters;
+			$parent_filters['category'] = $parent_slug;
+			$fallbacks[]                = $parent_filters;
+		}
+
+		$no_category_filters = $filters;
+		unset( $no_category_filters['category'] );
+		$fallbacks[] = $no_category_filters;
+
+		return $fallbacks;
+	}
+
+	private function get_parent_category_slug( string $slug ): ?string {
+		if ( ! function_exists( 'get_term_by' ) || ! function_exists( 'get_term' ) ) {
+			return null;
+		}
+
+		$term = get_term_by( 'slug', $slug, 'product_cat' );
+		if ( ! $term instanceof WP_Term || empty( $term->parent ) ) {
+			return null;
+		}
+
+		$parent = get_term( (int) $term->parent, 'product_cat' );
+		if ( ! $parent instanceof WP_Term || '' === $parent->slug ) {
+			return null;
+		}
+
+		return $parent->slug;
 	}
 
 	/**
@@ -239,7 +512,7 @@ class WPAIC_Search_Index {
 			return array();
 		}
 
-		$tokens = $this->significant_query_tokens( $query );
+		$tokens = $this->query_expander->significant_query_tokens( $query );
 		if ( empty( $tokens ) ) {
 			return $product_ids;
 		}
@@ -248,7 +521,7 @@ class WPAIC_Search_Index {
 		$weak_matches   = array();
 
 		foreach ( $product_ids as $product_id ) {
-			$data = $this->get_product_data( (int) $product_id );
+			$data = $this->get_product_data_cached( (int) $product_id );
 			if ( null === $data ) {
 				continue;
 			}
@@ -293,11 +566,13 @@ class WPAIC_Search_Index {
 		$matched_strong = 0;
 		$matched_any    = 0;
 		foreach ( $tokens as $token ) {
-			$in_strong = isset( $strong_tokens[ $token ] );
+			$singular  = $this->singularize_token( $token );
+			$in_strong = isset( $strong_tokens[ $token ] ) || isset( $strong_tokens[ $singular ] );
+			$in_weak   = isset( $weak_tokens[ $token ] ) || isset( $weak_tokens[ $singular ] );
 			if ( $in_strong ) {
 				++$matched_strong;
 			}
-			if ( $in_strong || isset( $weak_tokens[ $token ] ) ) {
+			if ( $in_strong || $in_weak ) {
 				++$matched_any;
 			}
 		}
@@ -309,7 +584,9 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Normalize text to a set of lowercased alphanumeric tokens.
+	 * Normalize text to a set of lowercased alphanumeric tokens, including each
+	 * token's singular form so plural queries match singular product fields
+	 * ("t-shirts" matches "V-Neck T-Shirt") and vice versa.
 	 * Mirrors the normalization used by significant_query_tokens().
 	 *
 	 * @return array<string,int> token => 1 map for O(1) lookups.
@@ -319,48 +596,25 @@ class WPAIC_Search_Index {
 		if ( ! is_string( $normalized ) ) {
 			return array();
 		}
-		return array_flip( preg_split( '/\s+/', trim( $normalized ) ) ?: array() );
-	}
-
-	/**
-	 * Extract lowercased query tokens worth filtering against. Drops short
-	 * fragments and generic stopwords that would otherwise reject relevant
-	 * products.
-	 *
-	 * @return array<string>
-	 */
-	private function significant_query_tokens( string $query ): array {
-		$normalized = strtolower( $query );
-		$normalized = preg_replace( '/[^a-z0-9]+/', ' ', $normalized );
-		if ( ! is_string( $normalized ) ) {
-			return array();
-		}
-
-		$stopwords = array(
-			'a', 'an', 'the', 'and', 'or', 'but', 'of', 'for', 'with', 'to', 'in', 'on',
-			'at', 'by', 'is', 'are', 'be', 'this', 'that', 'these', 'those', 'i', 'me',
-			'my', 'we', 'our', 'you', 'your', 'show', 'find', 'list', 'give', 'me',
-			'some', 'any', 'please', 'looking', 'need', 'want', 'have', 'has', 'do',
-			'does', 'can', 'could', 'would', 'should', 'product', 'products', 'item',
-			'items', 'price', 'prices', 'picture', 'pictures', 'image', 'images',
-			'actual', 'really', 'real',
-		);
 
 		$tokens = array();
 		foreach ( preg_split( '/\s+/', trim( $normalized ) ) ?: array() as $token ) {
 			if ( '' === $token ) {
 				continue;
 			}
-			if ( strlen( $token ) < 3 ) {
-				continue;
-			}
-			if ( in_array( $token, $stopwords, true ) ) {
-				continue;
-			}
-			$tokens[ $token ] = true;
+			$tokens[ $token ]                             = 1;
+			$tokens[ $this->singularize_token( $token ) ] = 1;
 		}
+		return $tokens;
+	}
 
-		return array_keys( $tokens );
+	/**
+	 * Reduce a simple English plural to its singular form ("shirts" → "shirt",
+	 * "watches" → "watch", "accessories" → "accessory"). Delegates to the TNT
+	 * stemmer so query/haystack tokenization and the index share one rule set.
+	 */
+	private function singularize_token( string $token ): string {
+		return WPAIC_Singular_Stemmer::stem( $token );
 	}
 
 	/**

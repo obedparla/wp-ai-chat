@@ -5,13 +5,15 @@ import type { ClearCartItem, Message } from './useChat'
 vi.mock('../lib/cart', () => ({
   requestClearCart: vi.fn(),
   applyCartUpdate: vi.fn(),
+  reportCartCancelled: vi.fn(),
 }))
 
-import { requestClearCart, applyCartUpdate } from '../lib/cart'
+import { requestClearCart, applyCartUpdate, reportCartCancelled } from '../lib/cart'
 import { useClearCart } from './useClearCart'
 
 const mockRequest = requestClearCart as ReturnType<typeof vi.fn>
 const mockApply = applyCartUpdate as ReturnType<typeof vi.fn>
+const mockReportCancelled = reportCartCancelled as ReturnType<typeof vi.fn>
 
 function messageWithIntent(
   toolCallId: string,
@@ -89,6 +91,22 @@ describe('useClearCart', () => {
     expect(result.current.statuses['cc-3']).toBe('cancelled')
     expect(result.current.pending).toBeNull()
     expect(mockRequest).not.toHaveBeenCalled()
+  })
+
+  it('reports the cancelled outcome so the transcript records it', () => {
+    const { result } = renderHook(() => useClearCart([messageWithIntent('cc-8', true)]))
+
+    act(() => result.current.cancel())
+
+    expect(mockReportCancelled).toHaveBeenCalledWith('clear', 'https://shop.test/admin-ajax.php')
+  })
+
+  it('reports a remove cancellation for item-specific intents', () => {
+    const { result } = renderHook(() => useClearCart([messageWithIntent('cc-9', false)]))
+
+    act(() => result.current.cancel())
+
+    expect(mockReportCancelled).toHaveBeenCalledWith('remove', 'https://shop.test/admin-ajax.php')
   })
 
   it('does not re-open an already handled intent after reload', () => {
