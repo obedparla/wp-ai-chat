@@ -291,6 +291,33 @@ describe('useChat', () => {
     expect(result.current.messages[1].isError).toBe(true)
   })
 
+  it('appends a synthetic error message when the request fails before any reply', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Hi' }],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'error',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: new Error('Network Error'),
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages).toHaveLength(2)
+    expect(result.current.messages[1]).toMatchObject({
+      role: 'assistant',
+      content: 'Sorry, something went wrong. Please try again.',
+      isError: true,
+      id: 'wpaic-error-retry',
+    })
+  })
+
   it('showProactiveGreeting swaps in the proactive message for an idle chat', () => {
     window.wpaicConfig = {
       apiUrl: '/wp-json/wpaic/v1',

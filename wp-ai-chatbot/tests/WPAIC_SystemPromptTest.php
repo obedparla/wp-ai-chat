@@ -31,18 +31,29 @@ class WPAIC_SystemPromptTest extends TestCase {
 	}
 
 	/**
+	 * The fixture stores one rule per line so a deliberate rule edit diffs as a
+	 * single changed line. The assembled instruction is the rules joined with
+	 * single spaces behind a leading space, mirroring
+	 * get_tool_response_instruction() (rules are single-line constants — the
+	 * no-outer-whitespace test below keeps the join lossless).
+	 */
+	private function load_fixture(): string {
+		$rules = file( __DIR__ . '/fixtures/tool-response-instruction.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES );
+
+		return ' ' . implode( ' ', $rules );
+	}
+
+	/**
 	 * Characterization test: the tool-response instruction was captured to the
 	 * fixture before being split into per-rule constants, and the live-verified
 	 * prompt must stay byte-identical. The fixture holds the promotions-enabled
 	 * variant (get_active_promotions was unconditional at capture time). When a
-	 * rule is deliberately edited, regenerate the fixture from
-	 * get_tool_response_instruction() output.
+	 * rule is deliberately edited, regenerate the fixture by writing the joined
+	 * rule constants one per line, in get_tool_response_instruction() order.
 	 */
 	public function test_tool_response_instruction_matches_captured_fixture_when_promotions_enabled(): void {
-		$fixture = file_get_contents( __DIR__ . '/fixtures/tool-response-instruction.txt' );
-
 		$this->assertSame(
-			$fixture,
+			$this->load_fixture(),
 			$this->invoke_private( array( 'promotions_enabled' => true ), 'get_tool_response_instruction' )
 		);
 	}
@@ -52,7 +63,7 @@ class WPAIC_SystemPromptTest extends TestCase {
 	 * the captured fixture — every other rule must stay byte-identical.
 	 */
 	public function test_tool_response_instruction_swaps_only_discounts_rule_when_promotions_disabled(): void {
-		$fixture  = file_get_contents( __DIR__ . '/fixtures/tool-response-instruction.txt' );
+		$fixture  = $this->load_fixture();
 		$expected = str_replace(
 			$this->get_rule_constant( 'RULE_DISCOUNTS_PROMOTIONS' ),
 			$this->get_rule_constant( 'RULE_DISCOUNTS_PROMOTIONS_DISABLED' ),

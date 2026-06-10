@@ -66,6 +66,22 @@ function formatDayLabel(timestamp: number): string {
   return date.toLocaleDateString([], { weekday: 'long' }).toUpperCase()
 }
 
+function RetryButton({ onRetry, className }: { onRetry?: () => void; className?: string }) {
+  return (
+    <button
+      className={cn(
+        'inline-flex items-center justify-center w-7 h-7 p-0 bg-red-50 border border-red-200 rounded-full text-red-600 text-sm cursor-pointer transition-all duration-200 hover:bg-red-600 hover:border-red-600 hover:text-white hover:rotate-180',
+        className
+      )}
+      onClick={onRetry}
+      aria-label="Retry"
+      title="Retry"
+    >
+      ↻
+    </button>
+  )
+}
+
 function shouldShowSeparator(current: Message, previous: Message | undefined): boolean {
   if (!current.createdAt) return false
   if (!previous) return true
@@ -188,16 +204,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
                 <div className="prose prose-sm prose-slate max-w-none prose-p:my-2 prose-p:last:mb-0 prose-a:text-[var(--wpaic-primary)] prose-a:no-underline hover:prose-a:underline">
                   <MarkdownContent content={msg.content} />
                 </div>
-                {showRetry && !hasToolUI && (
-                  <button
-                    className="inline-flex items-center justify-center ml-2.5 w-7 h-7 p-0 bg-red-50 border border-red-200 rounded-full text-red-600 text-sm cursor-pointer transition-all duration-200 align-middle hover:bg-red-600 hover:border-red-600 hover:text-white hover:rotate-180"
-                    onClick={onRetry}
-                    aria-label="Retry"
-                    title="Retry"
-                  >
-                    ↻
-                  </button>
-                )}
+                {showRetry && !hasToolUI && <RetryButton onRetry={onRetry} className="ml-2.5 align-middle" />}
               </div>
             )}
             {hasProducts && (
@@ -229,16 +236,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
                 ))}
               </div>
             )}
-            {showRetry && hasToolUI && (
-              <button
-                className="inline-flex items-center justify-center w-7 h-7 p-0 bg-red-50 border border-red-200 rounded-full text-red-600 text-sm cursor-pointer transition-all duration-200 self-start -mt-2 hover:bg-red-600 hover:border-red-600 hover:text-white hover:rotate-180"
-                onClick={onRetry}
-                aria-label="Retry"
-                title="Retry"
-              >
-                ↻
-              </button>
-            )}
+            {showRetry && hasToolUI && <RetryButton onRetry={onRetry} className="self-start -mt-2" />}
           </Fragment>
         )
       })}

@@ -110,24 +110,15 @@ export default function ChatWidget({
   const showConversationStarters =
     !isLoading && conversationStarters.length > 0 && isGreetingOnly
 
+  // Escape closes the widget. Open dialogs are not special-cased here: every
+  // dialog renders through DialogShell, whose capture-phase document listener
+  // consumes Escape (stopPropagation) before this bubble listener runs.
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (showTranscriptDialog) {
-        setShowTranscriptDialog(false)
-        return
-      }
-      if (showNewConversationDialog) {
-        setShowNewConversationDialog(false)
-        return
-      }
-      if (clearCart.pending) {
-        clearCart.cancel()
-        return
-      }
       onClose()
     },
-    [onClose, showTranscriptDialog, showNewConversationDialog, clearCart]
+    [onClose]
   )
 
   useEffect(() => {

@@ -122,8 +122,8 @@ export default function ProductGrid({ products }: ProductGridProps) {
             SWIPE →
           </span>
           <div className="flex items-center gap-1.5 [@media(hover:none)]:hidden">
-            <CarouselPrevious className="static size-7 translate-y-0" />
-            <CarouselNext className="static size-7 translate-y-0" />
+            <CarouselPrevious />
+            <CarouselNext />
           </div>
         </div>
         <CarouselContent className="-ml-3 max-[480px]:-ml-2">
