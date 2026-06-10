@@ -7,10 +7,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 class WPAIC_Admin {
 	private WPAIC_Logs $logs;
 	private WPAIC_License_Manager $license_manager;
+	private WPAIC_Transcript_Renderer $transcript_renderer;
 
 	public function __construct( ?WPAIC_License_Manager $license_manager = null ) {
-		$this->logs = new WPAIC_Logs();
-		$this->license_manager = $license_manager ?? new WPAIC_License_Manager();
+		$this->logs                = new WPAIC_Logs();
+		$this->license_manager     = $license_manager ?? new WPAIC_License_Manager();
+		$this->transcript_renderer = new WPAIC_Transcript_Renderer( $this->logs );
 	}
 
 	public function init(): void {
@@ -96,6 +98,19 @@ class WPAIC_Admin {
 				'});' .
 			'});'
 		);
+
+		wp_enqueue_script(
+			'wpaic-admin',
+			WPAIC_PLUGIN_URL . 'assets/admin.js',
+			array( 'jquery' ),
+			WPAIC_VERSION,
+			true
+		);
+		wp_localize_script( 'wpaic-admin', 'wpaicAdmin', array(
+			'adminNonce'                => wp_create_nonce( 'wpaic_admin' ),
+			'onboardingNonce'           => wp_create_nonce( 'wpaic_onboarding' ),
+			'deleteConversationConfirm' => __( 'Are you sure you want to delete this conversation?', 'wp-ai-chatbot' ),
+		) );
 
 		$manifest_path = WPAIC_PLUGIN_DIR . 'frontend/dist/.vite/manifest.json';
 		if ( file_exists( $manifest_path ) ) {
@@ -252,7 +267,7 @@ class WPAIC_Admin {
 			'general'    => array( 'enabled', 'greeting_message', 'language', 'tone_of_voice', 'system_prompt', 'retention_days', 'anonymize_ip' ),
 			'api'        => array( 'provider_url_override' ),
 			'appearance' => array( 'chatbot_name', 'chatbot_logo', 'chatbot_role', 'theme_color' ),
-			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages', 'conversation_starters' ),
+			'engagement' => array( 'handoff_enabled', 'handoff_fields', 'promotions_enabled', 'proactive_enabled', 'proactive_delay', 'proactive_message', 'proactive_pages', 'conversation_starters' ),
 			'search'     => array( 'product_index_enabled', 'content_index_post_types' ),
 		);
 
@@ -293,6 +308,10 @@ class WPAIC_Admin {
 		$sanitized['chatbot_role'] = sanitize_text_field( $merged['chatbot_role'] ?? '' );
 
 		$sanitized['handoff_enabled'] = ! empty( $merged['handoff_enabled'] );
+
+		// Off by default: published coupons can include private codes (support
+		// credits, partner codes) the merchant never meant to advertise.
+		$sanitized['promotions_enabled'] = ! empty( $merged['promotions_enabled'] );
 
 		$valid_handoff_fields         = array( 'phone_number', 'company', 'order_number', 'request_message' );
 		$raw_handoff_fields           = $merged['handoff_fields'] ?? array();
@@ -527,35 +546,6 @@ class WPAIC_Admin {
 						</div>
 					</div>
 				</form>
-
-				<script>
-				jQuery(document).ready(function($) {
-					// Unsaved-changes guard: tab links are full page loads, so edits
-					// were silently lost on navigation before this prompt existed.
-					var $form = $('.wpaic-admin-wrap form[action="options.php"]');
-					if (!$form.length) return;
-					// Value-based dirty tracking: compare against a snapshot of the
-					// saved values so reverting an edit clears the dirty state.
-					// serialize() covers text/hidden/textarea/select values and
-					// checkbox presence, so toggles and reverts both register.
-					var savedSnapshot = $form.serialize();
-					var hasUnsavedChanges = false;
-					$form.on('input change', ':input', function() {
-						hasUnsavedChanges = $form.serialize() !== savedSnapshot;
-						$('#wpaic-unsaved-indicator').toggleClass('hidden', !hasUnsavedChanges);
-					});
-					$form.on('submit', function() {
-						savedSnapshot = $form.serialize();
-						hasUnsavedChanges = false;
-						$('#wpaic-unsaved-indicator').addClass('hidden');
-					});
-					window.addEventListener('beforeunload', function(event) {
-						if (!hasUnsavedChanges) return;
-						event.preventDefault();
-						event.returnValue = '';
-					});
-				});
-				</script>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -579,9 +569,9 @@ class WPAIC_Admin {
 		$faqs_table    = $wpdb->prefix . 'wpaic_faqs';
 		$sources_table = $wpdb->prefix . 'wpaic_data_sources';
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$faq_count = count( (array) $wpdb->get_results( "SELECT id FROM $faqs_table" ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$faq_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $faqs_table" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$source_count = count( (array) $wpdb->get_results( "SELECT id FROM $sources_table" ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$source_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $sources_table" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$search_index   = new WPAIC_Search_Index();
 		$content_index  = new WPAIC_Content_Index();
@@ -698,24 +688,6 @@ class WPAIC_Admin {
 				<?php endforeach; ?>
 			</div>
 		</div>
-
-		<script>
-		jQuery(document).ready(function($) {
-			var onboardingNonce = '<?php echo esc_js( wp_create_nonce( 'wpaic_onboarding' ) ); ?>';
-			$('#wpaic-onboarding-dismiss').on('click', function() {
-				$.post(ajaxurl, { action: 'wpaic_update_onboarding', dismissed: 1, _wpnonce: onboardingNonce });
-				$('#wpaic-onboarding').slideUp(150);
-			});
-			$('#wpaic-onboarding-try-it').on('click', function() {
-				$.post(ajaxurl, { action: 'wpaic_update_onboarding', step: 'try_it', _wpnonce: onboardingNonce });
-				var $row = $(this).closest('[data-onboarding-step]');
-				$row.attr('data-onboarding-done', '1');
-				$row.find('.w-\\[22px\\]')
-					.removeClass('bg-canvas text-muted border border-line-2').addClass('bg-success text-white')
-					.html('<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>');
-			});
-		});
-		</script>
 		<?php
 	}
 
@@ -1149,6 +1121,7 @@ class WPAIC_Admin {
 		$proactive_message = $settings['proactive_message'] ?? '';
 		$proactive_pages   = $settings['proactive_pages'] ?? 'all';
 		$handoff_enabled   = ! empty( $settings['handoff_enabled'] );
+		$promotions_enabled = ! empty( $settings['promotions_enabled'] );
 		$handoff_fields    = $settings['handoff_fields'] ?? array();
 		$conversation_starters = $settings['conversation_starters'] ?? array();
 		if ( ! is_array( $handoff_fields ) ) {
@@ -1253,6 +1226,26 @@ class WPAIC_Admin {
 								</label>
 							<?php endforeach; ?>
 						</div>
+					</div>
+				</div>
+
+				<div class="wpaic-card">
+					<div class="wpaic-card-header">
+						<div>
+							<h3 class="text-[15px] font-semibold"><?php esc_html_e( 'Coupons & promotions', 'wp-ai-chatbot' ); ?></h3>
+							<p class="text-muted text-[13px] mt-0.5"><?php esc_html_e( 'Let the assistant share your active coupon codes with shoppers.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+					</div>
+					<div class="wpaic-card-row">
+						<div class="max-w-[60%]">
+							<h4 class="text-sm font-semibold mb-1"><?php esc_html_e( 'Advertise coupons in chat', 'wp-ai-chatbot' ); ?></h4>
+							<p class="text-muted m-0 text-[13px]"><?php esc_html_e( 'When enabled, the assistant can list every published, non-expired coupon when shoppers ask about discounts. Leave off if you have private codes (e.g. support credits or partner codes) — the assistant will say it has no promotion info instead.', 'wp-ai-chatbot' ); ?></p>
+						</div>
+						<label class="wpaic-toggle">
+							<input type="hidden" name="wpaic_settings[promotions_enabled]" value="0">
+							<input type="checkbox" name="wpaic_settings[promotions_enabled]" value="1" <?php checked( $promotions_enabled ); ?>>
+							<span class="wpaic-toggle-track"><span class="wpaic-toggle-thumb"></span></span>
+						</label>
 					</div>
 				</div>
 
@@ -1967,80 +1960,6 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 				.wpaic-message-content a { color: inherit; text-decoration: underline; }
 				.wpaic-event-chip { display: block; width: fit-content; margin: 0 auto 10px; padding: 3px 10px; border-radius: 999px; background: #f0f0f1; color: #646970; font-size: 11px; line-height: 1.4; }
 			</style>
-
-			<script>
-			jQuery(document).ready(function($) {
-				$('.wpaic-view-conversation').on('click', function() {
-					var id = $(this).data('id');
-					$('#wpaic-conversation-modal').show();
-					$('#wpaic-conversation-modal .wpaic-modal-body').html('<p>Loading...</p>');
-
-					$.ajax({
-						url: ajaxurl,
-						type: 'POST',
-						data: {
-							action: 'wpaic_get_conversation',
-							conversation_id: id,
-							_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_admin' ) ); ?>'
-						},
-						success: function(response) {
-							if (response.success) {
-								var html = '';
-								response.data.forEach(function(item) {
-									if (item.type === 'event') {
-										html += '<div class="wpaic-event-chip">' + $('<div>').text(item.label).html() + '</div>';
-										return;
-									}
-									html += '<div class="wpaic-message wpaic-message-' + item.role + '">';
-									html += '<div class="wpaic-message-role">' + item.role + '</div>';
-									// content_html is server-rendered, escaped markdown (assistant replies).
-									if (item.content_html) {
-										html += '<div class="wpaic-message-content">' + item.content_html + '</div>';
-									} else {
-										html += '<div class="wpaic-message-content">' + $('<div>').text(item.content).html().replace(/\n/g, '<br>') + '</div>';
-									}
-									html += '<div class="wpaic-message-time">' + item.created_at + '</div>';
-									html += '</div>';
-								});
-								$('#wpaic-conversation-modal .wpaic-modal-body').html(html || '<p>No messages.</p>');
-							} else {
-								$('#wpaic-conversation-modal .wpaic-modal-body').html('<p>Error loading conversation.</p>');
-							}
-						}
-					});
-				});
-
-				$('.wpaic-delete-conversation').on('click', function() {
-					if (!confirm('<?php echo esc_js( __( 'Are you sure you want to delete this conversation?', 'wp-ai-chatbot' ) ); ?>')) {
-						return;
-					}
-
-					var $btn = $(this);
-					var id = $btn.data('id');
-
-					$.ajax({
-						url: ajaxurl,
-						type: 'POST',
-						data: {
-							action: 'wpaic_delete_conversation',
-							conversation_id: id,
-							_wpnonce: '<?php echo esc_js( wp_create_nonce( 'wpaic_admin' ) ); ?>'
-						},
-						success: function(response) {
-							if (response.success) {
-								$btn.closest('tr').fadeOut(function() { $(this).remove(); });
-							} else {
-								alert('Error deleting conversation.');
-							}
-						}
-					});
-				});
-
-				$('.wpaic-modal-close, .wpaic-modal-backdrop').on('click', function() {
-					$('#wpaic-conversation-modal').hide();
-				});
-			});
-			</script>
 		</div>
 		<?php
 	}
@@ -2057,167 +1976,7 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 			wp_send_json_error();
 		}
 
-		wp_send_json_success( $this->get_transcript_items( $conversation_id ) );
-	}
-
-	/**
-	 * Messages and tool-event chips for a conversation, merged chronologically
-	 * and ready for JSON. Message items carry type=message/role/content; event
-	 * items carry type=event/label.
-	 *
-	 * @return array<int, array<string, string>>
-	 */
-	private function get_transcript_items( int $conversation_id ): array {
-		$datetime_format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
-
-		$items = array();
-		foreach ( $this->logs->get_conversation_messages( $conversation_id ) as $msg ) {
-			$item = array(
-				'type'       => 'message',
-				'role'       => $msg->role,
-				'content'    => $msg->content,
-				'created_at' => wp_date( $datetime_format, strtotime( $msg->created_at ) ),
-				'sort_time'  => $msg->created_at,
-			);
-			// Assistant replies are markdown; render server-side so the modal
-			// shows formatting instead of raw asterisks. User text stays plain.
-			if ( 'assistant' === $msg->role ) {
-				$item['content_html'] = self::render_markdown_lite( (string) $msg->content );
-			}
-			$items[] = $item;
-		}
-
-		foreach ( WPAIC_Events::get_for_conversation( $conversation_id ) as $event ) {
-			$items[] = array(
-				'type'       => 'event',
-				'label'      => WPAIC_Events::describe( $event->event_type, $event->event_data ),
-				'created_at' => wp_date( $datetime_format, strtotime( $event->created_at ) ),
-				'sort_time'  => $event->created_at,
-			);
-		}
-
-		// Same-second ties follow the write order of a request cycle:
-		// user message first, tool events during the stream, assistant reply last.
-		$type_order = static function ( array $item ): int {
-			if ( 'event' === $item['type'] ) {
-				return 1;
-			}
-			return 'user' === ( $item['role'] ?? '' ) ? 0 : 2;
-		};
-
-		usort(
-			$items,
-			static function ( array $a, array $b ) use ( $type_order ): int {
-				$time_comparison = strcmp( $a['sort_time'], $b['sort_time'] );
-				if ( 0 !== $time_comparison ) {
-					return $time_comparison;
-				}
-				return $type_order( $a ) <=> $type_order( $b );
-			}
-		);
-
-		foreach ( $items as &$item ) {
-			unset( $item['sort_time'] );
-		}
-		unset( $item );
-
-		return $items;
-	}
-
-	/**
-	 * Minimal markdown-to-HTML for admin transcript display: bold, italic,
-	 * inline code, links, bullet/numbered lists, and headings (rendered bold).
-	 * All input is HTML-escaped first, so the output only contains the tags
-	 * generated here.
-	 */
-	public static function render_markdown_lite( string $text ): string {
-		$lines = explode( "\n", str_replace( array( "\r\n", "\r" ), "\n", $text ) );
-
-		// Tokenize each line, then emit grouping consecutive same-type segments.
-		$segments = array();
-		foreach ( $lines as $line ) {
-			$trimmed = trim( $line );
-
-			if ( '' === $trimmed ) {
-				$segments[] = array(
-					'type' => 'break',
-					'html' => '',
-				);
-			} elseif ( preg_match( '/^[-*]\s+(.*)$/', $trimmed, $matches ) ) {
-				$segments[] = array(
-					'type' => 'ul',
-					'html' => '<li>' . self::render_inline_markdown( $matches[1] ) . '</li>',
-				);
-			} elseif ( preg_match( '/^\d+[.)]\s+(.*)$/', $trimmed, $matches ) ) {
-				$segments[] = array(
-					'type' => 'ol',
-					'html' => '<li>' . self::render_inline_markdown( $matches[1] ) . '</li>',
-				);
-			} elseif ( preg_match( '/^#{1,6}\s+(.*)$/', $trimmed, $matches ) ) {
-				$segments[] = array(
-					'type' => 'heading',
-					'html' => '<p><strong>' . self::render_inline_markdown( $matches[1] ) . '</strong></p>',
-				);
-			} else {
-				$segments[] = array(
-					'type' => 'text',
-					'html' => self::render_inline_markdown( $trimmed ),
-				);
-			}
-		}
-
-		$html          = '';
-		$segment_count = count( $segments );
-		$index         = 0;
-		while ( $index < $segment_count ) {
-			$type = $segments[ $index ]['type'];
-
-			if ( 'break' === $type ) {
-				++$index;
-				continue;
-			}
-
-			if ( 'heading' === $type ) {
-				$html .= $segments[ $index ]['html'];
-				++$index;
-				continue;
-			}
-
-			$run = array();
-			while ( $index < $segment_count && $segments[ $index ]['type'] === $type ) {
-				$run[] = $segments[ $index ]['html'];
-				++$index;
-			}
-
-			if ( 'text' === $type ) {
-				$html .= '<p>' . implode( '<br>', $run ) . '</p>';
-			} else {
-				$html .= '<' . $type . '>' . implode( '', $run ) . '</' . $type . '>';
-			}
-		}
-
-		return $html;
-	}
-
-	/**
-	 * Inline markdown spans (code, bold, italic, links) on a single line.
-	 * Escapes the line first; replacements only introduce tags built here.
-	 */
-	private static function render_inline_markdown( string $text ): string {
-		$escaped = esc_html( $text );
-
-		$escaped = (string) preg_replace( '/`([^`]+)`/', '<code>$1</code>', $escaped );
-		$escaped = (string) preg_replace( '/\*\*([^*]+)\*\*/', '<strong>$1</strong>', $escaped );
-		$escaped = (string) preg_replace( '/(?<!\*)\*([^*]+)\*(?!\*)/', '<em>$1</em>', $escaped );
-		$escaped = (string) preg_replace_callback(
-			'/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/',
-			static function ( array $matches ): string {
-				return '<a href="' . esc_url( $matches[2] ) . '" target="_blank" rel="noopener">' . $matches[1] . '</a>';
-			},
-			$escaped
-		);
-
-		return $escaped;
+		wp_send_json_success( $this->transcript_renderer->get_transcript_items( $conversation_id ) );
 	}
 
 	public function ajax_delete_conversation(): void {
@@ -2588,7 +2347,7 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 				$data['extra_fields'] = json_decode( $request->extra_fields, true );
 			}
 			if ( ! empty( $request->conversation_id ) ) {
-				$conversation_items = $this->get_transcript_items( (int) $request->conversation_id );
+				$conversation_items = $this->transcript_renderer->get_transcript_items( (int) $request->conversation_id );
 				if ( ! empty( $conversation_items ) ) {
 					$data['conversation'] = $conversation_items;
 				}

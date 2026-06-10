@@ -356,32 +356,33 @@ class WPAICTestHelper {
 		}
 
 		if ( ! empty( $query_args['meta_query'] ) && is_array( $query_args['meta_query'] ) ) {
-			foreach ( $query_args['meta_query'] as $meta_query ) {
-				if ( ! is_array( $meta_query ) || ! isset( $meta_query['key'] ) ) {
-					continue;
-				}
-				$key     = $meta_query['key'];
-				$value   = $meta_query['value'] ?? null;
-				$compare = $meta_query['compare'] ?? '=';
+			$relation = strtoupper( (string) ( $query_args['meta_query']['relation'] ?? 'AND' ) );
+			$clauses  = array_values(
+				array_filter(
+					$query_args['meta_query'],
+					fn( $clause ) => is_array( $clause ) && isset( $clause['key'] )
+				)
+			);
 
+			if ( 'OR' === $relation && count( $clauses ) > 0 ) {
 				$posts = array_filter(
 					$posts,
-					function ( $p ) use ( $key, $value, $compare ) {
-						$meta_value = self::get_post_meta( $p->ID, $key, true );
-						$meta_float = is_numeric( $meta_value ) ? (float) $meta_value : 0;
-						$cmp_float  = is_numeric( $value ) ? (float) $value : 0;
-
-						return match ( $compare ) {
-							'>='    => $meta_float >= $cmp_float,
-							'<='    => $meta_float <= $cmp_float,
-							'>'     => $meta_float > $cmp_float,
-							'<'     => $meta_float < $cmp_float,
-							'='     => $meta_value == $value,
-							'!='    => $meta_value != $value,
-							default => true,
-						};
+					function ( $p ) use ( $clauses ) {
+						foreach ( $clauses as $clause ) {
+							if ( self::meta_clause_matches( $p, $clause ) ) {
+								return true;
+							}
+						}
+						return false;
 					}
 				);
+			} else {
+				foreach ( $clauses as $clause ) {
+					$posts = array_filter(
+						$posts,
+						fn( $p ) => self::meta_clause_matches( $p, $clause )
+					);
+				}
 			}
 		}
 
@@ -396,6 +397,35 @@ class WPAICTestHelper {
 			return $posts;
 		}
 		return array_slice( $posts, 0, $limit );
+	}
+
+	/**
+	 * Evaluate one meta_query clause against a post, mirroring the WP_Query
+	 * compare operators the plugin uses (numeric comparisons, equality, EXISTS).
+	 *
+	 * @param array<string, mixed> $clause
+	 */
+	private static function meta_clause_matches( WP_Post $post, array $clause ): bool {
+		$key     = $clause['key'];
+		$value   = $clause['value'] ?? null;
+		$compare = strtoupper( (string) ( $clause['compare'] ?? '=' ) );
+
+		$meta_exists = isset( self::$mock_post_meta[ $post->ID ][ $key ] );
+		$meta_value  = self::get_post_meta( $post->ID, $key, true );
+		$meta_float  = is_numeric( $meta_value ) ? (float) $meta_value : 0;
+		$cmp_float   = is_numeric( $value ) ? (float) $value : 0;
+
+		return match ( $compare ) {
+			'>='         => $meta_float >= $cmp_float,
+			'<='         => $meta_float <= $cmp_float,
+			'>'          => $meta_float > $cmp_float,
+			'<'          => $meta_float < $cmp_float,
+			'='          => $meta_value == $value,
+			'!='         => $meta_value != $value,
+			'EXISTS'     => $meta_exists,
+			'NOT EXISTS' => ! $meta_exists,
+			default      => true,
+		};
 	}
 
 	/**
@@ -1299,6 +1329,11 @@ class MockWpdb {
 			return (string) $count;
 		}
 
+		// Generic unfiltered COUNT(*) on any known table (e.g. faqs, data sources).
+		if ( preg_match( '/SELECT\s+COUNT\(\*\)\s+FROM\s+(\S+)/i', $query, $matches ) && isset( $this->tables[ $matches[1] ] ) ) {
+			return (string) count( $this->tables[ $matches[1] ] );
+		}
+
 		return null;
 	}
 
@@ -1477,6 +1512,50 @@ if ( ! function_exists( 'wp_enqueue_media' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_enqueue_script' ) ) {
+	function wp_enqueue_script( string $handle, string $src = '', array $deps = array(), string|bool|null $ver = false, array|bool $args = array() ): void {
+		$GLOBALS['wpaic_test_enqueued_scripts'][ $handle ] = array(
+			'src'  => $src,
+			'deps' => $deps,
+			'ver'  => $ver,
+			'args' => $args,
+		);
+	}
+}
+
+if ( ! function_exists( 'wp_enqueue_style' ) ) {
+	function wp_enqueue_style( string $handle, string $src = '', array $deps = array(), string|bool|null $ver = false, string $media = 'all' ): void {
+		$GLOBALS['wpaic_test_enqueued_styles'][ $handle ] = array(
+			'src'  => $src,
+			'deps' => $deps,
+			'ver'  => $ver,
+		);
+	}
+}
+
+if ( ! function_exists( 'wp_localize_script' ) ) {
+	/**
+	 * @param array<string, mixed> $l10n
+	 */
+	function wp_localize_script( string $handle, string $object_name, array $l10n ): bool {
+		$GLOBALS['wpaic_test_localized_scripts'][ $handle ][ $object_name ] = $l10n;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wp_add_inline_script' ) ) {
+	function wp_add_inline_script( string $handle, string $data, string $position = 'after' ): bool {
+		$GLOBALS['wpaic_test_inline_scripts'][ $handle ][] = $data;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'wpaic_file_get_contents' ) ) {
+	function wpaic_file_get_contents( string $path ): string|false {
+		return file_exists( $path ) ? file_get_contents( $path ) : false;
+	}
+}
+
 if ( ! function_exists( 'flush_rewrite_rules' ) ) {
 	function flush_rewrite_rules( bool $hard = true ): void {
 		// No-op for testing.
@@ -1505,6 +1584,15 @@ if ( ! function_exists( 'wp_clear_scheduled_hook' ) ) {
 		unset( $scheduled[ $hook ] );
 		WPAICTestHelper::set_option( 'test_scheduled_events', $scheduled );
 		return 0;
+	}
+}
+
+if ( ! function_exists( 'wp_schedule_single_event' ) ) {
+	function wp_schedule_single_event( int $timestamp, string $hook, array $args = array() ): bool {
+		$scheduled          = WPAICTestHelper::get_option( 'test_scheduled_events', array() );
+		$scheduled[ $hook ] = $timestamp;
+		WPAICTestHelper::set_option( 'test_scheduled_events', $scheduled );
+		return true;
 	}
 }
 

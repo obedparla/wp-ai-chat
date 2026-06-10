@@ -8,29 +8,72 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Records per-install (usage bucket) daily message/token usage and enforces
  * configurable daily budgets.
  *
- * Storage is a single non-autoloaded option holding per-day, per-bucket
- * counters, pruned to RETENTION_DAYS on every write. Token counts come from
- * the exact usage object OpenAI reports on the `response.completed` event.
+ * Storage is a dedicated table keyed (usage_day, usage_bucket). Every
+ * increment is a single atomic INSERT ... ON DUPLICATE KEY UPDATE, so
+ * concurrent completions never lose counts. Rows older than RETENTION_DAYS
+ * are pruned on write. Token counts come from the exact usage object OpenAI
+ * reports on the `response.completed` event.
  */
 class WPAIP_Usage_Tracker {
-	private const OPTION_NAME    = 'wpaip_usage_daily';
 	private const RETENTION_DAYS = 30;
+
+	public static function get_table_name(): string {
+		global $wpdb;
+
+		return $wpdb->prefix . 'wpaip_usage_daily';
+	}
+
+	/**
+	 * Create (or update) the usage table. Runs on activation and DB-version
+	 * upgrades.
+	 */
+	public static function create_table(): void {
+		global $wpdb;
+
+		if ( ! function_exists( 'dbDelta' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		}
+
+		$table_name      = self::get_table_name();
+		$charset_collate = $wpdb->get_charset_collate();
+
+		dbDelta(
+			"CREATE TABLE {$table_name} (
+				usage_day date NOT NULL,
+				usage_bucket varchar(191) NOT NULL,
+				messages bigint(20) unsigned NOT NULL DEFAULT 0,
+				input_tokens bigint(20) unsigned NOT NULL DEFAULT 0,
+				cached_input_tokens bigint(20) unsigned NOT NULL DEFAULT 0,
+				output_tokens bigint(20) unsigned NOT NULL DEFAULT 0,
+				total_tokens bigint(20) unsigned NOT NULL DEFAULT 0,
+				PRIMARY KEY  (usage_day, usage_bucket)
+			) {$charset_collate};"
+		);
+	}
 
 	/**
 	 * @return array{messages: int, input_tokens: int, cached_input_tokens: int, output_tokens: int, total_tokens: int}
 	 */
 	public function get_daily_usage( string $usage_bucket, ?string $date = null ): array {
-		$date   = $date ?? gmdate( 'Y-m-d' );
-		$option = $this->get_usage_option();
-		$bucket = $option[ $date ][ $usage_bucket ] ?? array();
-		$bucket = is_array( $bucket ) ? $bucket : array();
+		global $wpdb;
+
+		$date = $date ?? gmdate( 'Y-m-d' );
+		$row  = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT messages, input_tokens, cached_input_tokens, output_tokens, total_tokens FROM ' . self::get_table_name() . ' WHERE usage_day = %s AND usage_bucket = %s',
+				$date,
+				$usage_bucket
+			),
+			ARRAY_A
+		);
+		$row  = is_array( $row ) ? $row : array();
 
 		return array(
-			'messages'            => (int) ( $bucket['messages'] ?? 0 ),
-			'input_tokens'        => (int) ( $bucket['input_tokens'] ?? 0 ),
-			'cached_input_tokens' => (int) ( $bucket['cached_input_tokens'] ?? 0 ),
-			'output_tokens'       => (int) ( $bucket['output_tokens'] ?? 0 ),
-			'total_tokens'        => (int) ( $bucket['total_tokens'] ?? 0 ),
+			'messages'            => (int) ( $row['messages'] ?? 0 ),
+			'input_tokens'        => (int) ( $row['input_tokens'] ?? 0 ),
+			'cached_input_tokens' => (int) ( $row['cached_input_tokens'] ?? 0 ),
+			'output_tokens'       => (int) ( $row['output_tokens'] ?? 0 ),
+			'total_tokens'        => (int) ( $row['total_tokens'] ?? 0 ),
 		);
 	}
 
@@ -92,45 +135,59 @@ class WPAIP_Usage_Tracker {
 	}
 
 	/**
+	 * Add counters to today's (usage_day, usage_bucket) row in one atomic
+	 * upsert so concurrent requests never lose increments.
+	 *
 	 * @param array<string, int> $increments Counter => amount to add.
 	 */
 	private function increment( string $usage_bucket, array $increments ): void {
-		$date   = gmdate( 'Y-m-d' );
-		$option = $this->prune( $this->get_usage_option() );
+		global $wpdb;
 
-		$bucket = $option[ $date ][ $usage_bucket ] ?? array();
-		$bucket = is_array( $bucket ) ? $bucket : array();
-		foreach ( $increments as $counter => $amount ) {
-			$bucket[ $counter ] = (int) ( $bucket[ $counter ] ?? 0 ) + $amount;
-		}
-		$option[ $date ][ $usage_bucket ] = $bucket;
+		$messages            = (int) ( $increments['messages'] ?? 0 );
+		$input_tokens        = (int) ( $increments['input_tokens'] ?? 0 );
+		$cached_input_tokens = (int) ( $increments['cached_input_tokens'] ?? 0 );
+		$output_tokens       = (int) ( $increments['output_tokens'] ?? 0 );
+		$total_tokens        = (int) ( $increments['total_tokens'] ?? 0 );
 
-		update_option( self::OPTION_NAME, $option, false );
+		$wpdb->query(
+			$wpdb->prepare(
+				'INSERT INTO ' . self::get_table_name() . ' (usage_day, usage_bucket, messages, input_tokens, cached_input_tokens, output_tokens, total_tokens)'
+				. ' VALUES (%s, %s, %d, %d, %d, %d, %d)'
+				. ' ON DUPLICATE KEY UPDATE'
+				. ' messages = messages + %d,'
+				. ' input_tokens = input_tokens + %d,'
+				. ' cached_input_tokens = cached_input_tokens + %d,'
+				. ' output_tokens = output_tokens + %d,'
+				. ' total_tokens = total_tokens + %d',
+				gmdate( 'Y-m-d' ),
+				$usage_bucket,
+				$messages,
+				$input_tokens,
+				$cached_input_tokens,
+				$output_tokens,
+				$total_tokens,
+				$messages,
+				$input_tokens,
+				$cached_input_tokens,
+				$output_tokens,
+				$total_tokens
+			)
+		);
+
+		$this->prune();
 	}
 
-	/**
-	 * @return array<string, array<string, array<string, int>>>
-	 */
-	private function get_usage_option(): array {
-		$option = get_option( self::OPTION_NAME, array() );
+	private function prune(): void {
+		global $wpdb;
 
-		return is_array( $option ) ? $option : array();
-	}
-
-	/**
-	 * @param array<string, array<string, array<string, int>>> $option
-	 * @return array<string, array<string, array<string, int>>>
-	 */
-	private function prune( array $option ): array {
 		$cutoff = gmdate( 'Y-m-d', time() - self::RETENTION_DAYS * DAY_IN_SECONDS );
 
-		foreach ( array_keys( $option ) as $date ) {
-			if ( $date < $cutoff ) {
-				unset( $option[ $date ] );
-			}
-		}
-
-		return $option;
+		$wpdb->query(
+			$wpdb->prepare(
+				'DELETE FROM ' . self::get_table_name() . ' WHERE usage_day < %s',
+				$cutoff
+			)
+		);
 	}
 
 	private function get_budget_setting( string $setting_key, int $default ): int {

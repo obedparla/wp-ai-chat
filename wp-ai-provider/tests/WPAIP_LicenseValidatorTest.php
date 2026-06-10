@@ -63,6 +63,9 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 		$this->assertSame( 'trial', $record['status'] );
 		$this->assertTrue( $record['is_trial'] );
 		$this->assertSame( 'pk_install_123', $record['site_public_key'] );
+		// Persisted so grace-period requests can be HMAC-verified during
+		// Freemius outages.
+		$this->assertSame( 'sk_install_123', $record['site_secret_key'] );
 	}
 
 	public function test_validate_request_rejects_invalid_signature_and_marks_record_invalid(): void {
@@ -181,25 +184,25 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 				'license_id'        => 77,
 				'status'            => 'licensed',
 				'site_public_key'   => 'pk_install_55',
+				'site_secret_key'   => 'sk_install_55',
 				'last_validated_at' => gmdate( 'Y-m-d H:i:s', time() - 300 ),
 			)
 		);
 
-		$request = new WP_REST_Request();
-		$request->set_param(
-			'messages',
-			array(
+		$install_identity = array(
+			'id'         => 55,
+			'public_key' => 'pk_install_55',
+			'secret_key' => 'sk_install_55',
+		);
+		$body             = array(
+			'messages' => array(
 				array(
 					'role'    => 'user',
 					'content' => 'Hello',
 				),
-			)
+			),
+			'model'    => 'gpt-5',
 		);
-		$request->set_param( 'model', 'gpt-5' );
-		$request->set_header( 'X-WPAIC-FS-Install-Id', '55' );
-		$request->set_header( 'X-WPAIC-FS-Install-Public-Key', 'pk_install_55' );
-		$request->set_header( 'X-WPAIC-Timestamp', (string) time() );
-		$request->set_header( 'X-WPAIC-Signature', 'not-checked-during-grace' );
 
 		$result = ( new WPAIP_License_Validator(
 			$this->create_freemius_api_mock(
@@ -212,7 +215,7 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 				)
 			),
 			$this->registry
-		) )->validate_request( $request );
+		) )->validate_request( $this->build_signed_request( $install_identity, $body ) );
 
 		$this->assertIsArray( $result );
 		$this->assertSame( 'grace', $result['status'] );
@@ -220,7 +223,9 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 		$this->assertSame( 'fs_install_55', $result['usage_bucket'] );
 	}
 
-	public function test_validate_request_denies_grace_period_when_public_key_does_not_match_stored_record(): void {
+	// S6: grace must require an HMAC with the stored install secret — a
+	// replayed plaintext public key header alone is never enough.
+	public function test_validate_request_denies_grace_period_when_replayed_headers_lack_valid_signature(): void {
 		$this->registry->upsert(
 			56,
 			array(
@@ -228,25 +233,27 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 				'license_id'        => 78,
 				'status'            => 'licensed',
 				'site_public_key'   => 'pk_install_56',
+				'site_secret_key'   => 'sk_install_56',
 				'last_validated_at' => gmdate( 'Y-m-d H:i:s', time() - 300 ),
 			)
 		);
 
-		$request = new WP_REST_Request();
-		$request->set_param(
-			'messages',
-			array(
+		// Attacker saw the real public key on the wire but cannot sign with
+		// the install secret key.
+		$install_identity = array(
+			'id'         => 56,
+			'public_key' => 'pk_install_56',
+			'secret_key' => 'sk_attacker_guess',
+		);
+		$body             = array(
+			'messages' => array(
 				array(
 					'role'    => 'user',
 					'content' => 'Hello',
 				),
-			)
+			),
+			'model'    => 'gpt-5',
 		);
-		$request->set_param( 'model', 'gpt-5' );
-		$request->set_header( 'X-WPAIC-FS-Install-Id', '56' );
-		$request->set_header( 'X-WPAIC-FS-Install-Public-Key', 'pk_attacker_guess' );
-		$request->set_header( 'X-WPAIC-Timestamp', (string) time() );
-		$request->set_header( 'X-WPAIC-Signature', 'not-checked-during-grace' );
 
 		$result = ( new WPAIP_License_Validator(
 			$this->create_freemius_api_mock(
@@ -259,39 +266,39 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 				)
 			),
 			$this->registry
-		) )->validate_request( $request );
+		) )->validate_request( $this->build_signed_request( $install_identity, $body ) );
 
 		$this->assertInstanceOf( WP_Error::class, $result );
 		$this->assertSame( 'rest_forbidden', $result->get_error_code() );
-		$this->assertSame( 'Install public key mismatch.', $result->get_error_message() );
+		$this->assertSame( 'Invalid request signature.', $result->get_error_message() );
 	}
 
-	public function test_validate_request_denies_grace_period_when_record_has_no_stored_public_key(): void {
+	public function test_validate_request_denies_grace_period_when_record_has_no_stored_secret_key(): void {
 		$this->registry->upsert(
 			57,
 			array(
 				'install_id'        => 57,
 				'license_id'        => 79,
 				'status'            => 'licensed',
+				'site_public_key'   => 'pk_install_57',
 				'last_validated_at' => gmdate( 'Y-m-d H:i:s', time() - 300 ),
 			)
 		);
 
-		$request = new WP_REST_Request();
-		$request->set_param(
-			'messages',
-			array(
+		$install_identity = array(
+			'id'         => 57,
+			'public_key' => 'pk_install_57',
+			'secret_key' => 'sk_install_57',
+		);
+		$body             = array(
+			'messages' => array(
 				array(
 					'role'    => 'user',
 					'content' => 'Hello',
 				),
-			)
+			),
+			'model'    => 'gpt-5',
 		);
-		$request->set_param( 'model', 'gpt-5' );
-		$request->set_header( 'X-WPAIC-FS-Install-Id', '57' );
-		$request->set_header( 'X-WPAIC-FS-Install-Public-Key', 'pk_install_57' );
-		$request->set_header( 'X-WPAIC-Timestamp', (string) time() );
-		$request->set_header( 'X-WPAIC-Signature', 'not-checked-during-grace' );
 
 		$result = ( new WPAIP_License_Validator(
 			$this->create_freemius_api_mock(
@@ -304,11 +311,11 @@ class WPAIP_LicenseValidatorTest extends TestCase {
 				)
 			),
 			$this->registry
-		) )->validate_request( $request );
+		) )->validate_request( $this->build_signed_request( $install_identity, $body ) );
 
 		$this->assertInstanceOf( WP_Error::class, $result );
 		$this->assertSame( 'rest_forbidden', $result->get_error_code() );
-		$this->assertSame( 'Install public key mismatch.', $result->get_error_message() );
+		$this->assertSame( 'Invalid request signature.', $result->get_error_message() );
 	}
 
 	public function test_validate_request_rejects_license_with_blocked_features(): void {

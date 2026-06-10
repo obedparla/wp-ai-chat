@@ -1145,31 +1145,20 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertEmpty( $result );
 	}
 
-	public function test_expand_query_variants_orders_brand_token_before_generic_terms(): void {
-		$index   = new WPAIC_Search_Index();
-		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'expand_query_variants' );
-		$reflect->setAccessible( true );
+	// Variant generation and ordering (formerly expand_query_variants) is
+	// covered by WPAIC_QueryExpanderTest against WPAIC_Query_Expander.
 
-		$variants = $reflect->invoke( $index, 'chanel perfumes' );
+	public function test_search_caps_total_search_passes(): void {
+		// Empty catalog: every variant misses across every filter fallback,
+		// so the pass counter must stop at WPAIC_Search_Index's cap (8).
+		$index  = new WPAIC_Search_Index();
+		$result = $index->search( 'chanel perfumes sneakers', array( 'category' => 'beauty' ), 6 );
 
-		$this->assertSame(
-			array( 'chanel perfume', 'chanel fragrance', 'chanel', 'perfumes', 'perfume', 'fragrance' ),
-			$variants
-		);
-	}
+		$this->assertSame( array(), $result );
 
-	public function test_expand_query_variants_normalizes_hyphens_and_plurals(): void {
-		$index   = new WPAIC_Search_Index();
-		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'expand_query_variants' );
-		$reflect->setAccessible( true );
-
-		$variants = $reflect->invoke( $index, 'T-Shirts' );
-
-		$this->assertContains( 't shirts', $variants );
-		$this->assertContains( 't shirt', $variants );
-		$this->assertContains( 'tshirt', $variants );
-		$this->assertContains( 'tee', $variants );
-		$this->assertNotContains( 't-shirts', $variants );
+		$property = new ReflectionProperty( WPAIC_Search_Index::class, 'search_pass_count' );
+		$property->setAccessible( true );
+		$this->assertSame( 8, $property->getValue( $index ) );
 	}
 
 	public function test_relevance_filter_matches_plural_query_against_singular_title(): void {
@@ -1294,28 +1283,22 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertEquals( 'Running Shoes', $result[0]['name'] );
 	}
 
-	public function test_synonym_variants_tolerate_single_letter_typo_in_noun(): void {
-		$this->create_mock_product( 1, 'Elegant Heels', '59.99' );
+	// Typo-tolerant token-synonym variant generation (formerly
+	// synonym_variants_for_unmatched_title_tokens) is covered by
+	// WPAIC_QueryExpanderTest; the title-match gate lives in
+	// WPAIC_Search_Index::token_in_result_titles.
 
-		$index   = new WPAIC_Search_Index();
-		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'synonym_variants_for_unmatched_title_tokens' );
-		$reflect->setAccessible( true );
-
-		$variants = $reflect->invoke( $index, array( 1 ), 'running shoos' );
-
-		$this->assertSame( array( 'running shoe', 'running sneaker', 'running trainer' ), $variants );
-	}
-
-	public function test_synonym_variants_empty_when_noun_already_in_a_title(): void {
+	public function test_token_synonym_merge_gate_blocks_nouns_already_in_a_title(): void {
 		$this->create_mock_product( 1, 'Running Shoes', '79.99' );
 
 		$index   = new WPAIC_Search_Index();
-		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'synonym_variants_for_unmatched_title_tokens' );
+		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'token_in_result_titles' );
 		$reflect->setAccessible( true );
 
-		$variants = $reflect->invoke( $index, array( 1 ), 'running shoes' );
-
-		$this->assertSame( array(), $variants );
+		// Singular token matches the plural title, so the merge is blocked.
+		$this->assertTrue( $reflect->invoke( $index, array( 1 ), 'shoe' ) );
+		// Unrelated noun: the synonym variant may merge.
+		$this->assertFalse( $reflect->invoke( $index, array( 1 ), 'sneaker' ) );
 	}
 
 	// --- End weak-result synonym merge tests ---
@@ -1408,16 +1391,22 @@ class WPAIC_ProductToolsTest extends TestCase {
 		$this->assertEquals( 'Running Shoes', $result[1]['name'] );
 	}
 
-	public function test_phrase_synonym_variants_substitute_matched_phrases(): void {
-		$index   = new WPAIC_Search_Index();
-		$reflect = new ReflectionMethod( WPAIC_Search_Index::class, 'phrase_synonym_variants' );
-		$reflect->setAccessible( true );
+	// Phrase substitution itself (formerly phrase_synonym_variants) is covered
+	// by WPAIC_QueryExpanderTest::test_phrase_tier_substitutes_matched_phrases.
 
-		$this->assertSame( array( 'sneaker' ), $reflect->invoke( $index, 'running shoos' ) );
-		$this->assertSame( array( 'red sneaker' ), $reflect->invoke( $index, 'red trainers' ) );
-		$this->assertSame( array( 'shoe' ), $reflect->invoke( $index, 'sneakers' ) );
-		$this->assertSame( array(), $reflect->invoke( $index, 'shoes' ) );
-		$this->assertSame( array(), $reflect->invoke( $index, 'heels' ) );
+	public function test_search_products_ranks_primary_tier_results_before_phrase_merges(): void {
+		// Created in reverse order so the assertion proves tier ranking, not
+		// insertion order: the primary "running shoes" match must lead, the
+		// phrase-synonym ("sneaker") merge follows.
+		$this->create_mock_product( 1, 'Sports Sneakers', '89.99' );
+		$this->create_mock_product( 2, 'Running Shoes', '79.99' );
+
+		$result = $this->tools->search_products( array( 'search' => 'running shoes' ) );
+
+		$this->assertSame(
+			array( 'Running Shoes', 'Sports Sneakers' ),
+			array_map( fn( $p ) => $p['name'], $result )
+		);
 	}
 
 	// --- End phrase-level synonym merge tests ---

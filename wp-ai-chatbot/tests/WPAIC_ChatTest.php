@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-tools.php';
 require_once __DIR__ . '/../includes/class-wpaic-product-tools.php';
+require_once __DIR__ . '/../includes/class-wpaic-promotion-tools.php';
 require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-page-context.php';
 require_once __DIR__ . '/../includes/class-wpaic-system-prompt.php';
@@ -64,7 +65,8 @@ class WPAIC_ChatTest extends TestCase {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
-				'model'          => 'gpt-5-mini',
+				'model'              => 'gpt-5-mini',
+				'promotions_enabled' => true,
 			)
 		);
 
@@ -135,7 +137,8 @@ class WPAIC_ChatTest extends TestCase {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
-				'model'          => 'gpt-5-mini',
+				'model'              => 'gpt-5-mini',
+				'promotions_enabled' => true,
 			)
 		);
 
@@ -150,6 +153,28 @@ class WPAIC_ChatTest extends TestCase {
 
 		$this->assertSame( 'object', $promotions_tool['function']['parameters']['type'] );
 		$this->assertInstanceOf( stdClass::class, $promotions_tool['function']['parameters']['properties'] );
+	}
+
+	public function test_get_active_promotions_tool_not_registered_by_default(): void {
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'model' => 'gpt-5-mini',
+			)
+		);
+
+		$chat = new WPAIC_Chat();
+
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_tool_definitions' );
+		$method->setAccessible( true );
+
+		$tools      = $method->invoke( $chat );
+		$tool_names = array_map( fn( $t ) => $t['function']['name'], $tools );
+
+		$this->assertNotContains( 'get_active_promotions', $tool_names );
+		// Other WooCommerce tools stay registered.
+		$this->assertContains( 'search_products', $tool_names );
 	}
 
 	public function test_get_cart_contents_tool_uses_empty_object_properties_schema(): void {
@@ -1183,7 +1208,8 @@ class WPAIC_ChatTest extends TestCase {
 		WPAICTestHelper::set_option(
 			'wpaic_settings',
 			array(
-				'model'          => 'gpt-5-mini',
+				'model'              => 'gpt-5-mini',
+				'promotions_enabled' => true,
 			)
 		);
 
@@ -1198,6 +1224,30 @@ class WPAIC_ChatTest extends TestCase {
 		$this->assertStringContainsString( 'call get_active_promotions', $prompt );
 		$this->assertStringContainsString( 'tell the shopper honestly that there are no current promotions', $prompt );
 		$this->assertStringContainsString( 'NEVER invent, guess, or hint at codes', $prompt );
+		$this->assertStringContainsString( 'call search_products with on_sale set to true', $prompt );
+	}
+
+	public function test_system_prompt_answers_discount_questions_honestly_when_promotions_disabled(): void {
+		WPAICTestHelper::set_option( 'test_woocommerce_active', true );
+		WPAICTestHelper::set_option(
+			'wpaic_settings',
+			array(
+				'model' => 'gpt-5-mini',
+			)
+		);
+
+		$chat       = new WPAIC_Chat();
+		$reflection = new ReflectionClass( $chat );
+		$method     = $reflection->getMethod( 'get_system_prompt' );
+		$method->setAccessible( true );
+
+		$prompt = $method->invoke( $chat );
+
+		$this->assertStringContainsString( 'DISCOUNTS AND PROMOTIONS', $prompt );
+		$this->assertStringNotContainsString( 'get_active_promotions', $prompt );
+		$this->assertStringContainsString( 'answer honestly that you do not have information about promotions or coupon codes', $prompt );
+		$this->assertStringContainsString( 'NEVER invent, guess, or hint at codes', $prompt );
+		// On-sale product browsing stays available regardless of the setting.
 		$this->assertStringContainsString( 'call search_products with on_sale set to true', $prompt );
 	}
 
@@ -2009,7 +2059,10 @@ class WPAIC_ChatTest extends TestCase {
 		);
 
 		$this->assertArrayHasKey( 'error', $result );
-		$this->assertStringStartsWith( 'Failed to connect to provider', $result['error'] );
+		// Shopper-visible message must stay generic; the raw stream error (host
+		// names, PHP warnings) belongs in the server log only.
+		$this->assertSame( 'Could not connect to the chat service. Please try again in a moment.', $result['error'] );
+		$this->assertStringNotContainsString( 'this-will-not-resolve', $result['error'] );
 	}
 
 	public function test_get_provider_http_error_message_uses_rest_error_message(): void {

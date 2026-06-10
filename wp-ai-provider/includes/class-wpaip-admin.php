@@ -9,7 +9,10 @@ class WPAIP_Admin {
 	public const DEFAULT_REASONING_EFFORT = 'low';
 
 	// Per-install daily budgets enforced by WPAIP_Usage_Tracker. 0 = unlimited.
-	public const DEFAULT_DAILY_MESSAGE_BUDGET = 200;
+	// The message budget counts provider requests, and each shopper message can
+	// trigger up to ~10 of those via the tool loop — the token budget is the
+	// primary economic cap.
+	public const DEFAULT_DAILY_MESSAGE_BUDGET = 2000;
 	public const DEFAULT_DAILY_TOKEN_BUDGET   = 1000000;
 
 	private WPAIP_Install_Registry $registry;
@@ -257,7 +260,7 @@ class WPAIP_Admin {
 	public function render_daily_message_budget_field(): void {
 		$value = $this->get_int_setting( 'daily_message_budget', self::DEFAULT_DAILY_MESSAGE_BUDGET );
 		echo '<input type="number" min="0" step="1" name="wpaip_settings[daily_message_budget]" value="' . esc_attr( (string) $value ) . '" class="small-text" />';
-		echo '<p class="description">' . esc_html__( 'Maximum chat requests per install per day. Requests beyond this are rejected with a 429 until the next day. 0 disables the limit.', 'wp-ai-provider' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'Maximum provider requests per install per day — counts requests to OpenAI, not shopper messages. One shopper message can trigger several requests via the tool loop, so size this well above the expected shopper-message count; the token budget is the primary economic cap. Requests beyond this are rejected with a 429 until the next day. 0 disables the limit.', 'wp-ai-provider' ) . '</p>';
 	}
 
 	public function render_daily_token_budget_field(): void {

@@ -31,6 +31,7 @@ $wpaic_options = array(
 	'wpaic_onboarding',
 	'wpaic_content_index_meta',
 	'wpaic_search_index_meta',
+	'wpaic_index_version',
 );
 
 foreach ( $wpaic_options as $wpaic_option ) {
@@ -40,3 +41,26 @@ foreach ( $wpaic_options as $wpaic_option ) {
 delete_transient( 'wpaic_activation_redirect' );
 
 wp_clear_scheduled_hook( 'wpaic_daily_retention' );
+wp_clear_scheduled_hook( 'wpaic_rebuild_product_index' );
+
+// Remove the TNT search index files under uploads/wpaic/.
+$wpaic_upload_dir = wp_upload_dir( null, false );
+if ( ! empty( $wpaic_upload_dir['basedir'] ) ) {
+	$wpaic_index_dir = $wpaic_upload_dir['basedir'] . '/wpaic';
+	if ( is_dir( $wpaic_index_dir ) && ! is_link( $wpaic_index_dir ) ) {
+		$wpaic_iterator = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator( $wpaic_index_dir, FilesystemIterator::SKIP_DOTS ),
+			RecursiveIteratorIterator::CHILD_FIRST
+		);
+		foreach ( $wpaic_iterator as $wpaic_file ) {
+			if ( $wpaic_file->isDir() && ! $wpaic_file->isLink() ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Removing plugin-owned index directory on uninstall.
+				rmdir( $wpaic_file->getPathname() );
+			} else {
+				wp_delete_file( $wpaic_file->getPathname() );
+			}
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Removing plugin-owned index directory on uninstall.
+		rmdir( $wpaic_index_dir );
+	}
+}

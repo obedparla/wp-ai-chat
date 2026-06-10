@@ -11,6 +11,7 @@ class WPAIC_Chat {
 	private array $page_context = array();
 	private ?WPAIC_Tools $tools = null;
 	private ?WPAIC_Product_Tools $product_tools = null;
+	private ?WPAIC_Promotion_Tools $promotion_tools = null;
 	private WPAIC_License_Manager $license_manager;
 	/** Logged conversation this chat belongs to; used to record tool events and link handoffs. */
 	private int $conversation_id = 0;
@@ -25,8 +26,9 @@ class WPAIC_Chat {
 		$this->license_manager = $license_manager ?? new WPAIC_License_Manager();
 
 		if ( wpaic_is_woocommerce_active() ) {
-			$this->tools         = new WPAIC_Tools();
-			$this->product_tools = new WPAIC_Product_Tools();
+			$this->tools           = new WPAIC_Tools();
+			$this->product_tools   = new WPAIC_Product_Tools();
+			$this->promotion_tools = new WPAIC_Promotion_Tools();
 		}
 	}
 
@@ -254,7 +256,9 @@ class WPAIC_Chat {
 			$detail     = $last_error['message'] ?? 'unknown error';
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log( "[WPAIC] Provider connection failed: {$detail} | URL: {$url}" );
-			return array( 'error' => "Failed to connect to provider: {$detail}" );
+			// This error reaches the shopper-visible widget, so keep it generic;
+			// the raw PHP stream error above goes to the server log only.
+			return array( 'error' => 'Could not connect to the chat service. Please try again in a moment.' );
 		}
 
 		$response_meta = stream_get_meta_data( $stream );
@@ -434,6 +438,17 @@ class WPAIC_Chat {
 	 */
 	private function is_handoff_enabled(): bool {
 		return ! empty( $this->settings['handoff_enabled'] );
+	}
+
+	/**
+	 * Check if advertising coupons in chat is enabled. Off by default: published
+	 * coupons can include codes the merchant never meant to expose (support
+	 * credits, partner codes), so the promotions tool is opt-in.
+	 *
+	 * @return bool True if the promotions tool is enabled.
+	 */
+	private function is_promotions_enabled(): bool {
+		return ! empty( $this->settings['promotions_enabled'] );
 	}
 
 	/**
@@ -700,17 +715,19 @@ class WPAIC_Chat {
 					),
 				),
 			);
-			$tools[] = array(
-				'type'     => 'function',
-				'function' => array(
-					'name'        => 'get_active_promotions',
-					'description' => 'Get the store\'s currently active coupons and promotions (code, discount amount and type, restrictions, expiry). Use whenever the shopper asks about discounts, coupons, promo codes, vouchers, offers, or current deals. Returns only real configured coupons — if none are returned, tell the shopper there are no current promotions.',
-					'parameters'  => array(
-						'type'       => 'object',
-						'properties' => new \stdClass(),
+			if ( $this->is_promotions_enabled() ) {
+				$tools[] = array(
+					'type'     => 'function',
+					'function' => array(
+						'name'        => 'get_active_promotions',
+						'description' => 'Get the store\'s currently active coupons and promotions (code, discount amount and type, restrictions, expiry). Use whenever the shopper asks about discounts, coupons, promo codes, vouchers, offers, or current deals. Returns only real configured coupons — if none are returned, tell the shopper there are no current promotions.',
+						'parameters'  => array(
+							'type'       => 'object',
+							'properties' => new \stdClass(),
+						),
 					),
-				),
-			);
+				);
+			}
 		}
 
 		if ( $this->is_handoff_enabled() ) {
@@ -869,7 +886,7 @@ class WPAIC_Chat {
 			return $tools->get_page_content( $arguments );
 		}
 
-		if ( null === $this->tools || null === $this->product_tools ) {
+		if ( null === $this->tools || null === $this->product_tools || null === $this->promotion_tools ) {
 			return array( 'error' => 'Product tools unavailable' );
 		}
 
@@ -885,7 +902,7 @@ class WPAIC_Chat {
 			'compare_products' => $this->product_tools->compare_products( isset( $arguments['product_ids'] ) && is_array( $arguments['product_ids'] ) ? $arguments['product_ids'] : array() ),
 			'get_order_status' => $this->tools->get_order_status( $arguments ),
 			'get_shipping_info' => $this->tools->get_shipping_info(),
-			'get_active_promotions' => $this->tools->get_active_promotions(),
+			'get_active_promotions' => $this->promotion_tools->get_active_promotions(),
 			default => array( 'error' => 'Unknown tool' ),
 		};
 

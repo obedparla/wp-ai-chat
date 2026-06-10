@@ -10,8 +10,31 @@ class WPAIC_API {
 	private const RATE_LIMIT_MAX_REQUESTS   = 20;
 	private const RATE_LIMIT_WINDOW_SECONDS = 300;
 
+	// Caps for the client-derived product context (see summarize_product_tool_part).
+	private const PRODUCT_CONTEXT_MAX_NAME_LENGTH  = 80;
+	private const PRODUCT_CONTEXT_MAX_PRICE_LENGTH = 20;
+	private const PRODUCT_CONTEXT_MAX_ENTRIES      = 10;
+	private const PRODUCT_CONTEXT_MAX_LENGTH       = 2000;
+
 	private WPAIC_Logs $logs;
 	private WPAIC_License_Manager $license_manager;
+
+	/**
+	 * Per-stream transcript-label bookkeeping: maps streamed toolCallIds to tool
+	 * names so collect_card_label() can resolve which tool produced an output.
+	 * Reset at the start of each chat stream.
+	 *
+	 * @var array<string, string>
+	 */
+	private array $tool_names_by_call_id = array();
+
+	/**
+	 * Placeholder labels (see describe_card_payload) collected during the
+	 * current stream, used to log a transcript row for card-only replies.
+	 *
+	 * @var array<int, string>
+	 */
+	private array $card_only_labels = array();
 
 	public function __construct( ?WPAIC_License_Manager $license_manager = null ) {
 		$this->logs = new WPAIC_Logs();
@@ -101,7 +124,9 @@ class WPAIC_API {
 	private function transform_messages( array $messages ): array {
 		foreach ( $messages as &$msg ) {
 			if ( is_array( $msg ) ) {
-				// product_context is server-generated only; never trust a client-supplied value.
+				// Drop any client-supplied product_context verbatim; it is rebuilt below
+				// from the message's tool parts. Those parts are still client-supplied,
+				// which is why summarize_product_tool_part sanitizes and caps the values.
 				unset( $msg['product_context'] );
 			}
 			if ( isset( $msg['parts'] ) && is_array( $msg['parts'] ) ) {
@@ -121,7 +146,7 @@ class WPAIC_API {
 					}
 				}
 				if ( ! empty( $product_summaries ) ) {
-					$msg['product_context'] = implode( "\n", $product_summaries );
+					$msg['product_context'] = mb_substr( implode( "\n", $product_summaries ), 0, self::PRODUCT_CONTEXT_MAX_LENGTH );
 				}
 				$msg['content'] = $content;
 				unset( $msg['parts'] );
@@ -134,6 +159,11 @@ class WPAIC_API {
 	 * Build a compact text summary of a product-bearing dynamic-tool part,
 	 * preserving display order. Keeps only name, id, and price so the carried
 	 * context stays cheap.
+	 *
+	 * The part comes from the client, and the summary is later forwarded to the
+	 * model as a system-role item, so the string values are sanitized (control
+	 * characters/newlines stripped, lengths capped) and entries are capped per
+	 * part to limit what a tampered payload can smuggle into that item.
 	 *
 	 * @param array<string, mixed> $part
 	 */
@@ -163,12 +193,17 @@ class WPAIC_API {
 		$entries  = array();
 		$position = 1;
 		foreach ( $products as $product ) {
+			if ( count( $entries ) >= self::PRODUCT_CONTEXT_MAX_ENTRIES ) {
+				break;
+			}
 			if ( ! is_array( $product ) || ! isset( $product['id'], $product['name'] ) ) {
 				continue;
 			}
+			$name       = $this->sanitize_product_context_value( (string) $product['name'], self::PRODUCT_CONTEXT_MAX_NAME_LENGTH );
 			$price      = $product['price'] ?? '';
-			$price_part = is_scalar( $price ) && '' !== (string) $price ? ', price ' . $price : '';
-			$entries[]  = $position . '. ' . $product['name'] . ' (id ' . (int) $product['id'] . $price_part . ')';
+			$price      = is_scalar( $price ) ? $this->sanitize_product_context_value( (string) $price, self::PRODUCT_CONTEXT_MAX_PRICE_LENGTH ) : '';
+			$price_part = '' !== $price ? ', price ' . $price : '';
+			$entries[]  = $position . '. ' . $name . ' (id ' . (int) $product['id'] . $price_part . ')';
 			++$position;
 		}
 
@@ -178,6 +213,22 @@ class WPAIC_API {
 
 		$label = 'compare_products' === $tool_name ? 'Products compared (display order): ' : 'Products shown (display order): ';
 		return $label . implode( ' ', $entries );
+	}
+
+	/**
+	 * Sanitize a client-supplied string destined for the product context:
+	 * control characters and newlines collapse to a single space (so crafted
+	 * values cannot fake extra lines or entries in the system-role item) and
+	 * the result is length-capped.
+	 */
+	private function sanitize_product_context_value( string $value, int $max_length ): string {
+		$sanitized = preg_replace( '/[\x00-\x1F\x7F]+/u', ' ', $value );
+		if ( null === $sanitized ) {
+			// Invalid UTF-8 made preg fail; drop the value rather than forward it raw.
+			return '';
+		}
+
+		return trim( mb_substr( $sanitized, 0, $max_length ) );
 	}
 
 	/**
@@ -221,11 +272,11 @@ class WPAIC_API {
 
 		$this->start_event_stream();
 
-		$response_content      = '';
-		$message_id            = wp_generate_uuid4();
-		$text_started          = false;
-		$tool_names_by_call_id = array();
-		$card_only_labels      = array();
+		$response_content            = '';
+		$message_id                  = wp_generate_uuid4();
+		$text_started                = false;
+		$this->tool_names_by_call_id = array();
+		$this->card_only_labels      = array();
 
 		try {
 			$chat = new WPAIC_Chat( $page_context );
@@ -233,105 +284,77 @@ class WPAIC_API {
 			$chat->send_stream(
 				$messages,
 				/** @param array<string, mixed> $data */
-				function ( array $data ) use ( &$response_content, &$text_started, &$tool_names_by_call_id, &$card_only_labels, $message_id ): void {
+				function ( array $data ) use ( &$response_content, &$text_started, $message_id ): void {
 					if ( isset( $data['content'] ) && is_string( $data['content'] ) ) {
 						if ( ! $text_started ) {
 							$text_started = true;
-							// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-							echo 'data: ' . wp_json_encode(
-								array(
-									'type' => 'text-start',
-									'id'   => $message_id,
-								)
-							) . "\n\n";
+							$this->emit_sse_event( 'text-start', array( 'id' => $message_id ) );
 						}
 						$response_content .= $data['content'];
-						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-						echo 'data: ' . wp_json_encode(
+						$this->emit_sse_event(
+							'text-delta',
 							array(
-								'type'  => 'text-delta',
 								'id'    => $message_id,
 								'delta' => $data['content'],
 							)
-						) . "\n\n";
+						);
 					}
 					if ( isset( $data['tool_input_start'] ) && is_array( $data['tool_input_start'] ) ) {
-						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-						echo 'data: ' . wp_json_encode(
+						$this->emit_sse_event(
+							'tool-input-start',
 							array(
-								'type'       => 'tool-input-start',
 								'toolCallId' => $data['tool_input_start']['toolCallId'] ?? '',
 								'toolName'   => $data['tool_input_start']['toolName'] ?? '',
 								'dynamic'    => true,
 							)
-						) . "\n\n";
+						);
 					}
 					if ( isset( $data['tool_input_delta'] ) && is_array( $data['tool_input_delta'] ) ) {
-						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-						echo 'data: ' . wp_json_encode(
+						$this->emit_sse_event(
+							'tool-input-delta',
 							array(
-								'type'           => 'tool-input-delta',
 								'toolCallId'     => $data['tool_input_delta']['toolCallId'] ?? '',
 								'inputTextDelta' => $data['tool_input_delta']['inputTextDelta'] ?? '',
 							)
-						) . "\n\n";
+						);
 					}
 					if ( isset( $data['tool_input_available'] ) && is_array( $data['tool_input_available'] ) ) {
-						$tool_call_id = $data['tool_input_available']['toolCallId'] ?? '';
-						$tool_name    = $data['tool_input_available']['toolName'] ?? '';
-						if ( is_string( $tool_call_id ) && is_string( $tool_name ) ) {
-							$tool_names_by_call_id[ $tool_call_id ] = $tool_name;
-						}
-						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-						echo 'data: ' . wp_json_encode(
+						$this->remember_tool_name(
+							$data['tool_input_available']['toolCallId'] ?? '',
+							$data['tool_input_available']['toolName'] ?? ''
+						);
+						$this->emit_sse_event(
+							'tool-input-available',
 							array(
-								'type'       => 'tool-input-available',
 								'toolCallId' => $data['tool_input_available']['toolCallId'] ?? '',
 								'toolName'   => $data['tool_input_available']['toolName'] ?? '',
 								'input'      => $data['tool_input_available']['input'] ?? new \stdClass(),
 								'dynamic'    => true,
 							)
-						) . "\n\n";
+						);
 					}
 					if ( isset( $data['tool_output_available'] ) && is_array( $data['tool_output_available'] ) ) {
-						$tool_call_id = $data['tool_output_available']['toolCallId'] ?? '';
-						$card_label   = $this->describe_card_payload(
-							is_string( $tool_call_id ) ? ( $tool_names_by_call_id[ $tool_call_id ] ?? '' ) : '',
+						$this->collect_card_label(
+							$data['tool_output_available']['toolCallId'] ?? '',
 							$data['tool_output_available']['output'] ?? null
 						);
-						if ( null !== $card_label && ! in_array( $card_label, $card_only_labels, true ) ) {
-							$card_only_labels[] = $card_label;
-						}
-						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-						echo 'data: ' . wp_json_encode(
+						$this->emit_sse_event(
+							'tool-output-available',
 							array(
-								'type'       => 'tool-output-available',
 								'toolCallId' => $data['tool_output_available']['toolCallId'] ?? '',
 								'output'     => $data['tool_output_available']['output'] ?? new \stdClass(),
 								'dynamic'    => true,
 							)
-						) . "\n\n";
+						);
 					}
 					if ( isset( $data['done'] ) && true === $data['done'] ) {
 						if ( $text_started ) {
-							// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-							echo 'data: ' . wp_json_encode(
-								array(
-									'type' => 'text-end',
-									'id'   => $message_id,
-								)
-							) . "\n\n";
+							$this->emit_sse_event( 'text-end', array( 'id' => $message_id ) );
 						}
-						echo "data: [DONE]\n\n";
+						$this->emit_sse_done();
 					}
 					if ( isset( $data['error'] ) && is_string( $data['error'] ) ) {
-						// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-						echo 'data: ' . wp_json_encode(
-							array(
-								'type'  => 'error',
-								'error' => $data['error'],
-							)
-						) . "\n\n";
+						$this->emit_sse_event( 'error', array( 'error' => $data['error'] ) );
 					}
 					flush();
 				}
@@ -341,22 +364,16 @@ class WPAIC_API {
 			// not a dead spinner. Detail goes to the server log only.
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log( '[WPAIC] Chat stream failed: ' . $throwable->getMessage() );
-			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-			echo 'data: ' . wp_json_encode(
-				array(
-					'type'  => 'error',
-					'error' => 'Something went wrong. Please try again.',
-				)
-			) . "\n\n";
-			echo "data: [DONE]\n\n";
+			$this->emit_sse_event( 'error', array( 'error' => 'Something went wrong. Please try again.' ) );
+			$this->emit_sse_done();
 			flush();
 		}
 
 		if ( '' !== $response_content ) {
 			$this->logs->log_message( $conversation_id, 'assistant', $response_content );
-		} elseif ( ! empty( $card_only_labels ) ) {
+		} elseif ( ! empty( $this->card_only_labels ) ) {
 			// Card-only reply (no text): keep a row so the transcript shows the bot responded.
-			$this->logs->log_message( $conversation_id, 'assistant', implode( "\n", $card_only_labels ) );
+			$this->logs->log_message( $conversation_id, 'assistant', implode( "\n", $this->card_only_labels ) );
 		}
 
 		exit;
@@ -382,6 +399,32 @@ class WPAIC_API {
 
 		foreach ( $trailing_user_contents as $content ) {
 			$this->logs->log_message( $conversation_id, 'user', $content );
+		}
+	}
+
+	/**
+	 * Remember which tool a streamed toolCallId belongs to, so the matching
+	 * tool output can be labeled for the transcript (see collect_card_label).
+	 */
+	private function remember_tool_name( mixed $tool_call_id, mixed $tool_name ): void {
+		if ( is_string( $tool_call_id ) && is_string( $tool_name ) ) {
+			$this->tool_names_by_call_id[ $tool_call_id ] = $tool_name;
+		}
+	}
+
+	/**
+	 * Collect the transcript placeholder label for a streamed tool output, if
+	 * the tool renders as UI (cards, buttons). Labels are deduplicated.
+	 *
+	 * @param mixed $tool_call_id toolCallId of the tool output.
+	 * @param mixed $output Tool result as emitted to the frontend.
+	 */
+	private function collect_card_label( mixed $tool_call_id, mixed $output ): void {
+		$tool_name  = is_string( $tool_call_id ) ? ( $this->tool_names_by_call_id[ $tool_call_id ] ?? '' ) : '';
+		$card_label = $this->describe_card_payload( $tool_name, $output );
+
+		if ( null !== $card_label && ! in_array( $card_label, $this->card_only_labels, true ) ) {
+			$this->card_only_labels[] = $card_label;
 		}
 	}
 
@@ -434,7 +477,15 @@ class WPAIC_API {
 	}
 
 	/**
-	 * Transient-based throttle, keyed per IP and per session.
+	 * Fixed-window transient throttle, keyed per IP and per session. Each key
+	 * stores array('count' => n, 'window_started' => unix time); the window
+	 * boundary never moves while requests come in (the transient TTL is anchored
+	 * to window start, not to the last request), so a shopper pacing below the
+	 * limit is never locked out.
+	 *
+	 * The get/increment/set sequence is racy under concurrent requests, so a
+	 * burst can slightly exceed the cap. Acceptable tradeoff: this is abuse
+	 * control, not strict quota enforcement.
 	 *
 	 * @return string|null Shopper-facing error message when throttled, null otherwise.
 	 */
@@ -446,6 +497,10 @@ class WPAIC_API {
 			return null;
 		}
 
+		// Deliberately REMOTE_ADDR-only: forwarded-for headers are client-spoofable,
+		// so trusting them would let abusers escape the throttle. On CDN/proxy-fronted
+		// sites all visitors share one IP bucket; the wpaic_rate_limit_* filters are
+		// the escape hatch to raise limits there.
 		$ip_address = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
 
 		$transient_keys = array(
@@ -453,25 +508,37 @@ class WPAIC_API {
 			'wpaic_throttle_session_' . md5( $session_id ),
 		);
 
-		$throttled = false;
+		$now = time();
+
+		// Read all counters before incrementing any, so a request rejected by one
+		// key does not keep inflating the other (e.g. a throttled IP must not
+		// burn through the session budget too).
+		$windows = array();
 		foreach ( $transient_keys as $transient_key ) {
-			$request_count = get_transient( $transient_key );
+			$window = get_transient( $transient_key );
 
-			if ( false === $request_count ) {
-				set_transient( $transient_key, 1, $window_seconds );
-				continue;
+			$is_valid_window = is_array( $window )
+				&& isset( $window['count'], $window['window_started'] )
+				&& ( $now - (int) $window['window_started'] ) < $window_seconds;
+
+			if ( ! $is_valid_window ) {
+				$window = array(
+					'count'          => 0,
+					'window_started' => $now,
+				);
 			}
 
-			if ( (int) $request_count >= $max_requests ) {
-				$throttled = true;
-				continue;
+			if ( (int) $window['count'] >= $max_requests ) {
+				return 'You have sent too many messages in a short time. Please wait a few minutes and try again.';
 			}
 
-			set_transient( $transient_key, (int) $request_count + 1, $window_seconds );
+			$windows[ $transient_key ] = $window;
 		}
 
-		if ( $throttled ) {
-			return 'You have sent too many messages in a short time. Please wait a few minutes and try again.';
+		foreach ( $windows as $transient_key => $window ) {
+			$window['count'] = (int) $window['count'] + 1;
+			$ttl_remaining   = $window_seconds - ( $now - (int) $window['window_started'] );
+			set_transient( $transient_key, $window, max( 1, $ttl_remaining ) );
 		}
 
 		return null;
@@ -531,20 +598,32 @@ class WPAIC_API {
 	}
 
 	/**
+	 * Emit one SSE data event in the AI SDK UI message stream shape. The
+	 * frontend depends on the exact event encoding (a `data: ` prefix, `type`
+	 * first, then the fields in the given order), so all stream events go
+	 * through this single emitter.
+	 *
+	 * @param array<string, mixed> $fields Event fields, excluding `type`.
+	 */
+	private function emit_sse_event( string $type, array $fields = array() ): void {
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
+		echo 'data: ' . wp_json_encode( array( 'type' => $type ) + $fields ) . "\n\n";
+	}
+
+	/** Emit the SSE stream terminator the AI SDK frontend waits for. */
+	private function emit_sse_done(): void {
+		echo "data: [DONE]\n\n";
+	}
+
+	/**
 	 * Start the SSE stream, emit a single error event (the widget already
 	 * renders these), and end the request.
 	 */
 	private function reject_stream_request( string $error_message ): never {
 		$this->start_event_stream();
 
-		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON encoding handles escaping.
-		echo 'data: ' . wp_json_encode(
-			array(
-				'type'  => 'error',
-				'error' => $error_message,
-			)
-		) . "\n\n";
-		echo "data: [DONE]\n\n";
+		$this->emit_sse_event( 'error', array( 'error' => $error_message ) );
+		$this->emit_sse_done();
 		flush();
 
 		exit;
@@ -613,6 +692,24 @@ class WPAIC_API {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function handle_send_transcript( WP_REST_Request $request ) {
+		// Same guards as the chat stream: without them this route is an open mail
+		// relay — any visitor holding the public nonce could wp_mail arbitrary
+		// text to arbitrary addresses without limit.
+		$availability_error = $this->ensure_chat_is_available();
+		if ( is_wp_error( $availability_error ) ) {
+			return $availability_error;
+		}
+
+		$session_id = $this->resolve_session_id( $request->get_param( 'session_id' ) );
+		if ( null === $session_id ) {
+			return new WP_Error( 'invalid_session', 'Your chat session is invalid. Please refresh the page and try again.', array( 'status' => 400 ) );
+		}
+
+		$throttle_message = $this->check_rate_limit( $session_id );
+		if ( null !== $throttle_message ) {
+			return new WP_Error( 'rate_limited', $throttle_message, array( 'status' => 429 ) );
+		}
+
 		$email      = $request->get_param( 'email' );
 		$transcript = $request->get_param( 'transcript' );
 

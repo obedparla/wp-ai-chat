@@ -118,6 +118,76 @@ class WPAIC_SearchIndexTest extends TestCase {
 		$this->assertFalse( $pdo->query( "SELECT id FROM wordlist WHERE term = 'sneakers'" )->fetchColumn() );
 	}
 
+	public function test_search_skips_like_fallback_once_index_returned_candidates(): void {
+		$this->create_sneaker_catalog();
+		$this->assertTrue( $this->index->build_index() );
+
+		// "sneaker unicornium" makes TNT return candidates (sneaker docs) that
+		// relevance filtering rejects, then later variants ("trainer
+		// unicornium") return zero TNT candidates before the single-token
+		// fallback "sneaker" finally matches.
+		$result = $this->index->search( 'sneaker unicornium', array(), 6 );
+
+		$this->assertContains( 514, $result );
+		$this->assertContains( 520, $result );
+
+		// Since the index produced candidates, no empty variant pass may fall
+		// back to a WP_Query LIKE search: the last WP_Query issued must be
+		// build_index's product fetch, which carries no 's' parameter.
+		$query_vars = WPAICTestHelper::get_last_query_vars();
+		$this->assertNotNull( $query_vars );
+		$this->assertArrayNotHasKey( 's', $query_vars );
+	}
+
+	// --- Index version staleness (stemmer rollout) ---
+
+	public function test_build_index_stores_current_index_version(): void {
+		$this->create_sneaker_catalog();
+		$this->assertTrue( $this->index->build_index() );
+
+		$this->assertSame( WPAIC_Search_Index::INDEX_VERSION, (int) get_option( 'wpaic_index_version', 0 ) );
+		$this->assertFalse( $this->index->needs_version_rebuild() );
+
+		$this->index->clear_index();
+		$this->assertSame( 0, (int) get_option( 'wpaic_index_version', 0 ) );
+	}
+
+	public function test_needs_version_rebuild_detects_stale_index(): void {
+		$this->create_sneaker_catalog();
+		$this->assertTrue( $this->index->build_index() );
+
+		update_option( 'wpaic_index_version', WPAIC_Search_Index::INDEX_VERSION - 1 );
+
+		$this->assertTrue( $this->index->needs_version_rebuild() );
+	}
+
+	public function test_needs_version_rebuild_false_without_index_file(): void {
+		update_option( 'wpaic_index_version', WPAIC_Search_Index::INDEX_VERSION - 1 );
+
+		$this->assertFalse( $this->index->needs_version_rebuild() );
+	}
+
+	public function test_maybe_schedule_version_rebuild_schedules_cron_event_when_stale(): void {
+		$this->create_sneaker_catalog();
+		$this->assertTrue( $this->index->build_index() );
+		update_option( 'wpaic_index_version', WPAIC_Search_Index::INDEX_VERSION - 1 );
+
+		$this->index->maybe_schedule_version_rebuild();
+
+		$this->assertNotFalse( wp_next_scheduled( 'wpaic_rebuild_product_index' ) );
+	}
+
+	public function test_maybe_schedule_version_rebuild_noops_when_version_current(): void {
+		$this->create_sneaker_catalog();
+		$this->assertTrue( $this->index->build_index() );
+
+		$this->index->maybe_schedule_version_rebuild();
+
+		$this->assertFalse( wp_next_scheduled( 'wpaic_rebuild_product_index' ) );
+	}
+
+	// --- End index version staleness tests ---
+
 	public function test_singular_stemmer_rules(): void {
 		$this->assertSame( 'sneaker', WPAIC_Singular_Stemmer::stem( 'sneakers' ) );
 		$this->assertSame( 'shoe', WPAIC_Singular_Stemmer::stem( 'shoes' ) );

@@ -7,42 +7,50 @@ if ( ! defined( 'ABSPATH' ) ) {
 use TeamTNT\TNTSearch\TNTSearch;
 
 require_once __DIR__ . '/class-wpaic-singular-stemmer.php';
+require_once __DIR__ . '/class-wpaic-query-expander.php';
 
 class WPAIC_Search_Index {
 
 	/**
-	 * Small synonym groups used to broaden zero-result searches. Members are
-	 * singular, normalized (lowercase, hyphens already collapsed to spaces by
-	 * normalize_query_text), so "t-shirt" appears here as "t shirt".
+	 * Bump whenever index-time tokenization changes (e.g. the singularizing
+	 * stemmer added in version 2): indexes built by an older plugin version
+	 * are detected as stale via the wpaic_index_version option and rebuilt.
 	 */
-	private const SYNONYM_GROUPS = array(
-		array( 'perfume', 'fragrance' ),
-		array( 'shoe', 'sneaker', 'trainer' ),
-		array( 't shirt', 'tshirt', 'tee' ),
-	);
+	public const INDEX_VERSION = 2;
 
 	/**
-	 * Phrase-level synonyms, merged into results whenever the phrase appears
-	 * in the query — unlike SYNONYM_GROUPS, which only broaden zero-result or
-	 * weak-result searches. Catalogs name "running shoes" sneakers ("Sports
-	 * Sneakers Off White Red"), and sneaker queries should also surface plain
-	 * shoes as a fallback. Keys and replacements are singular, normalized
-	 * (matching singularize_query_text output). Single-pass, no chaining.
+	 * Hard cap on search passes (TNT or LIKE-fallback queries) per search()
+	 * call, across all query variants and filter fallbacks. The expansion can
+	 * produce a dozen variants and up to three filter sets; without a cap a
+	 * fully-missing query multiplies into dozens of index/database hits, so
+	 * tail latency is bounded at ~8 passes.
 	 */
-	private const PHRASE_SYNONYMS = array(
-		'running shoe' => 'sneaker',
-		'trainer'      => 'sneaker',
-		'kick'         => 'sneaker',
-		'sneaker'      => 'shoe',
-	);
+	private const MAX_SEARCH_PASSES = 8;
 
 	private ?TNTSearch $tnt = null;
 	private string $index_path;
 	private string $index_name = 'products.index';
+	private WPAIC_Query_Expander $query_expander;
+
+	/**
+	 * Per-request memo of get_product_data() results keyed by product ID:
+	 * relevance filtering re-reads the same candidates on every variant pass.
+	 * Reset at the start of each search().
+	 *
+	 * @var array<int, array<string, mixed>|null>
+	 */
+	private array $product_data_cache = array();
+
+	/** Search passes executed by the current search() call. */
+	private int $search_pass_count = 0;
+
+	/** Whether the TNT index returned any raw candidate during this search(). */
+	private bool $tnt_returned_candidates = false;
 
 	public function __construct() {
-		$upload_dir       = wp_upload_dir();
-		$this->index_path = $upload_dir['basedir'] . '/wpaic/search/';
+		$upload_dir           = wp_upload_dir();
+		$this->index_path     = $upload_dir['basedir'] . '/wpaic/search/';
+		$this->query_expander = new WPAIC_Query_Expander();
 	}
 
 	public function is_enabled(): bool {
@@ -153,6 +161,20 @@ class WPAIC_Search_Index {
 	}
 
 	/**
+	 * Per-request memoized variant of get_product_data() for the relevance
+	 * filter and title-token gating, which re-read the same products for
+	 * every variant pass of a single search().
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private function get_product_data_cached( int $product_id ): ?array {
+		if ( ! array_key_exists( $product_id, $this->product_data_cache ) ) {
+			$this->product_data_cache[ $product_id ] = $this->get_product_data( $product_id );
+		}
+		return $this->product_data_cache[ $product_id ];
+	}
+
+	/**
 	 * Build/rebuild the full search index.
 	 *
 	 * @return bool True on success.
@@ -203,6 +225,7 @@ class WPAIC_Search_Index {
 		}
 
 		$this->update_index_meta( count( $products ) );
+		update_option( 'wpaic_index_version', self::INDEX_VERSION );
 
 		return true;
 	}
@@ -214,16 +237,55 @@ class WPAIC_Search_Index {
 		}
 
 		$this->clear_index_meta();
+		delete_option( 'wpaic_index_version' );
 
 		return true;
 	}
 
 	/**
-	 * Search products using fuzzy matching, auto-retrying broader query and
-	 * filter variants on zero results so a single keyword miss never reads as
-	 * "the store does not sell this": plural/hyphen normalization, a small
-	 * synonym map, individual tokens alone (brand-only matches like "chanel"),
-	 * then the parent category and finally no category filter.
+	 * Whether the on-disk index was built by an older plugin version whose
+	 * tokenization rules no longer match INDEX_VERSION (e.g. pre-stemmer
+	 * indexes store plural title tokens the singularizing query path can no
+	 * longer reach).
+	 */
+	public function needs_version_rebuild(): bool {
+		if ( ! $this->is_enabled() ) {
+			return false;
+		}
+		if ( ! file_exists( $this->index_path . $this->index_name ) ) {
+			return false;
+		}
+		return (int) get_option( 'wpaic_index_version', 0 ) !== self::INDEX_VERSION;
+	}
+
+	/**
+	 * Rebuild a version-stale index: asynchronously via a single cron event
+	 * when WP-Cron runs, inline (callers hook this on admin_init) when cron
+	 * is disabled.
+	 */
+	public function maybe_schedule_version_rebuild(): void {
+		if ( ! $this->needs_version_rebuild() ) {
+			return;
+		}
+
+		if ( ! defined( 'DISABLE_WP_CRON' ) || ! DISABLE_WP_CRON ) {
+			if ( ! wp_next_scheduled( 'wpaic_rebuild_product_index' ) ) {
+				wp_schedule_single_event( time(), 'wpaic_rebuild_product_index' );
+			}
+			return;
+		}
+
+		$this->build_index();
+	}
+
+	/**
+	 * Search products using fuzzy matching over the expansion produced by
+	 * WPAIC_Query_Expander: one ordered pass of (variant query, tier) pairs —
+	 * exact/normalized, singularized, phrase-synonym, token-synonym, then
+	 * single-token fallback — merged so earlier tiers rank first, deduped and
+	 * capped at limit. A single keyword miss therefore never reads as "the
+	 * store does not sell this". Filter fallbacks (parent category, then no
+	 * category) re-run the same pass when a filter set yields nothing.
 	 *
 	 * @param string              $query Search query.
 	 * @param array<string,mixed> $filters Optional filters (category, min_price, max_price).
@@ -231,14 +293,18 @@ class WPAIC_Search_Index {
 	 * @return array<int> Array of product IDs.
 	 */
 	public function search( string $query, array $filters = array(), int $limit = 20 ): array {
-		$queries = array_merge( array( $query ), $this->expand_query_variants( $query ) );
+		// Per-request state: product-data memo for relevance checks, the
+		// total pass cap, and whether TNT has produced candidates yet.
+		$this->product_data_cache      = array();
+		$this->search_pass_count       = 0;
+		$this->tnt_returned_candidates = false;
+
+		$variants = $this->query_expander->expand( $query );
 
 		foreach ( $this->filter_fallbacks( $filters ) as $candidate_filters ) {
-			foreach ( $queries as $candidate_query ) {
-				$product_ids = $this->search_single( $candidate_query, $candidate_filters, $limit );
-				if ( ! empty( $product_ids ) ) {
-					return $this->merge_synonym_variant_results( $product_ids, $query, $candidate_filters, $limit );
-				}
+			$product_ids = $this->search_variants( $variants, $candidate_filters, $limit );
+			if ( ! empty( $product_ids ) ) {
+				return $product_ids;
 			}
 		}
 
@@ -246,42 +312,33 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Recall booster, merging two kinds of synonym variants into non-empty
-	 * primary results:
+	 * Run the tiered search-and-merge loop for one filter set: variants are
+	 * searched in tier order, results merged first-tier-first and deduped.
+	 * While results are empty every tier acts as a broader retry; once
+	 * results exist only the merge-capable tiers (see should_search_variant)
+	 * still run.
 	 *
-	 * 1. Phrase synonyms (PHRASE_SYNONYMS) run whenever the phrase appears in
-	 *    the query, regardless of title-token matches — "running shoes" always
-	 *    has a "shoes" title match somewhere (heels, slippers), which must not
-	 *    stop sneakers from surfacing.
-	 * 2. Token synonyms (SYNONYM_GROUPS) run only when the primary results
-	 *    carry no title-token match for a query noun with known synonyms
-	 *    (e.g. "shoos" fuzzy-matched heels via their description but no result
-	 *    has shoe/shoos in its title).
-	 *
-	 * Bounded to one extra search per variant query, deduped, capped at limit.
-	 *
-	 * @param array<int>          $product_ids Primary (non-empty) result IDs.
-	 * @param string              $query Original query.
-	 * @param array<string,mixed> $filters Filter set the primary results matched.
-	 * @param int                 $limit Max results.
+	 * @param array<int, array{query:string, tier:string, source:?string}> $variants
+	 * @param array<string,mixed>                                          $filters
 	 * @return array<int>
 	 */
-	private function merge_synonym_variant_results( array $product_ids, string $query, array $filters, int $limit ): array {
-		$variant_queries = array_unique(
-			array_merge(
-				$this->phrase_synonym_variants( $query ),
-				$this->synonym_variants_for_unmatched_title_tokens( $product_ids, $query )
-			)
-		);
-		if ( empty( $variant_queries ) ) {
-			return $product_ids;
-		}
+	private function search_variants( array $variants, array $filters, int $limit ): array {
+		$merged = array();
 
-		$merged = $product_ids;
-		foreach ( $variant_queries as $variant_query ) {
-			foreach ( $this->search_single( $variant_query, $filters, $limit ) as $variant_product_id ) {
-				if ( ! in_array( $variant_product_id, $merged, true ) ) {
-					$merged[] = $variant_product_id;
+		foreach ( $variants as $variant ) {
+			// MAX_SEARCH_PASSES caps total passes per search() call, shared
+			// across filter fallbacks — see the constant's doc comment.
+			if ( $this->search_pass_count >= self::MAX_SEARCH_PASSES ) {
+				break;
+			}
+			if ( ! $this->should_search_variant( $variant, $merged ) ) {
+				continue;
+			}
+
+			++$this->search_pass_count;
+			foreach ( $this->search_single( $variant['query'], $filters, $limit ) as $product_id ) {
+				if ( ! in_array( $product_id, $merged, true ) ) {
+					$merged[] = $product_id;
 				}
 			}
 		}
@@ -290,149 +347,55 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Synonym-substituted query variants for each significant query token that
-	 * (a) belongs to a synonym group — exactly or within one typo letter, so
-	 * "shoos" still maps to the shoe group — and (b) appears in no result title.
-	 * Tokens already named in a result title produce no variants.
+	 * Tier gating for the merge loop. While results are empty, every tier is
+	 * a broader zero-result retry. Once results exist:
+	 * - phrase synonyms always merge ("running shoes" always has SOME title
+	 *   match like heels, which must not stop sneakers from surfacing);
+	 * - token synonyms merge only when the substituted token has no
+	 *   result-title match (e.g. "shoos" fuzzy-matched heels via their
+	 *   description but no result names a shoe), and multi-word sources
+	 *   ("t shirt") only ever broaden zero-result searches;
+	 * - exact/singular/single-token tiers never merge into existing results.
 	 *
-	 * @param array<int> $product_ids
-	 * @return array<string>
+	 * @param array{query:string, tier:string, source:?string} $variant
+	 * @param array<int>                                       $merged
 	 */
-	private function synonym_variants_for_unmatched_title_tokens( array $product_ids, string $query ): array {
-		$tokens = $this->significant_query_tokens( $query );
-		if ( empty( $tokens ) ) {
-			return array();
+	private function should_search_variant( array $variant, array $merged ): bool {
+		if ( empty( $merged ) ) {
+			return true;
 		}
-
-		$title_tokens = array();
-		foreach ( $product_ids as $product_id ) {
-			$data = $this->get_product_data( (int) $product_id );
-			if ( null !== $data ) {
-				$title_tokens += $this->tokenize_haystack( (string) $data['title'] );
-			}
+		if ( WPAIC_Query_Expander::TIER_PHRASE_SYNONYM === $variant['tier'] ) {
+			return true;
 		}
-
-		$singular_query = $this->singularize_query_text( $query );
-
-		$variants = array();
-		foreach ( $tokens as $token ) {
-			$singular = $this->singularize_token( $token );
-			if ( isset( $title_tokens[ $token ] ) || isset( $title_tokens[ $singular ] ) ) {
-				continue;
+		if ( WPAIC_Query_Expander::TIER_TOKEN_SYNONYM === $variant['tier'] ) {
+			$source = $variant['source'];
+			if ( ! is_string( $source ) || str_contains( $source, ' ' ) ) {
+				return false;
 			}
-
-			foreach ( self::SYNONYM_GROUPS as $group ) {
-				if ( ! $this->token_matches_synonym_group( $singular, $group ) ) {
-					continue;
-				}
-				foreach ( $group as $replacement ) {
-					if ( $replacement === $singular ) {
-						continue;
-					}
-					$substituted = preg_replace(
-						'/\b' . preg_quote( $singular, '/' ) . '\b/',
-						$replacement,
-						$singular_query
-					);
-					if ( is_string( $substituted ) && '' !== trim( $substituted ) && $substituted !== $singular_query ) {
-						$variants[ $substituted ] = true;
-					}
-				}
-			}
-		}
-
-		return array_keys( $variants );
-	}
-
-	/**
-	 * Whether a (singularized) query token belongs to a synonym group.
-	 *
-	 * @param array<string> $group
-	 */
-	private function token_matches_synonym_group( string $token, array $group ): bool {
-		foreach ( $group as $member ) {
-			if ( $this->tokens_equivalent( $token, $member ) ) {
-				return true;
-			}
+			return ! $this->token_in_result_titles( $merged, $source );
 		}
 		return false;
 	}
 
 	/**
-	 * Whether two singular tokens are the same word, exactly or within a
-	 * single-letter typo for words long enough to be distinctive
-	 * ("shoo" → "shoe").
-	 */
-	private function tokens_equivalent( string $token, string $member ): bool {
-		if ( $token === $member ) {
-			return true;
-		}
-		return strlen( $token ) >= 4 && strlen( $member ) >= 4 && 1 === levenshtein( $token, $member );
-	}
-
-	/**
-	 * Query variants with each PHRASE_SYNONYMS phrase found in the query
-	 * substituted by its synonym ("running shoos" → "sneaker",
-	 * "red trainers" → "red sneaker"). Phrase tokens match singularized query
-	 * tokens exactly or within a one-letter typo.
+	 * Whether the (singular) token appears in any result product title.
+	 * tokenize_haystack() indexes both raw and singularized title words, so a
+	 * singular token also matches plural-titled products.
 	 *
-	 * @return array<string>
+	 * @param array<int> $product_ids
 	 */
-	private function phrase_synonym_variants( string $query ): array {
-		$singular_query = $this->singularize_query_text( $query );
-		if ( '' === $singular_query ) {
-			return array();
-		}
-
-		$query_tokens = explode( ' ', $singular_query );
-		$variants     = array();
-
-		foreach ( self::PHRASE_SYNONYMS as $phrase => $replacement ) {
-			$phrase_tokens = explode( ' ', (string) $phrase );
-			$position      = $this->find_phrase_position( $query_tokens, $phrase_tokens );
-			if ( null === $position ) {
+	private function token_in_result_titles( array $product_ids, string $token ): bool {
+		foreach ( $product_ids as $product_id ) {
+			$data = $this->get_product_data_cached( (int) $product_id );
+			if ( null === $data ) {
 				continue;
 			}
-
-			$substituted = implode(
-				' ',
-				array_merge(
-					array_slice( $query_tokens, 0, $position ),
-					array( $replacement ),
-					array_slice( $query_tokens, $position + count( $phrase_tokens ) )
-				)
-			);
-			if ( '' !== $substituted && $substituted !== $singular_query ) {
-				$variants[ $substituted ] = true;
+			$title_tokens = $this->tokenize_haystack( (string) $data['title'] );
+			if ( isset( $title_tokens[ $token ] ) ) {
+				return true;
 			}
 		}
-
-		return array_keys( $variants );
-	}
-
-	/**
-	 * Position of the first occurrence of the phrase within the query tokens,
-	 * each phrase token matching exactly or within a one-letter typo, or null
-	 * when the phrase does not appear.
-	 *
-	 * @param array<string> $query_tokens
-	 * @param array<string> $phrase_tokens
-	 */
-	private function find_phrase_position( array $query_tokens, array $phrase_tokens ): ?int {
-		$last_start = count( $query_tokens ) - count( $phrase_tokens );
-		for ( $start = 0; $start <= $last_start; $start++ ) {
-			$matches = true;
-			foreach ( $phrase_tokens as $offset => $phrase_token ) {
-				if ( ! $this->tokens_equivalent( $query_tokens[ $start + $offset ], $phrase_token ) ) {
-					$matches = false;
-					break;
-				}
-			}
-			if ( $matches ) {
-				return $start;
-			}
-		}
-		return null;
+		return false;
 	}
 
 	/**
@@ -460,7 +423,14 @@ class WPAIC_Search_Index {
 		$results     = $tnt->search( $query, $limit * 4 );
 		$product_ids = isset( $results['ids'] ) && is_array( $results['ids'] ) ? array_map( 'intval', $results['ids'] ) : array();
 
-		if ( empty( $product_ids ) ) {
+		if ( ! empty( $product_ids ) ) {
+			$this->tnt_returned_candidates = true;
+		} elseif ( ! $this->tnt_returned_candidates ) {
+			// The index exists but has not produced a single candidate this
+			// request (possibly empty or stale), so allow the LIKE fallback.
+			// Once TNT has returned candidates the index is authoritative:
+			// re-querying via WP_Query LIKE on every empty variant pass would
+			// only multiply slow queries.
 			$product_ids = $this->fallback_search( $query, $filters, $limit * 2 );
 		}
 
@@ -471,118 +441,6 @@ class WPAIC_Search_Index {
 		$product_ids = $this->filter_by_relevance( $product_ids, $query );
 
 		return array_slice( $product_ids, 0, $limit );
-	}
-
-	/**
-	 * Generate broader retry queries for a zero-result search, in priority order:
-	 * 1. plural/hyphen-normalized full query ("t-shirts" → "t shirt")
-	 * 2. synonym substitutions, one group member swapped at a time
-	 *    ("chanel perfume" → "chanel fragrance")
-	 * 3. phrase synonym substitutions ("kicks" → "sneaker")
-	 * 4. each significant token alone, raw then singular, plus its synonyms
-	 *    (catches brand-only matches: "chanel perfume" → "chanel")
-	 * The original query is never included.
-	 *
-	 * @return array<string>
-	 */
-	private function expand_query_variants( string $query ): array {
-		$normalized = $this->normalize_query_text( $query );
-		if ( '' === $normalized ) {
-			return array();
-		}
-
-		$singular = $this->singularize_query_text( $query );
-
-		$variants = array( $normalized, $singular );
-
-		foreach ( self::SYNONYM_GROUPS as $group ) {
-			foreach ( $group as $member ) {
-				$member_pattern = '/\b' . preg_quote( $member, '/' ) . '\b/';
-				if ( ! preg_match( $member_pattern, $singular ) ) {
-					continue;
-				}
-				foreach ( $group as $replacement ) {
-					if ( $replacement === $member ) {
-						continue;
-					}
-					$substituted = preg_replace( $member_pattern, $replacement, $singular );
-					if ( is_string( $substituted ) ) {
-						$variants[] = $substituted;
-					}
-				}
-			}
-		}
-
-		foreach ( $this->phrase_synonym_variants( $query ) as $phrase_variant ) {
-			$variants[] = $phrase_variant;
-		}
-
-		// Single-token retries, only when there is more than one significant token.
-		$tokens = $this->significant_query_tokens( $query );
-		if ( count( $tokens ) > 1 ) {
-			foreach ( $tokens as $token ) {
-				$singular_token = $this->singularize_token( $token );
-				$variants[]     = $token;
-				$variants[]     = $singular_token;
-				foreach ( self::SYNONYM_GROUPS as $group ) {
-					if ( in_array( $singular_token, $group, true ) ) {
-						foreach ( $group as $replacement ) {
-							if ( $replacement !== $singular_token ) {
-								$variants[] = $replacement;
-							}
-						}
-					}
-				}
-			}
-		}
-
-		$already_searched = strtolower( trim( $query ) );
-
-		$unique = array();
-		foreach ( $variants as $variant ) {
-			$variant = trim( $variant );
-			if ( '' === $variant || $variant === $already_searched ) {
-				continue;
-			}
-			$unique[ $variant ] = true;
-		}
-
-		return array_keys( $unique );
-	}
-
-	/**
-	 * Lowercase, collapse non-alphanumerics (hyphens included) to single spaces.
-	 */
-	private function normalize_query_text( string $query ): string {
-		$normalized = preg_replace( '/[^a-z0-9]+/', ' ', strtolower( $query ) );
-		return is_string( $normalized ) ? trim( $normalized ) : '';
-	}
-
-	/**
-	 * Normalized query with every token reduced to singular — the canonical
-	 * form synonym matching operates on.
-	 */
-	private function singularize_query_text( string $query ): string {
-		$normalized = $this->normalize_query_text( $query );
-		if ( '' === $normalized ) {
-			return '';
-		}
-		return implode(
-			' ',
-			array_map(
-				array( $this, 'singularize_token' ),
-				explode( ' ', $normalized )
-			)
-		);
-	}
-
-	/**
-	 * Reduce a simple English plural to its singular form ("shirts" → "shirt",
-	 * "watches" → "watch", "accessories" → "accessory"). Delegates to the TNT
-	 * stemmer so query/haystack tokenization and the index share one rule set.
-	 */
-	private function singularize_token( string $token ): string {
-		return WPAIC_Singular_Stemmer::stem( $token );
 	}
 
 	/**
@@ -650,7 +508,7 @@ class WPAIC_Search_Index {
 			return array();
 		}
 
-		$tokens = $this->significant_query_tokens( $query );
+		$tokens = $this->query_expander->significant_query_tokens( $query );
 		if ( empty( $tokens ) ) {
 			return $product_ids;
 		}
@@ -659,7 +517,7 @@ class WPAIC_Search_Index {
 		$weak_matches   = array();
 
 		foreach ( $product_ids as $product_id ) {
-			$data = $this->get_product_data( (int) $product_id );
+			$data = $this->get_product_data_cached( (int) $product_id );
 			if ( null === $data ) {
 				continue;
 			}
@@ -747,44 +605,12 @@ class WPAIC_Search_Index {
 	}
 
 	/**
-	 * Extract lowercased query tokens worth filtering against. Drops short
-	 * fragments and generic stopwords that would otherwise reject relevant
-	 * products.
-	 *
-	 * @return array<string>
+	 * Reduce a simple English plural to its singular form ("shirts" → "shirt",
+	 * "watches" → "watch", "accessories" → "accessory"). Delegates to the TNT
+	 * stemmer so query/haystack tokenization and the index share one rule set.
 	 */
-	private function significant_query_tokens( string $query ): array {
-		$normalized = strtolower( $query );
-		$normalized = preg_replace( '/[^a-z0-9]+/', ' ', $normalized );
-		if ( ! is_string( $normalized ) ) {
-			return array();
-		}
-
-		$stopwords = array(
-			'a', 'an', 'the', 'and', 'or', 'but', 'of', 'for', 'with', 'to', 'in', 'on',
-			'at', 'by', 'is', 'are', 'be', 'this', 'that', 'these', 'those', 'i', 'me',
-			'my', 'we', 'our', 'you', 'your', 'show', 'find', 'list', 'give', 'me',
-			'some', 'any', 'please', 'looking', 'need', 'want', 'have', 'hav', 'has', 'do',
-			'does', 'can', 'could', 'would', 'should', 'product', 'products', 'item',
-			'items', 'price', 'prices', 'picture', 'pictures', 'image', 'images',
-			'actual', 'really', 'real',
-		);
-
-		$tokens = array();
-		foreach ( preg_split( '/\s+/', trim( $normalized ) ) ?: array() as $token ) {
-			if ( '' === $token ) {
-				continue;
-			}
-			if ( strlen( $token ) < 3 ) {
-				continue;
-			}
-			if ( in_array( $token, $stopwords, true ) ) {
-				continue;
-			}
-			$tokens[ $token ] = true;
-		}
-
-		return array_keys( $tokens );
+	private function singularize_token( string $token ): string {
+		return WPAIC_Singular_Stemmer::stem( $token );
 	}
 
 	/**

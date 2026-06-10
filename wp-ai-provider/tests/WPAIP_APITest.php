@@ -11,6 +11,7 @@ class WPAIP_APITest extends TestCase {
 		$GLOBALS['wp_actions']     = array();
 		$GLOBALS['wp_rest_routes'] = array();
 		$GLOBALS['wp_filters']     = array();
+		$GLOBALS['wpdb']->reset();
 
 		update_option( 'wpaip_settings', array(
 			'openai_api_key'      => 'sk-test',
@@ -604,11 +605,14 @@ class WPAIP_APITest extends TestCase {
 			'daily_message_budget' => 1,
 			'daily_token_budget'   => 0,
 		) );
-		update_option( 'wpaip_usage_daily', array(
-			gmdate( 'Y-m-d' ) => array(
-				'fs_install_99' => array( 'messages' => 1 ),
-			),
-		) );
+		$GLOBALS['wpdb']->insert(
+			WPAIP_Usage_Tracker::get_table_name(),
+			array(
+				'usage_day'    => gmdate( 'Y-m-d' ),
+				'usage_bucket' => 'fs_install_99',
+				'messages'     => 1,
+			)
+		);
 
 		$mock_streamer = $this->make_capturing_streamer();
 		$this->api->set_streamer( $mock_streamer );
@@ -657,7 +661,13 @@ class WPAIP_APITest extends TestCase {
 		}
 
 		$this->assertNotNull( $mock_streamer->captured_params );
-		$this->assertSame( array(), get_option( 'wpaip_usage_daily', array() ) );
+		$usage_writes = array_filter(
+			$GLOBALS['wpdb']->queries,
+			static function ( string $query ): bool {
+				return str_starts_with( $query, 'INSERT' );
+			}
+		);
+		$this->assertSame( array(), $usage_writes );
 	}
 
 	public function test_completed_stream_event_records_tokens_for_usage_bucket(): void {

@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-wpaic-logs.php';
 require_once __DIR__ . '/../includes/class-wpaic-events.php';
+require_once __DIR__ . '/../includes/class-wpaic-transcript-renderer.php';
 require_once __DIR__ . '/../includes/class-wpaic-tools.php';
 require_once __DIR__ . '/../includes/class-wpaic-search-index.php';
 require_once __DIR__ . '/../includes/class-wpaic-content-index.php';
@@ -752,6 +753,35 @@ class WPAIC_AdminTest extends TestCase {
 		$this->assertEquals( 'https://example.com/logo.png', $sanitized['chatbot_logo'] );
 		$this->assertEquals( '#ff0000', $sanitized['theme_color'] );
 		$this->assertEquals( 'Be helpful', $sanitized['system_prompt'] );
+	}
+
+	public function test_sanitize_settings_promotions_enabled_defaults_to_false(): void {
+		$sanitized = $this->admin->sanitize_settings( array() );
+
+		$this->assertFalse( $sanitized['promotions_enabled'] );
+	}
+
+	public function test_sanitize_settings_promotions_enabled_saved_from_engagement_tab(): void {
+		$input = array(
+			'active_tab'         => 'engagement',
+			'promotions_enabled' => '1',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertTrue( $sanitized['promotions_enabled'] );
+	}
+
+	public function test_sanitize_settings_engagement_tab_clears_unchecked_promotions_enabled(): void {
+		WPAICTestHelper::set_option( 'wpaic_settings', array( 'promotions_enabled' => true ) );
+
+		$input = array(
+			'active_tab' => 'engagement',
+		);
+
+		$sanitized = $this->admin->sanitize_settings( $input );
+
+		$this->assertFalse( $sanitized['promotions_enabled'] );
 	}
 
 	public function test_sanitize_settings_unchecked_checkbox_on_active_tab_clears_it(): void {
@@ -1806,7 +1836,7 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 	// ---- Markdown-lite transcript rendering (P2-27d) ----
 
 	public function test_render_markdown_lite_renders_bold_italic_code_and_links(): void {
-		$html = WPAIC_Admin::render_markdown_lite( 'Try **bold**, *italic*, `code`, and [our shop](https://example.com/shop).' );
+		$html = WPAIC_Transcript_Renderer::render_markdown_lite( 'Try **bold**, *italic*, `code`, and [our shop](https://example.com/shop).' );
 
 		$this->assertStringContainsString( '<strong>bold</strong>', $html );
 		$this->assertStringContainsString( '<em>italic</em>', $html );
@@ -1816,7 +1846,7 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 	}
 
 	public function test_render_markdown_lite_renders_bullet_and_numbered_lists(): void {
-		$html = WPAIC_Admin::render_markdown_lite( "Top picks:\n- Mug A\n- Mug B\n\n1. First\n2. Second" );
+		$html = WPAIC_Transcript_Renderer::render_markdown_lite( "Top picks:\n- Mug A\n- Mug B\n\n1. First\n2. Second" );
 
 		$this->assertStringContainsString( '<ul><li>Mug A</li><li>Mug B</li></ul>', $html );
 		$this->assertStringContainsString( '<ol><li>First</li><li>Second</li></ol>', $html );
@@ -1824,7 +1854,7 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 	}
 
 	public function test_render_markdown_lite_escapes_html(): void {
-		$html = WPAIC_Admin::render_markdown_lite( '<script>alert("xss")</script> & **<b>bold</b>**' );
+		$html = WPAIC_Transcript_Renderer::render_markdown_lite( '<script>alert("xss")</script> & **<b>bold</b>**' );
 
 		$this->assertStringNotContainsString( '<script>', $html );
 		$this->assertStringNotContainsString( '<b>', $html );
@@ -1833,14 +1863,14 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 	}
 
 	public function test_render_markdown_lite_joins_paragraph_lines_with_breaks(): void {
-		$html = WPAIC_Admin::render_markdown_lite( "Line one\nLine two\n\nNext paragraph" );
+		$html = WPAIC_Transcript_Renderer::render_markdown_lite( "Line one\nLine two\n\nNext paragraph" );
 
 		$this->assertStringContainsString( '<p>Line one<br>Line two</p>', $html );
 		$this->assertStringContainsString( '<p>Next paragraph</p>', $html );
 	}
 
 	public function test_render_markdown_lite_renders_headings_as_bold_paragraphs(): void {
-		$html = WPAIC_Admin::render_markdown_lite( '## Shipping options' );
+		$html = WPAIC_Transcript_Renderer::render_markdown_lite( '## Shipping options' );
 
 		$this->assertStringContainsString( '<p><strong>Shipping options</strong></p>', $html );
 	}
@@ -1916,6 +1946,14 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 	}
 
 	// ---- Unsaved-changes guard on settings tabs (P2-27a) ----
+	// The guard logic lives in the enqueued assets/admin.js; the page only
+	// renders the indicator markup the script toggles.
+
+	private function get_admin_js_asset(): string {
+		$admin_js = file_get_contents( WPAIC_PLUGIN_DIR . 'assets/admin.js' );
+		$this->assertNotFalse( $admin_js );
+		return (string) $admin_js;
+	}
 
 	public function test_settings_page_includes_unsaved_changes_guard(): void {
 		$this->reset_mock_wpdb();
@@ -1927,27 +1965,70 @@ public function test_sanitize_settings_handoff_fields_filters_invalid_values(): 
 		$output = ob_get_clean();
 
 		$this->assertStringContainsString( 'id="wpaic-unsaved-indicator"', $output );
-		$this->assertStringContainsString( 'beforeunload', $output );
-		$this->assertStringContainsString( 'hasUnsavedChanges', $output );
+		// No inline guard script anymore; logic moved to assets/admin.js.
+		$this->assertStringNotContainsString( 'beforeunload', $output );
+
+		$admin_js = $this->get_admin_js_asset();
+		$this->assertStringContainsString( 'beforeunload', $admin_js );
+		$this->assertStringContainsString( 'hasUnsavedChanges', $admin_js );
+		$this->assertStringContainsString( '#wpaic-unsaved-indicator', $admin_js );
 	}
 
 	public function test_unsaved_changes_guard_is_value_based(): void {
-		$this->reset_mock_wpdb();
-		WPAICTestHelper::set_option( 'test_user_can_manage_options', true );
-		WPAICTestHelper::set_option( 'wpaic_settings', array() );
-
-		ob_start();
-		$this->admin->render_settings_page();
-		$output = ob_get_clean();
+		$admin_js = $this->get_admin_js_asset();
 
 		// Snapshot of saved values taken on load, compared on every edit so
 		// reverting to the saved values clears the dirty state again.
-		$this->assertStringContainsString( 'var savedSnapshot = $form.serialize();', $output );
-		$this->assertStringContainsString( "hasUnsavedChanges = \$form.serialize() !== savedSnapshot;", $output );
-		$this->assertStringContainsString( "toggleClass('hidden', !hasUnsavedChanges)", $output );
+		$this->assertStringContainsString( 'var savedSnapshot = $form.serialize();', $admin_js );
+		$this->assertStringContainsString( "hasUnsavedChanges = \$form.serialize() !== savedSnapshot;", $admin_js );
+		$this->assertStringContainsString( "toggleClass('hidden', !hasUnsavedChanges)", $admin_js );
 		// Snapshot resets on submit so a save without a reload starts clean:
 		// one serialize() snapshot on load, one inside the submit handler.
-		$this->assertSame( 2, substr_count( $output, 'savedSnapshot = $form.serialize();' ) );
+		$this->assertSame( 2, substr_count( $admin_js, 'savedSnapshot = $form.serialize();' ) );
+	}
+
+	// ---- Enqueued admin JS asset (onboarding + transcript modal handlers) ----
+
+	public function test_admin_js_asset_contains_onboarding_and_transcript_handlers(): void {
+		$admin_js = $this->get_admin_js_asset();
+
+		// Onboarding checklist: dismissal and "try it" step persistence.
+		$this->assertStringContainsString( 'wpaic_update_onboarding', $admin_js );
+		$this->assertStringContainsString( 'wpaicAdmin.onboardingNonce', $admin_js );
+		$this->assertStringContainsString( '#wpaic-onboarding-dismiss', $admin_js );
+		$this->assertStringContainsString( '#wpaic-onboarding-try-it', $admin_js );
+
+		// Chat Logs transcript modal: view, delete, and close handlers.
+		$this->assertStringContainsString( 'wpaic_get_conversation', $admin_js );
+		$this->assertStringContainsString( 'wpaic_delete_conversation', $admin_js );
+		$this->assertStringContainsString( 'wpaicAdmin.adminNonce', $admin_js );
+		$this->assertStringContainsString( 'wpaicAdmin.deleteConversationConfirm', $admin_js );
+		$this->assertStringContainsString( '#wpaic-conversation-modal', $admin_js );
+	}
+
+	public function test_enqueue_admin_scripts_registers_admin_js_with_localized_data(): void {
+		$GLOBALS['wpaic_test_enqueued_scripts']  = array();
+		$GLOBALS['wpaic_test_localized_scripts'] = array();
+
+		$this->admin->enqueue_admin_scripts( 'toplevel_page_wp-ai-chatbot' );
+
+		$this->assertArrayHasKey( 'wpaic-admin', $GLOBALS['wpaic_test_enqueued_scripts'] );
+		$this->assertSame( WPAIC_PLUGIN_URL . 'assets/admin.js', $GLOBALS['wpaic_test_enqueued_scripts']['wpaic-admin']['src'] );
+		$this->assertContains( 'jquery', $GLOBALS['wpaic_test_enqueued_scripts']['wpaic-admin']['deps'] );
+
+		$this->assertArrayHasKey( 'wpaic-admin', $GLOBALS['wpaic_test_localized_scripts'] );
+		$localized = $GLOBALS['wpaic_test_localized_scripts']['wpaic-admin']['wpaicAdmin'];
+		$this->assertSame( 'test_nonce_wpaic_admin', $localized['adminNonce'] );
+		$this->assertSame( 'test_nonce_wpaic_onboarding', $localized['onboardingNonce'] );
+		$this->assertSame( 'Are you sure you want to delete this conversation?', $localized['deleteConversationConfirm'] );
+	}
+
+	public function test_enqueue_admin_scripts_skips_unrelated_admin_pages(): void {
+		$GLOBALS['wpaic_test_enqueued_scripts'] = array();
+
+		$this->admin->enqueue_admin_scripts( 'edit.php' );
+
+		$this->assertArrayNotHasKey( 'wpaic-admin', $GLOBALS['wpaic_test_enqueued_scripts'] );
 	}
 
 	// ---- Honest index freshness wording (P2-27b) ----

@@ -9,6 +9,7 @@ class WPAIP_PluginTest extends TestCase {
 		$GLOBALS['wp_actions'] = array();
 		$GLOBALS['wp_activation_hooks'] = array();
 		$GLOBALS['wp_deactivation_hooks'] = array();
+		$GLOBALS['wpdb']->reset();
 	}
 
 	public function test_plugin_constants_defined(): void {
@@ -40,8 +41,28 @@ class WPAIP_PluginTest extends TestCase {
 		$this->assertSame( '', $settings['openai_api_key'] );
 		$this->assertSame( 'gpt-5-mini', $settings['model'] );
 		$this->assertSame( 'low', $settings['reasoning_effort'] );
-		$this->assertSame( 200, $settings['daily_message_budget'] );
+		$this->assertSame( 2000, $settings['daily_message_budget'] );
 		$this->assertSame( 1000000, $settings['daily_token_budget'] );
+	}
+
+	public function test_activate_creates_usage_table(): void {
+		wpaip_activate();
+
+		$create_query = implode( "\n", $GLOBALS['wpdb']->queries );
+
+		$this->assertStringContainsString( 'CREATE TABLE wp_wpaip_usage_daily', $create_query );
+	}
+
+	public function test_maybe_update_db_creates_usage_table_and_drops_legacy_option(): void {
+		update_option( 'wpaip_usage_daily', array( '2026-06-01' => array() ) );
+
+		wpaip_maybe_update_db();
+
+		$create_query = implode( "\n", $GLOBALS['wpdb']->queries );
+
+		$this->assertStringContainsString( 'CREATE TABLE wp_wpaip_usage_daily', $create_query );
+		$this->assertFalse( get_option( 'wpaip_usage_daily' ) );
+		$this->assertSame( WPAIP_DB_VERSION, get_option( 'wpaip_db_version' ) );
 	}
 
 	public function test_activate_does_not_overwrite_existing_settings(): void {

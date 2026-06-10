@@ -15,6 +15,7 @@ class WPAIP_AdminTest extends TestCase {
 		$GLOBALS['wp_settings_fields']     = array();
 		$GLOBALS['wp_is_admin']            = true;
 		$GLOBALS['wp_current_user_can']    = true;
+		$GLOBALS['wpdb']->reset();
 
 		wpaip_activate();
 		$this->admin = new WPAIP_Admin();
@@ -434,15 +435,13 @@ class WPAIP_AdminTest extends TestCase {
 				),
 			)
 		);
-		update_option(
-			'wpaip_usage_daily',
+		$GLOBALS['wpdb']->insert(
+			WPAIP_Usage_Tracker::get_table_name(),
 			array(
-				gmdate( 'Y-m-d' ) => array(
-					'fs_install_123' => array(
-						'messages'     => 12,
-						'total_tokens' => 45230,
-					),
-				),
+				'usage_day'    => gmdate( 'Y-m-d' ),
+				'usage_bucket' => 'fs_install_123',
+				'messages'     => 12,
+				'total_tokens' => 45230,
 			)
 		);
 
@@ -474,18 +473,16 @@ class WPAIP_AdminTest extends TestCase {
 				),
 			)
 		);
-		update_option(
-			'wpaip_usage_daily',
+		$GLOBALS['wpdb']->insert(
+			WPAIP_Usage_Tracker::get_table_name(),
 			array(
-				gmdate( 'Y-m-d' ) => array(
-					'fs_install_123' => array(
-						'messages'            => 45,
-						'input_tokens'        => 10000,
-						'cached_input_tokens' => 8800,
-						'output_tokens'       => 5000,
-						'total_tokens'        => 15000,
-					),
-				),
+				'usage_day'           => gmdate( 'Y-m-d' ),
+				'usage_bucket'        => 'fs_install_123',
+				'messages'            => 45,
+				'input_tokens'        => 10000,
+				'cached_input_tokens' => 8800,
+				'output_tokens'       => 5000,
+				'total_tokens'        => 15000,
 			)
 		);
 

@@ -26,10 +26,13 @@ class WPAIC_Loader {
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-chat.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-tools.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-product-tools.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-promotion-tools.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-logs.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-events.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-transcript-renderer.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-cart.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-singular-stemmer.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-query-expander.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-search-index.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-content-index.php';
 	}
@@ -161,6 +164,25 @@ class WPAIC_Loader {
 				if ( $parent_id ) {
 					$search_index->index_product( $parent_id );
 				}
+			}
+		);
+
+		// Indexes built before WPAIC_Search_Index::INDEX_VERSION (e.g. without
+		// the singularizing stemmer) are stale: rebuild asynchronously via a
+		// single cron event, or inline on admin_init when cron is disabled.
+		add_action(
+			'wpaic_rebuild_product_index',
+			function () use ( $search_index ): void {
+				if ( ! $search_index->is_enabled() ) {
+					return;
+				}
+				$search_index->build_index();
+			}
+		);
+		add_action(
+			'admin_init',
+			function () use ( $search_index ): void {
+				$search_index->maybe_schedule_version_rebuild();
 			}
 		);
 	}

@@ -12,6 +12,10 @@ if ( ! defined( 'DAY_IN_SECONDS' ) ) {
 	define( 'DAY_IN_SECONDS', 86400 );
 }
 
+if ( ! defined( 'ARRAY_A' ) ) {
+	define( 'ARRAY_A', 'ARRAY_A' );
+}
+
 if ( ! function_exists( 'add_option' ) ) {
 	function add_option( string $option, mixed $value = '' ): bool {
 		if ( ! isset( $GLOBALS['wp_options'][ $option ] ) ) {
@@ -342,6 +346,133 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 		public function get_data(): mixed {
 			return $this->data;
 		}
+	}
+}
+
+if ( ! class_exists( 'MockWpdb' ) ) {
+	/**
+	 * In-memory wpdb double for the wpaip_usage_daily table. Emulates the
+	 * exact queries WPAIP_Usage_Tracker issues: an atomic
+	 * INSERT ... ON DUPLICATE KEY UPDATE upsert, a per-(day, bucket) SELECT,
+	 * and the retention DELETE.
+	 */
+	class MockWpdb {
+		public string $prefix = 'wp_';
+
+		/** @var array<int, string> Raw queries passed to query()/dbDelta(), for assertions. */
+		public array $queries = array();
+
+		/** @var array<string, array<string, array<string, mixed>>> Table => "day|bucket" => row. */
+		private array $rows = array();
+
+		public function reset(): void {
+			$this->queries = array();
+			$this->rows    = array();
+		}
+
+		public function get_charset_collate(): string {
+			return 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+		}
+
+		public function prepare( string $query, mixed ...$args ): string {
+			// Single pass so substituted values containing %s/%d are never re-matched.
+			$index = 0;
+			return (string) preg_replace_callback(
+				'/%[sd]/',
+				function ( array $match ) use ( $args, &$index ) {
+					$arg = $args[ $index++ ] ?? '';
+					return is_string( $arg ) ? "'" . $arg . "'" : (string) $arg;
+				},
+				$query
+			);
+		}
+
+		public function query( string $query ): int|bool {
+			$this->queries[] = $query;
+			$normalized      = trim( (string) preg_replace( '/\s+/', ' ', $query ) );
+
+			if ( preg_match( '/^INSERT INTO (\S+) \(([^)]+)\) VALUES \(([^)]+)\) ON DUPLICATE KEY UPDATE /i', $normalized, $matches ) ) {
+				$table   = $matches[1];
+				$columns = array_map( 'trim', explode( ',', $matches[2] ) );
+				$values  = array_map(
+					static function ( string $value ): string {
+						return trim( trim( $value ), "'" );
+					},
+					explode( ',', $matches[3] )
+				);
+				$data    = array_combine( $columns, $values );
+
+				$key = (string) ( $data['usage_day'] ?? '' ) . '|' . (string) ( $data['usage_bucket'] ?? '' );
+				$row = $this->rows[ $table ][ $key ] ?? array();
+				foreach ( $data as $column => $value ) {
+					if ( in_array( $column, array( 'usage_day', 'usage_bucket' ), true ) ) {
+						$row[ $column ] = $value;
+						continue;
+					}
+					// ON DUPLICATE KEY UPDATE adds the same amounts the VALUES
+					// carry, so adding onto the existing (or zero) row emulates
+					// both the insert and the duplicate-key path.
+					$row[ $column ] = (int) ( $row[ $column ] ?? 0 ) + (int) $value;
+				}
+				$this->rows[ $table ][ $key ] = $row;
+				return 1;
+			}
+
+			if ( preg_match( "/^DELETE FROM (\S+) WHERE usage_day < '([^']+)'$/i", $normalized, $matches ) ) {
+				$table   = $matches[1];
+				$cutoff  = $matches[2];
+				$deleted = 0;
+				foreach ( $this->rows[ $table ] ?? array() as $key => $row ) {
+					if ( (string) ( $row['usage_day'] ?? '' ) < $cutoff ) {
+						unset( $this->rows[ $table ][ $key ] );
+						++$deleted;
+					}
+				}
+				return $deleted;
+			}
+
+			return false;
+		}
+
+		/**
+		 * @return array<string, mixed>|null
+		 */
+		public function get_row( string $query, string $output = ARRAY_A ): ?array {
+			$normalized = trim( (string) preg_replace( '/\s+/', ' ', $query ) );
+
+			if ( preg_match( "/FROM (\S+) WHERE usage_day = '([^']+)' AND usage_bucket = '([^']+)'$/i", $normalized, $matches ) ) {
+				$row = $this->rows[ $matches[1] ][ $matches[2] . '|' . $matches[3] ] ?? null;
+				return is_array( $row ) ? $row : null;
+			}
+
+			return null;
+		}
+
+		/**
+		 * Seed helper mirroring wpdb::insert() for usage rows in tests.
+		 *
+		 * @param array<string, mixed> $data
+		 */
+		public function insert( string $table, array $data ): int|false {
+			$key                          = (string) ( $data['usage_day'] ?? '' ) . '|' . (string) ( $data['usage_bucket'] ?? '' );
+			$this->rows[ $table ][ $key ] = $data;
+			return 1;
+		}
+	}
+
+	$GLOBALS['wpdb'] = new MockWpdb();
+}
+
+if ( ! function_exists( 'dbDelta' ) ) {
+	/**
+	 * @param string|array<int, string> $queries
+	 * @return array<string, string>
+	 */
+	function dbDelta( string|array $queries, bool $execute = true ): array {
+		foreach ( (array) $queries as $sql ) {
+			$GLOBALS['wpdb']->queries[] = (string) $sql;
+		}
+		return array();
 	}
 }
 
