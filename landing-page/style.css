@@ -1,0 +1,13 @@
+/*
+Theme Name: CartScout Landing
+Theme URI: https://cartscout.ai
+Author: CartScout
+Description: Conversion-focused landing page theme for CartScout — the AI shopping assistant for WooCommerce. Static, fast, Tailwind-built.
+Version: 1.0.0
+Requires at least: 6.0
+Requires PHP: 7.4
+License: Proprietary
+Text Domain: cartscout-landing
+*/
+
+/* Styles are compiled from src/main.css into assets/css/main.css and inlined in <head> by functions.php for zero render-blocking requests. */

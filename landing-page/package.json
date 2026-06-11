@@ -1,0 +1,15 @@
+{
+  "name": "cartscout-landing",
+  "version": "1.0.0",
+  "description": "CartScout landing page theme — Tailwind build",
+  "scripts": {
+    "build": "tailwindcss -i src/main.css -o assets/css/main.css --content \"index.php\" --content \"assets/js/main.js\" --minify",
+    "watch": "tailwindcss -i src/main.css -o assets/css/main.css --content \"index.php\" --content \"assets/js/main.js\" --watch"
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.0",
+    "tailwindcss": "^4.3.0"
+  },
+  "private": true
+}

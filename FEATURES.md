@@ -198,6 +198,16 @@ What genuinely remains after the 2026-06 improvement rounds:
 
 ---
 
+## Landing Page (`landing-page/`)
+
+Single-page WordPress theme for the marketing site (brand placeholder: CartScout). Tailwind v4,
+inlined CSS (~20KB gzipped page), self-hosted Fraunces/Hanken Grotesk, self-playing hero chat
+demo, anti-subscription manifesto, pricing ($99/yr · $299 lifetime · $499 unlimited),
+SoftwareApplication + FAQPage JSON-LD, Lighthouse SEO 100. Symlinked into the provider site as
+theme `cartscout-landing`.
+
+---
+
 ## Provider (our server only)
 
 The middleman plugin that holds the OpenAI key so customers don't need one. Internal infrastructure,
