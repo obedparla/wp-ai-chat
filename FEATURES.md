@@ -200,11 +200,13 @@ What genuinely remains after the 2026-06 improvement rounds:
 
 ## Landing Page (`landing-page/`)
 
-Single-page WordPress theme for the marketing site (brand placeholder: CartScout). Tailwind v4,
-inlined CSS (~20KB gzipped page), self-hosted Fraunces/Hanken Grotesk, self-playing hero chat
-demo, anti-subscription manifesto, pricing ($99/yr · $299 lifetime · $499 unlimited),
-SoftwareApplication + FAQPage JSON-LD, Lighthouse SEO 100. Symlinked into the provider site as
-theme `cartscout-landing`.
+Single-page WordPress theme for the marketing site (brand placeholder: CartScout), aimed at
+semi-technical WooCommerce shop owners. Tailwind v4, inlined CSS (~18KB gzipped page),
+self-hosted Bricolage Grotesque/Hanken Grotesk, white + Woo-purple + lime palette,
+self-playing hero chat demo, 5-feature video showcase (clip placeholders), competitor
+pricing comparison table with researched June-2026 prices, yearly pricing ($299 Pro ·
+$499 Unlimited), SoftwareApplication + FAQPage JSON-LD, Lighthouse SEO 100. Symlinked
+into the provider site as theme `cartscout-landing`.
 
 ---
 

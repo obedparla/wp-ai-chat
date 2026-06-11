@@ -280,47 +280,81 @@
 	</div>
 </div>
 
-<!-- ════════════════════════════════ FEATURES ════════════════════════════════ -->
+<!-- ════════════════════════════════ FEATURE SHOWCASE ════════════════════════════════ -->
 <section id="features" class="bg-mist py-20 lg:py-28">
 	<div class="mx-auto max-w-6xl px-6">
 		<div class="mx-auto max-w-2xl text-center">
 			<h2 class="reveal font-display text-4xl font-bold tracking-tight sm:text-5xl">
-				It does the selling.<br><span class="mark-lime">You keep the margin.</span>
+				Watch it <span class="mark-lime">sell.</span>
 			</h2>
+			<p class="reveal mt-4 text-lg text-ink-soft" style="--reveal-delay:100ms">The five features that make stores money.</p>
 		</div>
 
-		<div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+		<div class="mt-16 space-y-16 lg:space-y-24">
 			<?php
-			$features = array(
-				array( 'cart', 'Sells straight from the chat', 'Finds products, adds them to cart, one tap to checkout.' ),
-				array( 'catalog', 'Knows your entire catalog', 'Live WooCommerce prices, stock, and variations. Never makes things up.' ),
-				array( 'bolt', 'Answers before they bounce', 'Shipping, returns, sizing — answered instantly, around the clock.' ),
-				array( 'globe', 'Sells in 12 languages', "Auto-detects every shopper's language. You set up nothing." ),
-				array( 'chart', 'Shows you the money', 'Chats → carts → checkouts, tracked in one simple dashboard.' ),
-				array( 'zap', 'Live in 5 minutes', 'No code. No API keys. Works with any WordPress theme.' ),
+			// TODO: drop each feature clip into its frame — search for data-video="<key>".
+			$showcase = array(
+				array(
+					'key'   => 'sell',
+					'title' => 'From “just browsing” to checkout. One chat.',
+					'copy'  => 'Shoppers say what they want. CartScout shows real products from your catalog, adds the right one to the cart — size, color and all — and drops a one-tap checkout button.',
+					'chips' => array( 'Budget-aware search', 'Sizes & variations', 'One-tap checkout' ),
+				),
+				array(
+					'key'   => 'compare',
+					'title' => 'It closes the “which one?” moment.',
+					'copy'  => 'Side-by-side comparison tables with real specs and live prices — and an ADD button right in the table, so deciding and buying happen in the same breath.',
+					'chips' => array( 'Compare 2–4 products', 'Real attributes', 'Buy from the table' ),
+				),
+				array(
+					'key'   => 'proactive',
+					'title' => 'It makes the first move.',
+					'copy'  => "A perfectly timed hello invites shoppers in, today's deals and coupon codes surface on request, and every add-to-cart gets one smart cross-sell suggestion.",
+					'chips' => array( 'Page-targeted greeting', 'Coupon surfacing', 'Cross-sells' ),
+				),
+				array(
+					'key'   => 'insights',
+					'title' => 'Mission control, inside wp-admin.',
+					'copy'  => 'Chats → carts → checkouts, week over week. Full transcripts of every conversation. And a report of searches that found nothing — your next bestseller, spelled out.',
+					'chips' => array( 'Weekly trends', 'Chat logs', 'Knowledge-gap report' ),
+				),
+				array(
+					'key'   => 'support',
+					'title' => 'Support tickets answer themselves.',
+					'copy'  => 'Order status by email lookup, shipping and policy answers quoted from your own pages, and a human handoff that lands with the full conversation attached.',
+					'chips' => array( 'Order tracking', 'Policy answers', 'Human handoff' ),
+				),
 			);
-			$icons = array(
-				'cart'    => '<path d="M3 5h3l2.4 12.2a2 2 0 0 0 2 1.8h8.9a2 2 0 0 0 2-1.6L23 9H7.6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11" cy="24" r="1.8"/><circle cx="19" cy="24" r="1.8"/>',
-				'catalog' => '<path d="M5 4h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" stroke-width="2.2" stroke-linejoin="round"/><path d="M8 9h10M8 13h10M8 17h6" stroke-width="2.2" stroke-linecap="round"/>',
-				'bolt'    => '<path d="M14 2 4 16h8l-2 10L22 11h-8l2-9Z" stroke-width="2.2" stroke-linejoin="round"/>',
-				'globe'   => '<circle cx="13" cy="13" r="11" stroke-width="2.2"/><path d="M2 13h22M13 2c3 3.5 4.5 7 4.5 11S16 21.5 13 24c-3-2.5-4.5-7-4.5-11S10 5.5 13 2Z" stroke-width="2.2"/>',
-				'chart'   => '<path d="M3 23h22" stroke-width="2.2" stroke-linecap="round"/><path d="M6 23v-7m6 7V9m6 14v-5m6 5V5" stroke-width="2.2" stroke-linecap="round"/>',
-				'zap'     => '<circle cx="13" cy="13" r="11" stroke-width="2.2"/><path d="M13 7v6l4 3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
-			);
-			foreach ( $features as $i => $feature ) :
+			foreach ( $showcase as $i => $item ) :
+				$number = str_pad( (string) ( $i + 1 ), 2, '0', STR_PAD_LEFT );
 			?>
-			<article class="reveal rounded-2xl border border-line bg-page p-7 shadow-sm transition-shadow hover:shadow-lift" style="--reveal-delay:<?php echo ( $i % 3 ) * 80; ?>ms">
-				<span class="flex h-11 w-11 items-center justify-center rounded-xl bg-woo-tint text-woo-deep">
-					<svg width="22" height="22" viewBox="0 0 26 26" fill="none" stroke="currentColor" aria-hidden="true"><?php echo $icons[ $feature[0] ]; // phpcs:ignore ?></svg>
-				</span>
-				<h3 class="mt-4 font-display text-xl font-bold"><?php echo esc_html( $feature[1] ); ?></h3>
-				<p class="mt-2 leading-relaxed text-ink-soft"><?php echo esc_html( $feature[2] ); ?></p>
+			<article class="grid items-center gap-8 lg:grid-cols-2 lg:gap-14">
+				<div class="reveal <?php echo $i % 2 ? 'lg:order-2' : ''; ?>">
+					<p class="font-display text-sm font-bold tracking-widest text-woo"><?php echo esc_html( $number ); ?></p>
+					<h3 class="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl"><?php echo esc_html( $item['title'] ); ?></h3>
+					<p class="mt-4 max-w-md text-lg leading-relaxed text-ink-soft"><?php echo esc_html( $item['copy'] ); ?></p>
+					<div class="mt-5 flex flex-wrap gap-2">
+						<?php foreach ( $item['chips'] as $chip ) : ?>
+						<span class="rounded-full bg-woo-tint px-3.5 py-1.5 text-xs font-bold text-woo-deep"><?php echo esc_html( $chip ); ?></span>
+						<?php endforeach; ?>
+					</div>
+				</div>
+				<div class="reveal relative aspect-video overflow-hidden rounded-3xl bg-ink shadow-card <?php echo $i % 2 ? 'lg:order-1' : ''; ?>" style="--reveal-delay:120ms" data-video="<?php echo esc_attr( $item['key'] ); ?>">
+					<div class="absolute inset-0" style="background:radial-gradient(80% 90% at <?php echo $i % 2 ? '85% 15%' : '15% 85%'; ?>, rgba(127,84,179,.45), transparent 65%)" aria-hidden="true"></div>
+					<span class="absolute <?php echo $i % 2 ? 'left-5' : 'right-5'; ?> top-3 font-display text-7xl font-bold text-white/10" aria-hidden="true"><?php echo esc_html( $number ); ?></span>
+					<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
+						<button class="btn-press flex h-16 w-16 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-woo" type="button" aria-label="Play clip: <?php echo esc_attr( $item['title'] ); ?>">
+							<svg class="ml-0.5" width="20" height="23" viewBox="0 0 26 30" fill="currentColor" aria-hidden="true"><path d="M24.5 12.4c2 1.16 2 4.04 0 5.2L4.25 29.29c-2 1.15-4.5-.29-4.5-2.6V3.31C-.25 1-2.25-.44 4.25.71L24.5 12.4Z" transform="translate(.25)"/></svg>
+						</button>
+						<p class="text-sm font-semibold text-white/60">Clip coming soon</p>
+					</div>
+				</div>
 			</article>
 			<?php endforeach; ?>
 		</div>
 
-		<p class="reveal mt-9 text-center text-sm text-ink-soft">
-			Also: order tracking · human handoff · coupon surfacing · proactive greeting · your name, logo &amp; colors
+		<p class="reveal mt-14 text-center text-sm text-ink-soft">
+			Also: 12 languages · trained on your FAQs &amp; pages · your name, logo &amp; colors · GDPR-friendly
 		</p>
 		<div class="reveal mt-8 text-center">
 			<a href="#pricing" class="btn-press js-buy inline-block rounded-full bg-woo px-8 py-4 text-sm font-bold text-white shadow-lift hover:bg-woo-deep">Put it on your store — free for 14 days</a>
@@ -349,22 +383,6 @@
 				<p class="font-display text-5xl font-bold text-woo">3</p>
 				<h3 class="mt-3 font-display text-xl font-bold">Watch orders grow</h3>
 				<p class="mt-2 text-ink-soft">It sells while you sleep. The dashboard shows the receipts.</p>
-			</div>
-		</div>
-	</div>
-</section>
-
-<!-- ════════════════════════════════ SHOWCASE ════════════════════════════════ -->
-<section id="showcase" class="pb-20 lg:pb-28">
-	<div class="mx-auto max-w-6xl px-6">
-		<!-- TODO: replace this placeholder with the real showcase video (keep the rounded frame). -->
-		<div class="reveal relative mx-auto aspect-video max-w-4xl overflow-hidden rounded-3xl bg-ink shadow-card">
-			<div class="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white">
-				<button class="btn-press flex h-20 w-20 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-woo" type="button" aria-label="Play showcase video">
-					<svg class="ml-1" width="26" height="30" viewBox="0 0 26 30" fill="currentColor" aria-hidden="true"><path d="M24.5 12.4c2 1.16 2 4.04 0 5.2L4.25 29.29c-2 1.15-4.5-.29-4.5-2.6V3.31C-.25 1-2.25-.44 4.25.71L24.5 12.4Z" transform="translate(.25)"/></svg>
-				</button>
-				<p class="font-display text-xl font-semibold text-white/80">Watch it sell — video coming soon</p>
-				<p class="text-sm text-white/50">The chat in the hero is the real widget. Go play with it.</p>
 			</div>
 		</div>
 	</div>
