@@ -33,14 +33,14 @@ ln -sfn "$(pwd)" "/Users/obedmarquez/Local Sites/wp-ai-chatbot-provider/app/publ
 ## Brand rename
 
 "CartScout" is a placeholder from the name shortlist (`../name_ideas.md`). To rename:
-case-sensitive find/replace of `CartScout`, `Cart<span` wordmarks, and `Scout` (chat
-header avatar name) in `index.php`, plus `cartscout` strings in `functions.php`/`style.css`.
+case-sensitive find/replace of `CartScout` and `Scout` (chat header avatar name) in
+`index.php`, plus `cartscout` strings in `functions.php`/`style.css`.
 
 ## Design system
 
-- Warm editorial "modern general store": cream paper `--color-paper`, espresso ink,
-  persimmon accent (deep variant for small text/buttons — AA contrast), pine green, butter.
-- Fraunces (display serif, variable) + Hanken Grotesk (body, variable), self-hosted in `assets/fonts/`.
+- Bold conversion-focused for WooCommerce shop owners: white base, deep navy ink, WooCommerce
+  purple primary, lime "money" accent (mark-lime highlight swipes), green for cart/sale cues.
+- Bricolage Grotesque (display, variable) + Hanken Grotesk (body, variable), self-hosted in `assets/fonts/`.
 - Animations: scroll reveals (IntersectionObserver), self-playing hero chat demo,
   marquee, all disabled under `prefers-reduced-motion`.
 - SEO/AEO: SoftwareApplication + FAQPage JSON-LD, semantic headings, FAQ mirrors schema text.
