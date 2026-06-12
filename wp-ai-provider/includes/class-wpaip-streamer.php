@@ -87,9 +87,15 @@ class WPAIP_Streamer {
 					}
 
 					$event_payload = $response->toArray();
-					$this->emit_data( $event_payload );
-					$has_emitted_event = true;
 					$this->maybe_notify_response_completed( $event_payload );
+
+					$slim_payload = $this->slim_event_payload( $event_payload );
+					if ( null === $slim_payload ) {
+						continue;
+					}
+
+					$this->emit_data( $slim_payload );
+					$has_emitted_event = true;
 				}
 
 				$this->emit_done();
@@ -161,6 +167,88 @@ class WPAIP_Streamer {
 		}
 
 		( $this->on_response_completed )( $usage );
+	}
+
+	/**
+	 * Reduce a typed OpenAI streaming event to only what the chatbot consumes,
+	 * or null to skip forwarding it entirely.
+	 *
+	 * Lifecycle events (response.created, response.in_progress, content_part.*,
+	 * output_text.done, ...) each embed the full response object — instructions
+	 * and tool definitions included, ~25KB per event. Forwarding them wholesale
+	 * pushes ~100KB of dead weight per turn through every buffer between OpenAI
+	 * and the shopper before/after the visible tokens, which both wastes
+	 * bandwidth and delays the first painted token.
+	 *
+	 * @param array<string, mixed> $event_payload { event: string, data: array } from the SDK.
+	 * @return array<string, mixed>|null
+	 */
+	protected function slim_event_payload( array $event_payload ): ?array {
+		$event = $event_payload['event'] ?? '';
+		$data  = isset( $event_payload['data'] ) && is_array( $event_payload['data'] ) ? $event_payload['data'] : array();
+
+		switch ( $event ) {
+			case 'response.output_text.delta':
+				return array(
+					'event' => $event,
+					'data'  => array( 'delta' => $data['delta'] ?? '' ),
+				);
+
+			case 'response.output_item.added':
+				$item = isset( $data['item'] ) && is_array( $data['item'] ) ? $data['item'] : array();
+				// The chatbot only acts on new function_call items; message and
+				// reasoning items would be ignored on the other end.
+				if ( 'function_call' !== ( $item['type'] ?? '' ) ) {
+					return null;
+				}
+				return array(
+					'event' => $event,
+					'data'  => array(
+						'item' => array(
+							'id'        => $item['id'] ?? '',
+							'type'      => 'function_call',
+							'call_id'   => $item['call_id'] ?? '',
+							'name'      => $item['name'] ?? '',
+							'arguments' => $item['arguments'] ?? '',
+						),
+					),
+				);
+
+			case 'response.function_call_arguments.delta':
+				return array(
+					'event' => $event,
+					'data'  => array(
+						'item_id' => $data['item_id'] ?? '',
+						'delta'   => $data['delta'] ?? '',
+					),
+				);
+
+			case 'response.function_call_arguments.done':
+				return array(
+					'event' => $event,
+					'data'  => array(
+						'item_id'   => $data['item_id'] ?? '',
+						'arguments' => $data['arguments'] ?? '',
+					),
+				);
+
+			case 'response.completed':
+				// Usage only; the full payload repeats instructions + tools + output.
+				return array(
+					'event' => $event,
+					'data'  => array(
+						'response' => array(
+							'usage' => $data['response']['usage'] ?? null,
+						),
+					),
+				);
+
+			case 'error':
+				return $event_payload;
+
+			default:
+				return null;
+		}
 	}
 
 	/**

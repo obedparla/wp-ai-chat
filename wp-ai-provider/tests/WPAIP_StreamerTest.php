@@ -60,6 +60,195 @@ class WPAIP_StreamerTest extends TestCase {
 		$this->assertSame( "data: [DONE]\n\n", $streamer->output[2] );
 	}
 
+	public function test_stream_skips_bulky_lifecycle_events(): void {
+		$streamer                   = new TestableStreamer();
+		$streamer->client_available = true;
+		$bulky_response             = array(
+			'id'           => 'resp_1',
+			'instructions' => str_repeat( 'system prompt ', 100 ),
+			'tools'        => array( array( 'name' => 'search_products' ) ),
+		);
+		$streamer->attempts         = array(
+			static function () use ( $bulky_response ): iterable {
+				yield new FakeStreamEvent( array( 'event' => 'response.created', 'data' => array( 'response' => $bulky_response ) ) );
+				yield new FakeStreamEvent( array( 'event' => 'response.in_progress', 'data' => array( 'response' => $bulky_response ) ) );
+				yield new FakeStreamEvent( array( 'event' => 'response.content_part.added', 'data' => array( 'part' => array( 'type' => 'output_text' ) ) ) );
+				yield new FakeStreamEvent( array( 'event' => 'response.output_text.delta', 'data' => array( 'delta' => 'Hi' ) ) );
+				yield new FakeStreamEvent( array( 'event' => 'response.output_text.done', 'data' => array( 'text' => 'Hi' ) ) );
+				yield new FakeStreamEvent( array( 'event' => 'response.output_item.done', 'data' => array( 'item' => array( 'type' => 'message' ) ) ) );
+			},
+		);
+
+		$streamer->stream( array( 'model' => 'gpt-5-mini', 'input' => array() ) );
+
+		$this->assertCount( 2, $streamer->output );
+		$this->assertStringContainsString( '"delta":"Hi"', $streamer->output[0] );
+		$this->assertSame( "data: [DONE]\n\n", $streamer->output[1] );
+		$this->assertStringNotContainsString( 'system prompt', implode( '', $streamer->output ) );
+	}
+
+	public function test_stream_slims_text_delta_to_delta_only(): void {
+		$streamer                   = new TestableStreamer();
+		$streamer->client_available = true;
+		$streamer->attempts         = array(
+			static function (): iterable {
+				yield new FakeStreamEvent( array(
+					'event' => 'response.output_text.delta',
+					'data'  => array(
+						'delta'           => 'Hi',
+						'item_id'         => 'msg_1',
+						'output_index'    => 0,
+						'content_index'   => 0,
+						'sequence_number' => 7,
+						'logprobs'        => array(),
+						'obfuscation'     => 'aBcDeFgH',
+					),
+				) );
+			},
+		);
+
+		$streamer->stream( array( 'model' => 'gpt-5-mini', 'input' => array() ) );
+
+		$decoded = json_decode( substr( $streamer->output[0], 6, -2 ), true );
+		$this->assertSame( 'response.output_text.delta', $decoded['event'] );
+		$this->assertSame( array( 'delta' => 'Hi' ), $decoded['data'] );
+	}
+
+	public function test_stream_forwards_function_call_lifecycle_slimmed(): void {
+		$streamer                   = new TestableStreamer();
+		$streamer->client_available = true;
+		$streamer->attempts         = array(
+			static function (): iterable {
+				yield new FakeStreamEvent( array(
+					'event' => 'response.output_item.added',
+					'data'  => array(
+						'output_index' => 0,
+						'item'         => array(
+							'id'        => 'fc_item_1',
+							'type'      => 'function_call',
+							'status'    => 'in_progress',
+							'call_id'   => 'call_1',
+							'name'      => 'search_products',
+							'arguments' => '',
+						),
+					),
+				) );
+				yield new FakeStreamEvent( array(
+					'event' => 'response.function_call_arguments.delta',
+					'data'  => array(
+						'item_id'         => 'fc_item_1',
+						'output_index'    => 0,
+						'delta'           => '{"search":',
+						'sequence_number' => 3,
+						'obfuscation'     => 'xYz',
+					),
+				) );
+				yield new FakeStreamEvent( array(
+					'event' => 'response.function_call_arguments.done',
+					'data'  => array(
+						'item_id'   => 'fc_item_1',
+						'arguments' => '{"search":"mug"}',
+						'name'      => 'search_products',
+					),
+				) );
+			},
+		);
+
+		$streamer->stream( array( 'model' => 'gpt-5-mini', 'input' => array() ) );
+
+		$added = json_decode( substr( $streamer->output[0], 6, -2 ), true );
+		$this->assertSame(
+			array(
+				'id'        => 'fc_item_1',
+				'type'      => 'function_call',
+				'call_id'   => 'call_1',
+				'name'      => 'search_products',
+				'arguments' => '',
+			),
+			$added['data']['item']
+		);
+
+		$delta = json_decode( substr( $streamer->output[1], 6, -2 ), true );
+		$this->assertSame( array( 'item_id' => 'fc_item_1', 'delta' => '{"search":' ), $delta['data'] );
+
+		$done = json_decode( substr( $streamer->output[2], 6, -2 ), true );
+		$this->assertSame( array( 'item_id' => 'fc_item_1', 'arguments' => '{"search":"mug"}' ), $done['data'] );
+	}
+
+	public function test_stream_skips_non_function_call_output_items(): void {
+		$streamer                   = new TestableStreamer();
+		$streamer->client_available = true;
+		$streamer->attempts         = array(
+			static function (): iterable {
+				yield new FakeStreamEvent( array(
+					'event' => 'response.output_item.added',
+					'data'  => array( 'item' => array( 'id' => 'msg_1', 'type' => 'message' ) ),
+				) );
+				yield new FakeStreamEvent( array(
+					'event' => 'response.output_item.added',
+					'data'  => array( 'item' => array( 'id' => 'rs_1', 'type' => 'reasoning' ) ),
+				) );
+			},
+		);
+
+		$streamer->stream( array( 'model' => 'gpt-5-mini', 'input' => array() ) );
+
+		$this->assertCount( 1, $streamer->output );
+		$this->assertSame( "data: [DONE]\n\n", $streamer->output[0] );
+	}
+
+	public function test_stream_slims_completed_event_to_usage_and_fires_callback(): void {
+		$streamer                   = new TestableStreamer();
+		$streamer->client_available = true;
+		$captured_usage             = null;
+		$streamer->set_on_response_completed( static function ( array $usage ) use ( &$captured_usage ): void {
+			$captured_usage = $usage;
+		} );
+		$streamer->attempts = array(
+			static function (): iterable {
+				yield new FakeStreamEvent( array(
+					'event' => 'response.completed',
+					'data'  => array(
+						'response' => array(
+							'id'           => 'resp_1',
+							'instructions' => 'big system prompt',
+							'tools'        => array( array( 'name' => 'search_products' ) ),
+							'output'       => array( array( 'type' => 'message' ) ),
+							'usage'        => array( 'input_tokens' => 10, 'output_tokens' => 5, 'total_tokens' => 15 ),
+						),
+					),
+				) );
+			},
+		);
+
+		$streamer->stream( array( 'model' => 'gpt-5-mini', 'input' => array() ) );
+
+		$this->assertSame( array( 'input_tokens' => 10, 'output_tokens' => 5, 'total_tokens' => 15 ), $captured_usage );
+
+		$decoded = json_decode( substr( $streamer->output[0], 6, -2 ), true );
+		$this->assertSame( array( 'response' => array( 'usage' => array( 'input_tokens' => 10, 'output_tokens' => 5, 'total_tokens' => 15 ) ) ), $decoded['data'] );
+		$this->assertStringNotContainsString( 'big system prompt', $streamer->output[0] );
+	}
+
+	public function test_stream_forwards_error_events_unchanged(): void {
+		$streamer                   = new TestableStreamer();
+		$streamer->client_available = true;
+		$streamer->attempts         = array(
+			static function (): iterable {
+				yield new FakeStreamEvent( array(
+					'event' => 'error',
+					'data'  => array( 'code' => 'server_error', 'message' => 'Upstream hiccup' ),
+				) );
+			},
+		);
+
+		$streamer->stream( array( 'model' => 'gpt-5-mini', 'input' => array() ) );
+
+		$decoded = json_decode( substr( $streamer->output[0], 6, -2 ), true );
+		$this->assertSame( 'error', $decoded['event'] );
+		$this->assertSame( 'Upstream hiccup', $decoded['data']['message'] );
+	}
+
 	public function test_stream_retries_once_on_connection_error_before_any_event(): void {
 		$streamer                   = new TestableStreamer();
 		$streamer->client_available = true;

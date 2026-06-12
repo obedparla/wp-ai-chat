@@ -207,6 +207,45 @@ describe('useChat', () => {
     })
   })
 
+  it('marks only the last assistant message as streaming while a request is in flight', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        { id: '1', role: 'assistant', parts: [{ type: 'text', text: 'Earlier reply' }] },
+        { id: '2', role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
+        { id: '3', role: 'assistant', parts: [{ type: 'text', text: 'Streaming repl' }] },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'streaming',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].isStreaming).toBe(false)
+    expect(result.current.messages[1].isStreaming).toBe(false)
+    expect(result.current.messages[2].isStreaming).toBe(true)
+  })
+
+  it('does not mark any message as streaming once the request is done', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        { id: '1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
+        { id: '2', role: 'assistant', parts: [{ type: 'text', text: 'Done reply' }] },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'ready',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[1].isStreaming).toBe(false)
+  })
+
   it('concatenates multiple text parts in a message', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [

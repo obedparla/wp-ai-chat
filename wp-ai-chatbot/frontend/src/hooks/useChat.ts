@@ -40,6 +40,8 @@ export interface Message {
   addToCartIntents?: AddToCartIntent[]
   clearCartIntents?: ClearCartIntent[]
   createdAt?: number
+  /** True while this message's response stream is still open. */
+  isStreaming?: boolean
 }
 
 export interface ActiveTool {
@@ -534,9 +536,11 @@ export function useChat() {
     }
   }, [clearPendingSubmissionTimer])
 
+  const isRequestInFlight = status === 'streaming' || status === 'submitted'
+
   const messages: Message[] = useMemo(() => {
     const timestamps = timestampsRef.current
-    return uiMessages.map((msg) => {
+    return uiMessages.map((msg, index) => {
       const products = msg.role === 'assistant' ? extractProductsFromMessage(msg) : undefined
       const comparison = msg.role === 'assistant' ? extractComparisonFromMessage(msg) : undefined
       const checkoutAction = msg.role === 'assistant' ? extractCheckoutActionFromMessage(msg) : undefined
@@ -553,10 +557,11 @@ export function useChat() {
         addToCartIntents: addToCartIntents && addToCartIntents.length > 0 ? addToCartIntents : undefined,
         clearCartIntents: clearCartIntents && clearCartIntents.length > 0 ? clearCartIntents : undefined,
         createdAt: msg.id ? timestamps[msg.id] : undefined,
+        isStreaming: isRequestInFlight && msg.role === 'assistant' && index === uiMessages.length - 1,
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uiMessages, timestampsVersion])
+  }, [uiMessages, timestampsVersion, isRequestInFlight])
 
   // Ensure a conversation with an active error always ends in an assistant
   // message marked isError, so MessageList renders the error bubble + retry
@@ -663,7 +668,6 @@ export function useChat() {
     void vercelSendMessage()
   }, [uiMessages, setMessages, vercelSendMessage])
 
-  const isRequestInFlight = status === 'streaming' || status === 'submitted'
   const isLoading = isRequestInFlight || pendingMessages.length > 0
 
   const showProactiveGreeting = useCallback(() => {

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useCallback, useState, Fragment, type ReactNode } from 'react'
 import { Message } from '../hooks/useChat'
+import { useSmoothText } from '../hooks/useSmoothText'
 import ProductGrid from './ProductGrid'
 import type { Product } from './ProductCard'
 import ComparisonTable, { type ComparisonData } from './ComparisonTable'
@@ -98,6 +99,23 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
   const [showJumpButton, setShowJumpButton] = useState(false)
   const lastMessageContent = messages[messages.length - 1]?.content
 
+  // Smoothly reveal the streaming assistant message's text instead of painting
+  // network bursts as they arrive. Tool UI (cards, buttons) for that message is
+  // held back until the text has fully revealed, so the reply always assembles
+  // top-to-bottom: text first, then cards below — nothing inserts above
+  // existing content and shoves it around.
+  const lastMessage = messages[messages.length - 1]
+  const lastAssistantMessage = lastMessage?.role === 'assistant' ? lastMessage : undefined
+  const smooth = useSmoothText(lastAssistantMessage)
+
+  const lastMessageHoldsToolUI =
+    lastAssistantMessage !== undefined &&
+    (lastAssistantMessage.isStreaming === true ||
+      (lastAssistantMessage.id != null && lastAssistantMessage.id === smooth.messageId && !smooth.isComplete))
+  const lastMessagePendingCards =
+    lastMessageHoldsToolUI &&
+    ((lastAssistantMessage.products?.length ?? 0) > 0 || lastAssistantMessage.comparison !== undefined)
+
   const checkIfAtBottom = useCallback(() => {
     const container = containerRef.current
     if (!container) return true
@@ -129,7 +147,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
       containerRef.current.scrollTop = containerRef.current.scrollHeight
       setShowJumpButton(false)
     }
-  }, [messages.length, lastMessageContent, showProductSkeletons])
+  }, [messages.length, lastMessageContent, showProductSkeletons, smooth.displayedText, lastMessageHoldsToolUI])
 
   return (
     <div className="flex-1 relative flex min-h-0">
@@ -156,7 +174,10 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
         const hasAddToCart = addToCartIntents.length > 0
         const hasClearCart = clearCartIntents.length > 0
         const hasToolUI = hasProducts || hasComparison || hasCheckoutAction || hasAddToCart || hasClearCart
-        const hasTextContent = msg.content && msg.content.trim().length > 0
+        const isBeingRevealed = msg.id != null && msg.id === smooth.messageId
+        const renderedContent = isBeingRevealed ? smooth.displayedText : msg.content
+        const holdToolUI = isLastMessage && lastMessageHoldsToolUI
+        const hasTextContent = renderedContent && renderedContent.trim().length > 0
         const showSeparator = shouldShowSeparator(msg, messages[i - 1])
 
         const separator = showSeparator && msg.createdAt ? (
@@ -202,37 +223,52 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
                 )}
               >
                 <div className="prose prose-sm prose-slate max-w-none prose-p:my-2 prose-p:last:mb-0 prose-a:text-[var(--wpaic-primary)] prose-a:no-underline hover:prose-a:underline">
-                  <MarkdownContent content={msg.content} />
+                  <MarkdownContent content={renderedContent} />
                 </div>
                 {showRetry && !hasToolUI && <RetryButton onRetry={onRetry} className="ml-2.5 align-middle" />}
               </div>
             )}
-            {hasProducts && (
-              <div className="w-full animate-wpaic-fadeIn">
-                <ProductGrid products={products} />
-              </div>
+            {holdToolUI ? (
+              // While the reply is still streaming/revealing, hold the tool UI
+              // back and keep its slot occupied by skeletons so finished cards
+              // never get shoved down by text arriving above them.
+              (hasProducts || hasComparison) && (
+                <div className="w-full animate-wpaic-fadeIn">
+                  <ProductCardSkeletons />
+                </div>
+              )
+            ) : (
+              <>
+                {hasProducts && (
+                  <div className="w-full animate-wpaic-fadeIn">
+                    <ProductGrid products={products} />
+                  </div>
+                )}
+                {comparison && (
+                  <div className="w-full animate-wpaic-fadeIn">
+                    <ComparisonTable data={comparison} />
+                  </div>
+                )}
+                {checkoutAction && <CheckoutButton action={checkoutAction} />}
+                {hasClearCart && (
+                  <div className="flex w-full flex-col gap-1.5">
+                    {clearCartIntents.map((intent) => (
+                      <ClearCartTrigger
+                        key={intent.toolCallId}
+                        intent={intent}
+                        status={clearCartStatuses?.[intent.toolCallId]}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
-            {comparison && (
-              <div className="w-full animate-wpaic-fadeIn">
-                <ComparisonTable data={comparison} />
-              </div>
-            )}
-            {checkoutAction && <CheckoutButton action={checkoutAction} />}
             {hasAddToCart && (
+              // Never held back: mounting the trigger performs the actual cart
+              // add, which must not wait on (or be lost to) the text reveal.
               <div className="flex w-full flex-col gap-1.5">
                 {addToCartIntents.map((intent) => (
                   <AddToCartTrigger key={intent.toolCallId} intent={intent} />
-                ))}
-              </div>
-            )}
-            {hasClearCart && (
-              <div className="flex w-full flex-col gap-1.5">
-                {clearCartIntents.map((intent) => (
-                  <ClearCartTrigger
-                    key={intent.toolCallId}
-                    intent={intent}
-                    status={clearCartStatuses?.[intent.toolCallId]}
-                  />
                 ))}
               </div>
             )}
@@ -240,7 +276,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
           </Fragment>
         )
       })}
-      {showProductSkeletons && <ProductCardSkeletons />}
+      {showProductSkeletons && !lastMessagePendingCards && <ProductCardSkeletons />}
       {children}
     </div>
     {showJumpButton && (

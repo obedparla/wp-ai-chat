@@ -251,6 +251,15 @@ class WPAIC_Chat {
 		);
 
 		$stream = @fopen( $url, 'r', false, $context ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		if ( false !== $stream ) {
+			// The HTTP wrapper's default 8192-byte chunk size makes fread() wait
+			// until a full 8KB has arrived (its dechunk filter fills the internal
+			// buffer to chunk size), so SSE deltas reach us in bursts instead of
+			// as they stream. A small chunk size + no read buffer restores
+			// per-arrival reads.
+			stream_set_chunk_size( $stream, 256 );
+			stream_set_read_buffer( $stream, 0 );
+		}
 		if ( false === $stream ) {
 			$last_error = error_get_last();
 			$detail     = $last_error['message'] ?? 'unknown error';
