@@ -542,33 +542,13 @@ describe('ChatWidget mobile fullscreen', () => {
 })
 
 describe('ChatWidget product skeletons', () => {
-  it.each(['search_products', 'get_popular_products', 'compare_products'])(
-    'renders skeleton product cards while %s is running',
-    (toolName) => {
-      const mockChat = createMockChat({
-        messages: [],
-        isLoading: true,
-        activeTools: [{ toolName, state: 'executing' }],
-      })
-      render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
-      expect(screen.getByRole('status', { name: 'Loading products' })).toBeInTheDocument()
-    }
-  )
-
-  it('does not render skeletons for non-product tools', () => {
+  // Skeletons are driven by message.hasPendingProductTool (see MessageList
+  // tests); ChatWidget no longer computes anything skeleton-related, so a
+  // running product tool alone must not render one.
+  it('does not render skeletons from active tools alone', () => {
     const mockChat = createMockChat({
       messages: [],
       isLoading: true,
-      activeTools: [{ toolName: 'add_to_cart', state: 'executing' }],
-    })
-    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
-    expect(screen.queryByRole('status', { name: 'Loading products' })).not.toBeInTheDocument()
-  })
-
-  it('does not render skeletons when not loading', () => {
-    const mockChat = createMockChat({
-      messages: [],
-      isLoading: false,
       activeTools: [{ toolName: 'search_products', state: 'executing' }],
     })
     render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)

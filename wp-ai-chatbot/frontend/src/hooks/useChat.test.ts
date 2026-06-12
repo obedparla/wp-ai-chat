@@ -607,6 +607,65 @@ describe('useChat', () => {
     expect(result.current.activeTools).toEqual([])
   })
 
+  it.each(['input-streaming', 'input-available', 'output-available'])(
+    'flags hasPendingProductTool when a skeleton tool part is in %s state',
+    (state) => {
+      mockUseVercelChat.mockReturnValue({
+        messages: [
+          {
+            id: '1',
+            role: 'assistant',
+            parts: [
+              {
+                type: 'dynamic-tool',
+                toolName: 'search_products',
+                toolCallId: '123',
+                state,
+              },
+            ],
+          },
+        ],
+        sendMessage: mockSendMessage,
+        status: 'streaming',
+        stop: mockStop,
+        setMessages: mockSetMessages,
+        error: undefined,
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      expect(result.current.messages[0].hasPendingProductTool).toBe(true)
+    }
+  )
+
+  it('does not flag hasPendingProductTool for non-skeleton tools', () => {
+    mockUseVercelChat.mockReturnValue({
+      messages: [
+        {
+          id: '1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'get_categories',
+              toolCallId: '123',
+              state: 'input-available',
+            },
+          ],
+        },
+      ],
+      sendMessage: mockSendMessage,
+      status: 'streaming',
+      stop: mockStop,
+      setMessages: mockSetMessages,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    expect(result.current.messages[0].hasPendingProductTool).toBeFalsy()
+  })
+
   it('ignores tool parts in user messages', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [

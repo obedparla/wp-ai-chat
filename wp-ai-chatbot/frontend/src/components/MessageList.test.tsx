@@ -307,6 +307,24 @@ describe('MessageList streaming reveal and tool UI gating', () => {
     expect(screen.queryByText('Product One')).not.toBeInTheDocument()
   })
 
+  it('shows skeletons as soon as a product tool is pending, before any output arrives', () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            role: 'assistant',
+            content: '',
+            id: 'm-stream',
+            hasPendingProductTool: true,
+            isStreaming: true,
+          },
+        ]}
+      />
+    )
+
+    expect(screen.getByRole('status', { name: 'Loading products' })).toBeInTheDocument()
+  })
+
   it('holds the checkout button back while streaming', () => {
     render(
       <MessageList
@@ -407,16 +425,16 @@ describe('MessageList streaming reveal and tool UI gating', () => {
     expect(screen.getByText(/Adding to cart|Added to cart|Could not add to cart/)).toBeInTheDocument()
   })
 
-  it('suppresses the trailing skeleton row when the last message already shows inline skeletons', () => {
+  it('renders exactly one skeleton row when products are pending', () => {
     render(
       <MessageList
-        showProductSkeletons
         messages={[
           {
             role: 'assistant',
             content: 'Looking…',
             id: 'm-stream',
             products: [makeProduct(1, 'Product One')],
+            hasPendingProductTool: true,
             isStreaming: true,
           },
         ]}

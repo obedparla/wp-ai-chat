@@ -14,7 +14,6 @@ interface ChatWidgetUIProps {
   onSubmit: (e: React.FormEvent) => void
   onRetry?: () => void
   clearCartStatuses?: Record<string, ClearCartStatus>
-  showProductSkeletons?: boolean
   inputRef?: React.Ref<HTMLTextAreaElement>
   placeholder?: string
   headerActions?: ReactNode
@@ -32,7 +31,6 @@ export default function ChatWidgetUI({
   onSubmit,
   onRetry,
   clearCartStatuses,
-  showProductSkeletons,
   inputRef,
   placeholder,
   headerActions,
@@ -85,7 +83,6 @@ export default function ChatWidgetUI({
         messages={messages}
         onRetry={onRetry}
         clearCartStatuses={clearCartStatuses}
-        showProductSkeletons={showProductSkeletons}
       >
         {children}
       </MessageList>

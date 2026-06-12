@@ -5,7 +5,7 @@ import { DefaultChatTransport, UIMessage } from 'ai'
 import { Product } from '../components/ProductCard'
 import { ComparisonData, ComparisonProduct } from '../components/ComparisonTable'
 import { CheckoutAction } from '../components/CheckoutButton'
-import { isProductTool } from './tools'
+import { isProductTool, showsProductSkeletons } from './tools'
 import { clearStoredClearCartStatuses } from './useClearCart'
 import { clearStoredAddToCartStatuses, markAddToCartToolCallsRestored } from './useAddToCart'
 
@@ -42,6 +42,12 @@ export interface Message {
   createdAt?: number
   /** True while this message's response stream is still open. */
   isStreaming?: boolean
+  /**
+   * True once the message has any product-card tool part, in any state.
+   * Parts only accumulate during a stream, so this is monotonic — it drives
+   * a single stable skeleton instead of flickering with tool-call churn.
+   */
+  hasPendingProductTool?: boolean
 }
 
 export interface ActiveTool {
@@ -361,6 +367,12 @@ function extractComparisonFromMessage(uiMessage: UIMessage): ComparisonData | un
   return undefined
 }
 
+function messageHasPendingProductTool(uiMessage: UIMessage): boolean {
+  return uiMessage.parts.some(
+    (part) => part.type === 'dynamic-tool' && showsProductSkeletons((part as DynamicToolPart).toolName)
+  )
+}
+
 function extractActiveTools(uiMessages: UIMessage[]): ActiveTool[] {
   const activeTools: ActiveTool[] = []
 
@@ -558,6 +570,7 @@ export function useChat() {
         clearCartIntents: clearCartIntents && clearCartIntents.length > 0 ? clearCartIntents : undefined,
         createdAt: msg.id ? timestamps[msg.id] : undefined,
         isStreaming: isRequestInFlight && msg.role === 'assistant' && index === uiMessages.length - 1,
+        hasPendingProductTool: msg.role === 'assistant' && messageHasPendingProductTool(msg),
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps

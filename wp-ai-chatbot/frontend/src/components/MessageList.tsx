@@ -18,7 +18,6 @@ interface MessageListProps {
   messages: Message[]
   onRetry?: () => void
   clearCartStatuses?: Record<string, ClearCartStatus>
-  showProductSkeletons?: boolean
   children?: ReactNode
 }
 
@@ -93,7 +92,7 @@ function shouldShowSeparator(current: Message, previous: Message | undefined): b
   return current.createdAt - previous.createdAt > CLUSTER_GAP_MS
 }
 
-export default function MessageList({ messages, onRetry, clearCartStatuses, showProductSkeletons = false, children }: MessageListProps) {
+export default function MessageList({ messages, onRetry, clearCartStatuses, children }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
   const [showJumpButton, setShowJumpButton] = useState(false)
@@ -112,10 +111,6 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
     lastAssistantMessage !== undefined &&
     (lastAssistantMessage.isStreaming === true ||
       (lastAssistantMessage.id != null && lastAssistantMessage.id === smooth.messageId && !smooth.isComplete))
-  const lastMessagePendingCards =
-    lastMessageHoldsToolUI &&
-    ((lastAssistantMessage.products?.length ?? 0) > 0 || lastAssistantMessage.comparison !== undefined)
-
   const checkIfAtBottom = useCallback(() => {
     const container = containerRef.current
     if (!container) return true
@@ -147,7 +142,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
       containerRef.current.scrollTop = containerRef.current.scrollHeight
       setShowJumpButton(false)
     }
-  }, [messages.length, lastMessageContent, showProductSkeletons, smooth.displayedText, lastMessageHoldsToolUI])
+  }, [messages.length, lastMessageContent, smooth.displayedText, lastMessageHoldsToolUI])
 
   return (
     <div className="flex-1 relative flex min-h-0">
@@ -229,11 +224,12 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
               </div>
             )}
             {holdToolUI ? (
-              // While the reply is still streaming/revealing, hold the tool UI
-              // back and keep its slot occupied by skeletons so finished cards
-              // never get shoved down by text arriving above them.
-              (hasProducts || hasComparison) && (
-                <div className="w-full animate-wpaic-fadeIn">
+              // While the reply is still streaming/revealing, one stable
+              // skeleton occupies the card slot from the moment a product tool
+              // is called until the real cards swap in — it must never
+              // mount/unmount mid-turn (hasPendingProductTool is monotonic).
+              (msg.hasPendingProductTool || hasProducts || hasComparison) && (
+                <div key="product-skeletons" className="w-full animate-wpaic-fadeIn">
                   <ProductCardSkeletons />
                 </div>
               )
@@ -276,7 +272,6 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, show
           </Fragment>
         )
       })}
-      {showProductSkeletons && !lastMessagePendingCards && <ProductCardSkeletons />}
       {children}
     </div>
     {showJumpButton && (

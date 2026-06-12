@@ -5,7 +5,7 @@ import ChatWidgetUI from './ChatWidgetUI'
 import SendTranscriptDialog from './SendTranscriptDialog'
 import ConfirmDialog from './ConfirmDialog'
 import ConversationStarters from './ConversationStarters'
-import { TOOL_PROGRESS_LABELS, showsProductSkeletons } from '../hooks/tools'
+import { TOOL_PROGRESS_LABELS } from '../hooks/tools'
 
 interface ChatWidgetProps {
   onClose: () => void
@@ -100,9 +100,6 @@ export default function ChatWidget({
       unlockBodyScroll()
     }
   }, [])
-
-  const showProductSkeletons =
-    isLoading && activeTools.some((tool) => showsProductSkeletons(tool.toolName))
 
   const isGreetingOnly =
     messages.length === 0 ||
@@ -243,7 +240,6 @@ export default function ChatWidget({
         onSubmit={handleSubmit}
         onRetry={retry}
         clearCartStatuses={clearCart.statuses}
-        showProductSkeletons={showProductSkeletons}
         inputRef={inputRef}
         headerActions={headerActions}
         loadingIndicator={

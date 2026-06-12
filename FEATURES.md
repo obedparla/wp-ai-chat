@@ -39,8 +39,7 @@ Everything currently implemented.
 - Scoped styles: no Tailwind preflight bleed into the host theme; reduced-motion rules scoped to the widget root
 - Real-time streaming responses over SSE; failed replies (including requests that die before any reply) show an error bubble with a retry icon that resends from the last user message
 - ChatGPT-style smooth text reveal: streamed text paints at a steady per-frame rate (backlog-proportional catch-up) instead of network-burst chunks; full pipeline tuned for per-delta delivery (provider forwards only slim consumed events, chatbot reads the provider stream un-buffered)
-- Replies assemble top-to-bottom: product cards / comparison / checkout button are held as skeletons below the streaming text and swap in once the text finishes revealing — no layout jumps from late text pushing cards around
-- Skeleton product cards shimmer in-thread while product tools (search / popular / compare) run
+- Replies assemble top-to-bottom: one stable skeleton row mounts below the streaming text as soon as a product tool (search / popular / compare) is called, stays put through multi-tool turns, and swaps to the real cards / comparison / checkout button once the text finishes revealing — no flicker, no layout jumps
 - Header with circular avatar (logo or initials), green online dot, name + role subtitle
 - Flat gray assistant bubbles / themed user bubbles, 85% max width
 - Markdown rendering (tables, lists, links, bold/italic, code) with links opening in new tabs
