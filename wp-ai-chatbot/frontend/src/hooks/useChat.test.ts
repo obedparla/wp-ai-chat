@@ -207,45 +207,6 @@ describe('useChat', () => {
     })
   })
 
-  it('marks only the last assistant message as streaming while a request is in flight', () => {
-    mockUseVercelChat.mockReturnValue({
-      messages: [
-        { id: '1', role: 'assistant', parts: [{ type: 'text', text: 'Earlier reply' }] },
-        { id: '2', role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
-        { id: '3', role: 'assistant', parts: [{ type: 'text', text: 'Streaming repl' }] },
-      ],
-      sendMessage: mockSendMessage,
-      status: 'streaming',
-      stop: mockStop,
-      setMessages: mockSetMessages,
-      error: undefined,
-    })
-
-    const { result } = renderHook(() => useChat())
-
-    expect(result.current.messages[0].isStreaming).toBe(false)
-    expect(result.current.messages[1].isStreaming).toBe(false)
-    expect(result.current.messages[2].isStreaming).toBe(true)
-  })
-
-  it('does not mark any message as streaming once the request is done', () => {
-    mockUseVercelChat.mockReturnValue({
-      messages: [
-        { id: '1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
-        { id: '2', role: 'assistant', parts: [{ type: 'text', text: 'Done reply' }] },
-      ],
-      sendMessage: mockSendMessage,
-      status: 'ready',
-      stop: mockStop,
-      setMessages: mockSetMessages,
-      error: undefined,
-    })
-
-    const { result } = renderHook(() => useChat())
-
-    expect(result.current.messages[1].isStreaming).toBe(false)
-  })
-
   it('concatenates multiple text parts in a message', () => {
     mockUseVercelChat.mockReturnValue({
       messages: [
@@ -605,65 +566,6 @@ describe('useChat', () => {
     const { result } = renderHook(() => useChat())
 
     expect(result.current.activeTools).toEqual([])
-  })
-
-  it.each(['input-streaming', 'input-available', 'output-available'])(
-    'flags hasPendingProductTool when a skeleton tool part is in %s state',
-    (state) => {
-      mockUseVercelChat.mockReturnValue({
-        messages: [
-          {
-            id: '1',
-            role: 'assistant',
-            parts: [
-              {
-                type: 'dynamic-tool',
-                toolName: 'search_products',
-                toolCallId: '123',
-                state,
-              },
-            ],
-          },
-        ],
-        sendMessage: mockSendMessage,
-        status: 'streaming',
-        stop: mockStop,
-        setMessages: mockSetMessages,
-        error: undefined,
-      })
-
-      const { result } = renderHook(() => useChat())
-
-      expect(result.current.messages[0].hasPendingProductTool).toBe(true)
-    }
-  )
-
-  it('does not flag hasPendingProductTool for non-skeleton tools', () => {
-    mockUseVercelChat.mockReturnValue({
-      messages: [
-        {
-          id: '1',
-          role: 'assistant',
-          parts: [
-            {
-              type: 'dynamic-tool',
-              toolName: 'get_categories',
-              toolCallId: '123',
-              state: 'input-available',
-            },
-          ],
-        },
-      ],
-      sendMessage: mockSendMessage,
-      status: 'streaming',
-      stop: mockStop,
-      setMessages: mockSetMessages,
-      error: undefined,
-    })
-
-    const { result } = renderHook(() => useChat())
-
-    expect(result.current.messages[0].hasPendingProductTool).toBeFalsy()
   })
 
   it('ignores tool parts in user messages', () => {

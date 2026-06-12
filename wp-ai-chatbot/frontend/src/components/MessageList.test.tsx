@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import MessageList, { curateProducts, MAX_RENDERED_PRODUCTS } from './MessageList'
 import type { Message } from '../hooks/useChat'
@@ -239,7 +239,7 @@ describe('MessageList accessibility', () => {
   })
 })
 
-describe('MessageList streaming reveal and tool UI gating', () => {
+describe('MessageList streamed tool UI', () => {
   function makeProduct(id: number, name: string): Product {
     return {
       id,
@@ -250,45 +250,7 @@ describe('MessageList streaming reveal and tool UI gating', () => {
     }
   }
 
-  // Manual rAF harness so the smooth-reveal animation is test-driven.
-  let rafCallbacks: Map<number, FrameRequestCallback>
-  let rafNextId: number
-
-  function flushFrame(now: number) {
-    const callbacks = [...rafCallbacks.values()]
-    rafCallbacks.clear()
-    act(() => {
-      callbacks.forEach((callback) => callback(now))
-    })
-  }
-
-  function flushUntilSettled(startAt = 0, maxFrames = 1000): void {
-    let now = startAt
-    let frames = 0
-    while (rafCallbacks.size > 0 && frames < maxFrames) {
-      now += 16
-      flushFrame(now)
-      frames++
-    }
-  }
-
-  beforeEach(() => {
-    rafCallbacks = new Map()
-    rafNextId = 0
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      rafCallbacks.set(++rafNextId, callback)
-      return rafNextId
-    })
-    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
-      rafCallbacks.delete(id)
-    })
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('shows skeletons instead of product cards while the message is streaming', () => {
+  it('renders product cards as soon as they are extracted, with no skeletons', () => {
     render(
       <MessageList
         messages={[
@@ -297,17 +259,35 @@ describe('MessageList streaming reveal and tool UI gating', () => {
             content: 'Here are some options.',
             id: 'm-stream',
             products: [makeProduct(1, 'Product One')],
-            isStreaming: true,
           },
         ]}
       />
     )
 
-    expect(screen.getByRole('status', { name: 'Loading products' })).toBeInTheDocument()
-    expect(screen.queryByText('Product One')).not.toBeInTheDocument()
+    expect(screen.getByText('Product One')).toBeInTheDocument()
+    expect(screen.queryByRole('status', { name: 'Loading products' })).not.toBeInTheDocument()
   })
 
-  it('shows skeletons as soon as a product tool is pending, before any output arrives', () => {
+  it('renders product cards above the text bubble (arrival order: tools, then text)', () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            role: 'assistant',
+            content: 'Here are some options.',
+            id: 'm-stream',
+            products: [makeProduct(1, 'Product One')],
+          },
+        ]}
+      />
+    )
+
+    const card = screen.getByText('Product One')
+    const text = screen.getByText('Here are some options.')
+    expect(card.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('renders cards even before any text has streamed', () => {
     render(
       <MessageList
         messages={[
@@ -315,17 +295,16 @@ describe('MessageList streaming reveal and tool UI gating', () => {
             role: 'assistant',
             content: '',
             id: 'm-stream',
-            hasPendingProductTool: true,
-            isStreaming: true,
+            products: [makeProduct(1, 'Product One')],
           },
         ]}
       />
     )
 
-    expect(screen.getByRole('status', { name: 'Loading products' })).toBeInTheDocument()
+    expect(screen.getByText('Product One')).toBeInTheDocument()
   })
 
-  it('holds the checkout button back while streaming', () => {
+  it('renders the checkout button immediately', () => {
     render(
       <MessageList
         messages={[
@@ -338,76 +317,15 @@ describe('MessageList streaming reveal and tool UI gating', () => {
               cart_url: 'https://shop.example/cart',
               item_count: 1,
             },
-            isStreaming: true,
           },
         ]}
       />
     )
 
-    expect(screen.queryByText('CHECKOUT')).not.toBeInTheDocument()
+    expect(screen.getByText('CHECKOUT')).toBeInTheDocument()
   })
 
-  it('reveals streamed text gradually, then swaps skeletons for the real cards', () => {
-    const content = 'Here are a couple of great picks for you.'
-    const { rerender } = render(
-      <MessageList
-        messages={[
-          {
-            role: 'assistant',
-            content,
-            id: 'm-stream',
-            products: [makeProduct(1, 'Product One')],
-            isStreaming: true,
-          },
-        ]}
-      />
-    )
-
-    // Mid-reveal: partial text, still skeletons.
-    flushFrame(0)
-    flushFrame(16)
-    expect(screen.getByRole('status', { name: 'Loading products' })).toBeInTheDocument()
-    expect(screen.queryByText('Product One')).not.toBeInTheDocument()
-
-    // Stream finishes; reveal continues until the full text is out.
-    rerender(
-      <MessageList
-        messages={[
-          {
-            role: 'assistant',
-            content,
-            id: 'm-stream',
-            products: [makeProduct(1, 'Product One')],
-            isStreaming: false,
-          },
-        ]}
-      />
-    )
-    flushUntilSettled(16)
-
-    expect(screen.getByText('Product One')).toBeInTheDocument()
-    expect(screen.queryByRole('status', { name: 'Loading products' })).not.toBeInTheDocument()
-  })
-
-  it('renders completed (non-streamed) messages with cards immediately', () => {
-    render(
-      <MessageList
-        messages={[
-          {
-            role: 'assistant',
-            content: 'Here you go.',
-            id: 'm-restored',
-            products: [makeProduct(1, 'Product One')],
-          },
-        ]}
-      />
-    )
-
-    expect(screen.getByText('Product One')).toBeInTheDocument()
-    expect(screen.queryByRole('status', { name: 'Loading products' })).not.toBeInTheDocument()
-  })
-
-  it('mounts add-to-cart triggers even while the message is streaming', () => {
+  it('mounts add-to-cart triggers immediately', () => {
     render(
       <MessageList
         messages={[
@@ -416,31 +334,11 @@ describe('MessageList streaming reveal and tool UI gating', () => {
             content: 'Added!',
             id: 'm-stream',
             addToCartIntents: [{ toolCallId: 'call-1', productId: 1, quantity: 1 }],
-            isStreaming: true,
           },
         ]}
       />
     )
 
     expect(screen.getByText(/Adding to cart|Added to cart|Could not add to cart/)).toBeInTheDocument()
-  })
-
-  it('renders exactly one skeleton row when products are pending', () => {
-    render(
-      <MessageList
-        messages={[
-          {
-            role: 'assistant',
-            content: 'Looking…',
-            id: 'm-stream',
-            products: [makeProduct(1, 'Product One')],
-            hasPendingProductTool: true,
-            isStreaming: true,
-          },
-        ]}
-      />
-    )
-
-    expect(screen.getAllByRole('status', { name: 'Loading products' })).toHaveLength(1)
   })
 })

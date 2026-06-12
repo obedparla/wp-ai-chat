@@ -1,6 +1,5 @@
 import { useLayoutEffect, useRef, useCallback, useState, Fragment, type ReactNode } from 'react'
 import { Message } from '../hooks/useChat'
-import { useSmoothText } from '../hooks/useSmoothText'
 import ProductGrid from './ProductGrid'
 import type { Product } from './ProductCard'
 import ComparisonTable, { type ComparisonData } from './ComparisonTable'
@@ -8,7 +7,6 @@ import CheckoutButton from './CheckoutButton'
 import AddToCartTrigger from './AddToCartTrigger'
 import ClearCartTrigger from './ClearCartTrigger'
 import MarkdownContent from './MarkdownContent'
-import ProductCardSkeletons from './ProductCardSkeletons'
 import type { ClearCartStatus } from '../hooks/useClearCart'
 import { cn } from '@/lib/utils'
 
@@ -96,21 +94,10 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, chil
   const containerRef = useRef<HTMLDivElement>(null)
   const isUserAtBottomRef = useRef(true)
   const [showJumpButton, setShowJumpButton] = useState(false)
-  const lastMessageContent = messages[messages.length - 1]?.content
-
-  // Smoothly reveal the streaming assistant message's text instead of painting
-  // network bursts as they arrive. Tool UI (cards, buttons) for that message is
-  // held back until the text has fully revealed, so the reply always assembles
-  // top-to-bottom: text first, then cards below — nothing inserts above
-  // existing content and shoves it around.
   const lastMessage = messages[messages.length - 1]
-  const lastAssistantMessage = lastMessage?.role === 'assistant' ? lastMessage : undefined
-  const smooth = useSmoothText(lastAssistantMessage)
+  const lastMessageContent = lastMessage?.content
+  const lastMessageProductCount = lastMessage?.products?.length ?? 0
 
-  const lastMessageHoldsToolUI =
-    lastAssistantMessage !== undefined &&
-    (lastAssistantMessage.isStreaming === true ||
-      (lastAssistantMessage.id != null && lastAssistantMessage.id === smooth.messageId && !smooth.isComplete))
   const checkIfAtBottom = useCallback(() => {
     const container = containerRef.current
     if (!container) return true
@@ -142,7 +129,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, chil
       containerRef.current.scrollTop = containerRef.current.scrollHeight
       setShowJumpButton(false)
     }
-  }, [messages.length, lastMessageContent, smooth.displayedText, lastMessageHoldsToolUI])
+  }, [messages.length, lastMessageContent, lastMessageProductCount])
 
   return (
     <div className="flex-1 relative flex min-h-0">
@@ -169,10 +156,7 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, chil
         const hasAddToCart = addToCartIntents.length > 0
         const hasClearCart = clearCartIntents.length > 0
         const hasToolUI = hasProducts || hasComparison || hasCheckoutAction || hasAddToCart || hasClearCart
-        const isBeingRevealed = msg.id != null && msg.id === smooth.messageId
-        const renderedContent = isBeingRevealed ? smooth.displayedText : msg.content
-        const holdToolUI = isLastMessage && lastMessageHoldsToolUI
-        const hasTextContent = renderedContent && renderedContent.trim().length > 0
+        const hasTextContent = msg.content && msg.content.trim().length > 0
         const showSeparator = shouldShowSeparator(msg, messages[i - 1])
 
         const separator = showSeparator && msg.createdAt ? (
@@ -204,10 +188,44 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, chil
           )
         }
 
-        // Assistant messages: text in bubble, tool UI outside
+        // Assistant messages render in stream-arrival order: tool UI (cards,
+        // comparison, buttons) mounts as soon as outputs are extracted, and the
+        // final text streams BELOW it — content only ever appends at the
+        // bottom, so nothing on screen gets pushed around mid-reply.
         return (
           <Fragment key={msg.id ?? i}>
             {separator}
+            {hasProducts && (
+              <div className="w-full animate-wpaic-fadeIn">
+                <ProductGrid products={products} />
+              </div>
+            )}
+            {comparison && (
+              <div className="w-full animate-wpaic-fadeIn">
+                <ComparisonTable data={comparison} />
+              </div>
+            )}
+            {checkoutAction && <CheckoutButton action={checkoutAction} />}
+            {hasClearCart && (
+              <div className="flex w-full flex-col gap-1.5">
+                {clearCartIntents.map((intent) => (
+                  <ClearCartTrigger
+                    key={intent.toolCallId}
+                    intent={intent}
+                    status={clearCartStatuses?.[intent.toolCallId]}
+                  />
+                ))}
+              </div>
+            )}
+            {hasAddToCart && (
+              // Mounting the trigger performs the actual cart add — must
+              // always render immediately.
+              <div className="flex w-full flex-col gap-1.5">
+                {addToCartIntents.map((intent) => (
+                  <AddToCartTrigger key={intent.toolCallId} intent={intent} />
+                ))}
+              </div>
+            )}
             {hasTextContent && (
               <div
                 className={cn(
@@ -218,54 +236,9 @@ export default function MessageList({ messages, onRetry, clearCartStatuses, chil
                 )}
               >
                 <div className="prose prose-sm prose-slate max-w-none prose-p:my-2 prose-p:last:mb-0 prose-a:text-[var(--wpaic-primary)] prose-a:no-underline hover:prose-a:underline">
-                  <MarkdownContent content={renderedContent} />
+                  <MarkdownContent content={msg.content} />
                 </div>
                 {showRetry && !hasToolUI && <RetryButton onRetry={onRetry} className="ml-2.5 align-middle" />}
-              </div>
-            )}
-            {holdToolUI ? (
-              // While the reply is still streaming/revealing, one stable
-              // skeleton occupies the card slot from the moment a product tool
-              // is called until the real cards swap in — it must never
-              // mount/unmount mid-turn (hasPendingProductTool is monotonic).
-              (msg.hasPendingProductTool || hasProducts || hasComparison) && (
-                <div key="product-skeletons" className="w-full animate-wpaic-fadeIn">
-                  <ProductCardSkeletons />
-                </div>
-              )
-            ) : (
-              <>
-                {hasProducts && (
-                  <div className="w-full animate-wpaic-fadeIn">
-                    <ProductGrid products={products} />
-                  </div>
-                )}
-                {comparison && (
-                  <div className="w-full animate-wpaic-fadeIn">
-                    <ComparisonTable data={comparison} />
-                  </div>
-                )}
-                {checkoutAction && <CheckoutButton action={checkoutAction} />}
-                {hasClearCart && (
-                  <div className="flex w-full flex-col gap-1.5">
-                    {clearCartIntents.map((intent) => (
-                      <ClearCartTrigger
-                        key={intent.toolCallId}
-                        intent={intent}
-                        status={clearCartStatuses?.[intent.toolCallId]}
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-            {hasAddToCart && (
-              // Never held back: mounting the trigger performs the actual cart
-              // add, which must not wait on (or be lost to) the text reveal.
-              <div className="flex w-full flex-col gap-1.5">
-                {addToCartIntents.map((intent) => (
-                  <AddToCartTrigger key={intent.toolCallId} intent={intent} />
-                ))}
               </div>
             )}
             {showRetry && hasToolUI && <RetryButton onRetry={onRetry} className="self-start -mt-2" />}

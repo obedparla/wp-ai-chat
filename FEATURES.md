@@ -38,8 +38,7 @@ Everything currently implemented.
 - Proactive teaser bubble: dismissible message-preview next to the launcher after the configured delay (never auto-opens the full widget); expands to full chat on click
 - Scoped styles: no Tailwind preflight bleed into the host theme; reduced-motion rules scoped to the widget root
 - Real-time streaming responses over SSE; failed replies (including requests that die before any reply) show an error bubble with a retry icon that resends from the last user message
-- ChatGPT-style smooth text reveal: streamed text paints at a steady per-frame rate (backlog-proportional catch-up) instead of network-burst chunks; full pipeline tuned for per-delta delivery (provider forwards only slim consumed events, chatbot reads the provider stream un-buffered)
-- Replies assemble top-to-bottom: one stable skeleton row mounts below the streaming text as soon as a product tool (search / popular / compare) is called, stays put through multi-tool turns, and swaps to the real cards / comparison / checkout button once the text finishes revealing — no flicker, no layout jumps
+- Replies render in stream-arrival order with no buffering: product cards / comparison / checkout button mount as soon as their tool outputs arrive (above the text), and the reply text streams live below them — content only appends at the bottom, so nothing jumps or flickers; pipeline tuned for per-delta delivery (provider forwards only slim consumed events, chatbot reads the provider stream un-buffered)
 - Header with circular avatar (logo or initials), green online dot, name + role subtitle
 - Flat gray assistant bubbles / themed user bubbles, 85% max width
 - Markdown rendering (tables, lists, links, bold/italic, code) with links opening in new tabs

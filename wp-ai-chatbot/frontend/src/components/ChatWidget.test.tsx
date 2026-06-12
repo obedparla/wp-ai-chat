@@ -541,21 +541,6 @@ describe('ChatWidget mobile fullscreen', () => {
   })
 })
 
-describe('ChatWidget product skeletons', () => {
-  // Skeletons are driven by message.hasPendingProductTool (see MessageList
-  // tests); ChatWidget no longer computes anything skeleton-related, so a
-  // running product tool alone must not render one.
-  it('does not render skeletons from active tools alone', () => {
-    const mockChat = createMockChat({
-      messages: [],
-      isLoading: true,
-      activeTools: [{ toolName: 'search_products', state: 'executing' }],
-    })
-    render(<ChatWidget onClose={vi.fn()} chat={mockChat} />)
-    expect(screen.queryByRole('status', { name: 'Loading products' })).not.toBeInTheDocument()
-  })
-})
-
 describe('ChatWidget tool progress', () => {
   it('shows tool progress instead of typing when tool is active', () => {
     const mockChat = createMockChat({
