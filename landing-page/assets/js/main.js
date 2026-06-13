@@ -3,16 +3,6 @@
 
 	var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-	/* ------------------------------------------------ nav scroll state */
-	var nav = document.querySelector('.site-nav');
-	if (nav) {
-		var onScroll = function () {
-			nav.classList.toggle('nav-scrolled', window.scrollY > 24);
-		};
-		window.addEventListener('scroll', onScroll, { passive: true });
-		onScroll();
-	}
-
 	/* ------------------------------------------------ mobile menu */
 	var menuButton = document.querySelector('[data-menu-button]');
 	var menuPanel = document.querySelector('[data-menu-panel]');
@@ -30,6 +20,14 @@
 	}
 
 	/* ------------------------------------------------ scroll reveals */
+	// Expand [data-reveal-group] into staggered .reveal children.
+	document.querySelectorAll('[data-reveal-group]').forEach(function (group) {
+		Array.prototype.forEach.call(group.children, function (child, i) {
+			child.classList.add('reveal');
+			child.style.setProperty('--reveal-delay', (i * 80) + 'ms');
+		});
+	});
+
 	var revealEls = document.querySelectorAll('.reveal');
 	if (reducedMotion || !('IntersectionObserver' in window)) {
 		revealEls.forEach(function (el) { el.classList.add('is-visible'); });
@@ -49,82 +47,119 @@
 	}
 
 	/* ------------------------------------------------ hero chat demo */
-	var demo = document.querySelector('[data-chat-demo]');
-	if (!demo) return;
-
-	var steps = Array.prototype.slice.call(demo.querySelectorAll('.chat-step'));
-	var typing = demo.querySelector('.chat-typing');
-	var scroller = demo.querySelector('[data-chat-scroll]');
-	var addButton = demo.querySelector('.demo-add');
-
-	if (reducedMotion) {
-		steps.forEach(function (step) { step.classList.add('is-on'); });
-		if (addButton) addButton.classList.add('is-added');
-		return;
-	}
-
-	// [delayBeforeMs, showTypingFirst]
-	var timeline = [
-		[900, false],   // user: trail shoes under $80
-		[1700, true],   // bot: picks + product cards
-		[2600, false],  // user: add the Vela in a 9
-		[1600, true],   // bot: done + checkout CTA
+	// Builds a looping fake shopper conversation inside #hero-chat.
+	var SCRIPT = [
+		{ type: 'bot', text: "Hi! I'm Scout — ask me anything about the store." },
+		{ type: 'user', text: 'Trail running shoes under $120?' },
+		{ type: 'typing', ms: 950 },
+		{ type: 'bot', text: 'In stock and ready to ship — three great picks:' },
+		{ type: 'products', items: [
+			{ name: 'Ridgerunner 2', price: '$89', badge: 'Sale', tone: 1 },
+			{ name: 'Skyline Trail', price: '$112', tone: 2 },
+			{ name: 'Cascade GTX', price: '$118', tone: 3 }
+		] },
+		{ type: 'user', text: 'Add the Ridgerunner 2, size 10' },
+		{ type: 'typing', ms: 800 },
+		{ type: 'bot', text: 'Done — Ridgerunner 2 (US 10) is in your cart.' },
+		{ type: 'cta', label: 'Checkout — $89.00' }
 	];
-	var ADD_FLIP_STEP = 3; // flip ADD -> ADDED right as the confirmation lands
-	var RESTART_PAUSE = 5200;
 
-	function scrollToEnd() {
-		if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
+	function el(tag, cls, html) {
+		var n = document.createElement(tag);
+		if (cls) n.className = cls;
+		if (html !== undefined) n.innerHTML = html;
+		return n;
 	}
 
-	function showTyping(on) {
-		if (typing) typing.classList.toggle('is-on', on);
-		if (on) scrollToEnd();
+	function renderMessage(body, step) {
+		if (step.type === 'bot' || step.type === 'user') {
+			return el('div', 'cd-msg cd-' + step.type, step.text);
+		}
+		if (step.type === 'products') {
+			var row = el('div', 'cd-products');
+			step.items.forEach(function (p) {
+				var card = el('div', 'cd-card');
+				var thumb = el('div', 'cd-thumb cd-tone' + (p.tone || 1));
+				if (p.badge) thumb.appendChild(el('span', 'cd-badge', p.badge));
+				card.appendChild(thumb);
+				card.appendChild(el('div', 'cd-name', p.name));
+				card.appendChild(el('div', 'cd-price', p.price));
+				row.appendChild(card);
+			});
+			return row;
+		}
+		if (step.type === 'cta') {
+			var btn = el('button', 'cd-cta', step.label);
+			btn.type = 'button';
+			btn.tabIndex = -1;
+			return btn;
+		}
+		return null;
 	}
 
-	var index = 0;
-	var started = false;
+	function initChatDemo(body) {
+		if (!body) return;
 
-	function playNext() {
-		if (index >= steps.length) {
-			window.setTimeout(reset, RESTART_PAUSE);
+		// Reduced motion: render the whole conversation at once, no looping.
+		if (reducedMotion) {
+			SCRIPT.forEach(function (step) {
+				if (step.type === 'typing') return;
+				var node = renderMessage(body, step);
+				if (node) body.appendChild(node);
+			});
+			body.scrollTop = body.scrollHeight;
 			return;
 		}
-		var step = timeline[index];
-		var typingLead = step[1] ? 950 : 0;
 
-		window.setTimeout(function () {
-			if (typingLead) showTyping(true);
-			window.setTimeout(function () {
-				showTyping(false);
-				if (index === ADD_FLIP_STEP && addButton) addButton.classList.add('is-added');
-				steps[index].classList.add('is-on');
-				scrollToEnd();
-				index += 1;
-				playNext();
-			}, typingLead);
-		}, step[0]);
-	}
+		var index = 0, timer = null, visible = true;
 
-	function reset() {
-		steps.forEach(function (step) { step.classList.remove('is-on'); });
-		if (addButton) addButton.classList.remove('is-added');
-		if (scroller) scroller.scrollTo({ top: 0 });
-		index = 0;
-		window.setTimeout(playNext, 700);
-	}
+		try {
+			var io = new IntersectionObserver(function (entries) {
+				visible = entries[entries.length - 1].isIntersecting;
+				if (visible && timer === null) tick(600);
+			}, { threshold: 0.2 });
+			io.observe(body);
+		} catch (e) { /* keep running */ }
 
-	// Start when the demo scrolls into view.
-	if ('IntersectionObserver' in window) {
-		var demoObserver = new IntersectionObserver(function (entries) {
-			if (entries[0].isIntersecting && !started) {
-				started = true;
-				demoObserver.disconnect();
-				playNext();
+		function add(node) {
+			node.classList.add('cd-in');
+			body.appendChild(node);
+			body.scrollTop = body.scrollHeight;
+			setTimeout(function () { node.classList.remove('cd-in'); }, 500);
+		}
+		function tick(delay) { timer = setTimeout(step, delay); }
+
+		function step() {
+			timer = null;
+			if (!visible) return;
+			if (index >= SCRIPT.length) {
+				index = 0;
+				timer = setTimeout(function () {
+					body.classList.add('cd-fade');
+					timer = setTimeout(function () {
+						body.innerHTML = '';
+						body.classList.remove('cd-fade');
+						timer = null;
+						tick(500);
+					}, 600);
+				}, 3600);
+				return;
 			}
-		}, { threshold: 0.3 });
-		demoObserver.observe(demo);
-	} else {
-		playNext();
+			var s = SCRIPT[index++];
+			if (s.type === 'typing') {
+				var t = el('div', 'cd-msg cd-bot cd-typing', '<span></span><span></span><span></span>');
+				body.appendChild(t);
+				body.scrollTop = body.scrollHeight;
+				timer = setTimeout(function () { t.remove(); timer = null; step(); }, s.ms || 900);
+				return;
+			}
+			var node = renderMessage(body, s);
+			if (node) add(node);
+			tick(s.type === 'user' ? 750 : 1250);
+		}
+
+		tick(800);
 	}
+
+	initChatDemo(document.getElementById('hero-chat'));
 })();

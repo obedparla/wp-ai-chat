@@ -1,41 +1,49 @@
 @import "tailwindcss";
 
 @theme {
-	--color-page: #FFFFFF;
-	--color-mist: #F7F6FB;
-	--color-ink: #150E2C;
-	--color-ink-soft: #5D5775;
-	--color-line: rgba(21, 14, 44, 0.12);
-	--color-woo: #7F54B3;
-	--color-woo-deep: #5C3792;
-	--color-woo-tint: #F3EDFB;
-	--color-green: #0B9E63;
-	--color-lime: #C8F542;
+	/* ── Electric palette ── */
+	--color-ink: #120B2E;          /* deepest background */
+	--color-ink2: #1B1142;         /* raised panels on dark */
+	--color-paper: #F7F6FB;        /* light section background + body */
+	--color-card: #FFFFFF;
+	--color-acc: #D9FF3D;          /* electric lime (highlighter) */
+	--color-acc2: #8B5CF6;         /* secondary violet */
+	--color-tx-dark: #16102F;
+	--color-tx-light: #F4F2FC;
+	--color-line: rgba(22, 16, 47, 0.12);
+	--color-green: #15803D;        /* cart / sale / "yes" cues */
+	--color-danger: #B91C1C;
+	--color-online: #6EE7A0;
 
-	--font-display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
-	--font-body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
+	--font-display: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+	--font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
 
-	--shadow-lift: 0 1px 2px rgba(21, 14, 44, 0.06), 0 12px 32px -12px rgba(21, 14, 44, 0.25);
-	--shadow-card: 0 1px 0 rgba(21, 14, 44, 0.04), 0 24px 60px -28px rgba(21, 14, 44, 0.35);
+	--shadow-chat: 0 40px 90px rgba(0, 0, 0, 0.45);
+	--shadow-card: 0 18px 50px rgba(18, 11, 46, 0.1);
+	--shadow-visual: 0 24px 60px rgba(18, 11, 46, 0.22);
+	--shadow-mock: 0 16px 40px rgba(0, 0, 0, 0.35);
+	--shadow-pop: 0 10px 26px rgba(0, 0, 0, 0.3);
+	--shadow-plan: 0 30px 70px rgba(0, 0, 0, 0.4);
+	--shadow-acc: 0 8px 28px rgba(217, 255, 61, 0.35);
 
-	--animate-marquee: marquee 26s linear infinite;
+	--animate-marquee: marquee 28s linear infinite;
 	--animate-pulse-dot: pulse-dot 2.2s ease-in-out infinite;
 }
 
 /* ---------------------------------------------------------------- fonts */
 @font-face {
-	font-family: "Bricolage Grotesque";
+	font-family: "Space Grotesk";
 	font-style: normal;
-	font-weight: 200 800;
+	font-weight: 300 700;
 	font-display: swap;
-	src: url("__THEME_URI__/assets/fonts/bricolage-var.woff2") format("woff2");
+	src: url("__THEME_URI__/assets/fonts/space-grotesk-var.woff2") format("woff2");
 }
 @font-face {
-	font-family: "Hanken Grotesk";
+	font-family: "Archivo";
 	font-style: normal;
-	font-weight: 300 800;
+	font-weight: 400 700;
 	font-display: swap;
-	src: url("__THEME_URI__/assets/fonts/hanken-var.woff2") format("woff2");
+	src: url("__THEME_URI__/assets/fonts/archivo-var.woff2") format("woff2");
 }
 
 /* ---------------------------------------------------------------- base */
@@ -46,30 +54,51 @@
 	}
 	body {
 		font-family: var(--font-body);
-		background-color: var(--color-page);
-		color: var(--color-ink);
-		font-optical-sizing: auto;
+		background-color: var(--color-paper);
+		color: var(--color-tx-dark);
 		-webkit-font-smoothing: antialiased;
 		text-rendering: optimizeLegibility;
 	}
-	::selection {
-		background: var(--color-lime);
-		color: var(--color-ink);
-	}
-	.font-display {
+	h1, h2, h3, .font-display {
 		font-family: var(--font-display);
-		font-optical-sizing: auto;
+		letter-spacing: -0.02em;
+	}
+	::selection {
+		background: var(--color-acc);
+		color: var(--color-tx-dark);
 	}
 }
 
-/* Lime marker swipe behind key words */
-.mark-lime {
-	background: linear-gradient(100deg, transparent 1%, var(--color-lime) 3%, var(--color-lime) 97%, transparent 99%);
-	padding: 0 0.14em;
-	margin: 0 -0.06em;
-	border-radius: 0.16em;
+/* ---------------------------------------------------------------- highlighter */
+/* Solid lime swipe behind key words, tilted like a marker pass. */
+.hl {
+	background: var(--color-acc);
+	color: var(--color-tx-dark);
+	padding: 0 0.18em;
+	border-radius: 4px;
 	box-decoration-break: clone;
 	-webkit-box-decoration-break: clone;
+	display: inline-block;
+	transform: rotate(-1deg);
+}
+
+/* Eyebrow / kicker label with a short accent bar. */
+.kicker {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: 13px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+.kicker::before {
+	content: "";
+	width: 22px;
+	height: 3px;
+	background: var(--color-acc2);
+	border-radius: 2px;
 }
 
 /* ---------------------------------------------------------------- motion */
@@ -78,15 +107,19 @@
 	to   { transform: translateX(-50%); }
 }
 @keyframes pulse-dot {
-	0%, 100% { box-shadow: 0 0 0 0 rgba(200, 245, 66, 0.55); }
-	60% { box-shadow: 0 0 0 6px rgba(200, 245, 66, 0); }
+	0%, 100% { box-shadow: 0 0 0 0 rgba(110, 231, 160, 0.6); }
+	60% { box-shadow: 0 0 0 6px rgba(110, 231, 160, 0); }
 }
 @keyframes typing-dot {
-	0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-	30% { transform: translateY(-4px); opacity: 1; }
+	0%, 100% { opacity: 0.3; }
+	50% { opacity: 1; }
+}
+@keyframes cd-in {
+	from { opacity: 0; transform: translateY(12px); }
+	to   { opacity: 1; transform: none; }
 }
 
-/* Scroll-triggered reveals (JS adds .is-visible) */
+/* Scroll-triggered reveals (JS adds .is-visible). */
 .reveal {
 	opacity: 0;
 	transform: translateY(26px);
@@ -98,81 +131,151 @@
 	transform: none;
 }
 
-/* ---------------------------------------------------------------- chat demo */
-@keyframes step-in {
-	from { opacity: 0; transform: translateY(14px) scale(0.98); }
-	to   { opacity: 1; transform: none; }
-}
-.chat-step {
-	display: none;
-}
-.chat-step.is-on {
-	display: block;
-	animation: step-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.chat-typing {
-	display: none;
-}
-.chat-typing.is-on {
+/* Marquee track (banner is tilted in markup). */
+.marquee-track {
 	display: flex;
+	width: max-content;
+	white-space: nowrap;
+	animation: var(--animate-marquee);
 }
-.chat-typing span {
-	width: 6px;
-	height: 6px;
-	border-radius: 9999px;
-	background: var(--color-ink-soft);
-	animation: typing-dot 1.1s ease-in-out infinite;
+
+/* Buttons — shared micro-interaction. */
+.btn-press {
+	transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-.chat-typing span:nth-child(2) { animation-delay: 0.15s; }
-.chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+.btn-press:hover { transform: translateY(-2px); }
+.btn-press:active { transform: translateY(0); }
 
-/* Demo "ADD" button state flip, driven by the demo timeline */
-.demo-add .added { display: none; }
-.demo-add.is-added .add { display: none; }
-.demo-add.is-added .added { display: inline-flex; }
-.demo-add.is-added { background: var(--color-green); color: #fff; border-color: var(--color-green); }
+/* ---------------------------------------------------------------- hero chat demo */
+/* Messages are built by main.js, so these stay as real classes. */
+.cd-body {
+	transition: opacity 0.5s ease;
+}
+.cd-body.cd-fade { opacity: 0; }
+.cd-msg {
+	max-width: 82%;
+	padding: 11px 15px;
+	border-radius: 16px;
+	font-size: 14.5px;
+	line-height: 1.45;
+}
+.cd-bot {
+	background: #EFECF8;
+	color: var(--color-tx-dark);
+	border-bottom-left-radius: 5px;
+	align-self: flex-start;
+}
+.cd-user {
+	background: var(--color-ink2);
+	color: var(--color-tx-light);
+	border-bottom-right-radius: 5px;
+	align-self: flex-end;
+}
+.cd-in { animation: cd-in 0.4s ease both; }
+.cd-typing {
+	display: flex;
+	gap: 4px;
+	padding: 14px 16px;
+}
+.cd-typing span {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: rgba(22, 16, 47, 0.35);
+	animation: typing-dot 1s infinite;
+}
+.cd-typing span:nth-child(2) { animation-delay: 0.18s; }
+.cd-typing span:nth-child(3) { animation-delay: 0.36s; }
+.cd-products {
+	display: flex;
+	gap: 10px;
+	align-self: flex-start;
+}
+.cd-card {
+	background: #fff;
+	border: 1px solid rgba(22, 16, 47, 0.1);
+	border-radius: 12px;
+	padding: 8px;
+	width: 104px;
+}
+.cd-thumb {
+	height: 62px;
+	border-radius: 8px;
+	position: relative;
+	margin-bottom: 7px;
+}
+.cd-tone1 { background: linear-gradient(135deg, var(--color-acc2), #5B3FD4); }
+.cd-tone2 { background: linear-gradient(135deg, #34B3E4, #2563EB); }
+.cd-tone3 { background: linear-gradient(135deg, #F59E0B, #EF4444); }
+.cd-badge {
+	position: absolute;
+	top: 5px;
+	left: 5px;
+	background: var(--color-acc);
+	color: var(--color-tx-dark);
+	font-size: 9.5px;
+	font-weight: 800;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-family: var(--font-display);
+}
+.cd-name { font-size: 11.5px; font-weight: 700; }
+.cd-price { font-size: 11px; color: rgba(22, 16, 47, 0.64); }
+.cd-cta {
+	align-self: flex-start;
+	background: var(--color-acc);
+	border: none;
+	color: var(--color-tx-dark);
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: 14px;
+	padding: 11px 20px;
+	border-radius: 999px;
+	cursor: pointer;
+}
 
-/* ---------------------------------------------------------------- FAQ */
+/* ---------------------------------------------------------------- feature mini-mocks */
+/* Composed utility classes for the repeated chat/table atoms inside the feature visuals. */
+@layer components {
+	.mini-msg  { @apply max-w-[85%] rounded-[11px] px-3 py-2 leading-snug; }
+	.mini-bot  { @apply self-start rounded-bl-[4px] bg-[#EFECF8] text-tx-dark; }
+	.mini-user { @apply self-end rounded-br-[4px] bg-ink2 text-tx-light; }
+	.mini-card { @apply flex-1 rounded-[9px] border border-tx-dark/10 p-1.5; }
+	.mini-thumb { @apply mb-[5px] h-11 rounded-md; }
+	.mini-btn  { @apply self-start rounded-full bg-acc px-4 py-2 text-center font-display font-bold text-tx-dark; }
+	.mini-atc  { @apply rounded-md bg-acc px-2 py-1 text-center font-display text-[10.5px] font-bold text-tx-dark; }
+	.mini-tag  { @apply inline-block rounded-[5px] bg-[#EFECF8] px-[7px] py-0.5 text-[10.5px] font-bold text-acc2; }
+}
+.mini-table th,
+.mini-table td {
+	text-align: left;
+	padding: 7px 9px;
+	border-bottom: 1px solid rgba(22, 16, 47, 0.07);
+	font-size: 11.5px;
+}
+.mini-table th {
+	font-weight: 700;
+	font-family: var(--font-display);
+}
+
+/* ---------------------------------------------------------------- FAQ accordion */
 .faq-item summary {
 	list-style: none;
 	cursor: pointer;
 }
 .faq-item summary::-webkit-details-marker { display: none; }
-.faq-item .faq-icon {
-	transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+.faq-item summary::after {
+	content: "+";
+	font-size: 22px;
+	line-height: 1;
+	color: var(--color-acc2);
+	flex-shrink: 0;
+	transition: transform 0.2s ease;
 }
-.faq-item[open] .faq-icon { transform: rotate(45deg); }
-.faq-item .faq-body {
-	display: grid;
-	grid-template-rows: 0fr;
-	transition: grid-template-rows 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.faq-item[open] .faq-body { grid-template-rows: 1fr; }
-.faq-item .faq-body > div { overflow: hidden; }
+.faq-item[open] summary::after { transform: rotate(45deg); }
 
-/* ---------------------------------------------------------------- nav */
-.nav-scrolled {
-	background: rgba(255, 255, 255, 0.85);
-	backdrop-filter: blur(12px);
-	border-bottom: 1px solid var(--color-line);
-}
-
-/* Marquee */
-.marquee-track {
-	animation: var(--animate-marquee);
-}
-.marquee:hover .marquee-track {
-	animation-play-state: paused;
-}
-
-/* Buttons — shared micro-interaction */
-.btn-press {
-	transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s ease, background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
-}
-.btn-press:hover { transform: translateY(-2px); }
-.btn-press:active { transform: translateY(0); }
-
-/* WP admin bar offset for the fixed nav */
+/* ---------------------------------------------------------------- nav / admin bar */
+/* Sticky nav sits below the WP admin bar for logged-in admins. */
 body.admin-bar header.site-nav { top: 32px; }
 @media (max-width: 782px) {
 	body.admin-bar header.site-nav { top: 46px; }
@@ -182,8 +285,8 @@ body.admin-bar header.site-nav { top: 32px; }
 @media (prefers-reduced-motion: reduce) {
 	html { scroll-behavior: auto; }
 	.reveal { opacity: 1; transform: none; transition: none; }
-	.chat-step.is-on { animation: none; }
 	.marquee-track { animation: none; }
+	.cd-in { animation: none; }
 	[class*="animate-"] { animation: none !important; }
 	.btn-press, .btn-press:hover { transform: none; }
 }

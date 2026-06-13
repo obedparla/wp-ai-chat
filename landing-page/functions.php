@@ -44,7 +44,7 @@ add_action( 'wp_enqueue_scripts', function () {
 /** Preload variable fonts + inline the compiled CSS (no render-blocking stylesheet request). */
 add_action( 'wp_head', function () {
 	$theme_uri = get_template_directory_uri();
-	foreach ( array( 'bricolage-var.woff2', 'hanken-var.woff2' ) as $font ) {
+	foreach ( array( 'space-grotesk-var.woff2', 'archivo-var.woff2' ) as $font ) {
 		printf(
 			'<link rel="preload" href="%s/assets/fonts/%s" as="font" type="font/woff2" crossorigin>' . "\n",
 			esc_url( $theme_uri ),
