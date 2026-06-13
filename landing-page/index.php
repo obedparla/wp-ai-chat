@@ -8,6 +8,19 @@
  *   - Checkout links → every .js-buy anchor
  *   - Privacy/Terms  → footer
  */
+
+// Single source of truth — drives both the visible accordion and the FAQPage JSON-LD.
+$faqs = array(
+	array( 'Why is there no monthly fee?', 'We charge one flat yearly price — or once, with Forever. No per-seat fees, no per-conversation fees, no AI credits. The AI is included: every plan covers thousands of shopper conversations a month, which is far more than a typical store uses.' ),
+	array( 'Do I need an OpenAI account or API key?', "No. CartScout ships with the AI built in. Install the plugin, activate it, and it works — there's nothing to sign up for and no key to paste anywhere." ),
+	array( 'Will it make things up about my products?', "CartScout only answers from your actual catalog, your pages and your policies. If it doesn't know, it says so and offers a human handoff — it never invents prices, stock or shipping promises." ),
+	array( 'Can it actually add products to the cart?', "Yes — it's built on WooCommerce's own cart. It handles variations (size, color), respects stock levels, and drops the shopper at your normal checkout. Nothing about your order flow changes." ),
+	array( 'Will it slow down my store?', 'No. The widget is a few kilobytes and loads after your page does. The AI runs on our servers, not yours — your hosting does no extra work.' ),
+	array( 'What happens if CartScout shuts down?', 'Your store keeps working — the plugin degrades gracefully and never breaks your site. Forever licenses include a guarantee: if we ever wind down, we ship a final self-hosted release.' ),
+	array( 'What languages does it support?', "Twelve, auto-detected from the shopper's browser — including English, Spanish, German, French, Italian, Portuguese and Dutch. One store, every shopper in their own language." ),
+	array( 'Is it GDPR-friendly?', "Yes. Conversations are stored in your WordPress database, not sold or used to train outside models. There's a built-in consent notice, data export, and one-click deletion." ),
+	array( "What's the difference between the three plans?", 'Starter is one store, billed yearly. Forever is the same single store but you pay once and own it — updates for life. Unlimited covers as many stores or client sites as you want, billed yearly. All three have every feature.' ),
+);
 ?><!DOCTYPE html>
 <html <?php language_attributes(); ?> data-hero="dark">
 <head>
@@ -49,61 +62,29 @@
 }
 </script>
 <script type="application/ld+json">
-{
-	"@context": "https://schema.org",
-	"@type": "FAQPage",
-	"mainEntity": [
-		{
-			"@type": "Question",
-			"name": "Why is there no monthly fee?",
-			"acceptedAnswer": { "@type": "Answer", "text": "We charge one flat yearly price — or once, with Forever. No per-seat fees, no per-conversation fees, no AI credits. The AI is included: every plan covers thousands of shopper conversations a month, which is far more than a typical store uses." }
-		},
-		{
-			"@type": "Question",
-			"name": "Do I need an OpenAI account or API key?",
-			"acceptedAnswer": { "@type": "Answer", "text": "No. CartScout ships with the AI built in. Install the plugin, activate it, and it works — there's nothing to sign up for and no key to paste anywhere." }
-		},
-		{
-			"@type": "Question",
-			"name": "Will it make things up about my products?",
-			"acceptedAnswer": { "@type": "Answer", "text": "CartScout only answers from your actual catalog, your pages and your policies. If it doesn't know, it says so and offers a human handoff — it never invents prices, stock or shipping promises." }
-		},
-		{
-			"@type": "Question",
-			"name": "Can it actually add products to the cart?",
-			"acceptedAnswer": { "@type": "Answer", "text": "Yes — it's built on WooCommerce's own cart. It handles variations (size, color), respects stock levels, and drops the shopper at your normal checkout. Nothing about your order flow changes." }
-		},
-		{
-			"@type": "Question",
-			"name": "Will it slow down my store?",
-			"acceptedAnswer": { "@type": "Answer", "text": "No. The widget is a few kilobytes and loads after your page does. The AI runs on our servers, not yours — your hosting does no extra work." }
-		},
-		{
-			"@type": "Question",
-			"name": "What happens if CartScout shuts down?",
-			"acceptedAnswer": { "@type": "Answer", "text": "Your store keeps working — the plugin degrades gracefully and never breaks your site. Forever licenses include a guarantee: if we ever wind down, we ship a final self-hosted release." }
-		},
-		{
-			"@type": "Question",
-			"name": "What languages does it support?",
-			"acceptedAnswer": { "@type": "Answer", "text": "Twelve, auto-detected from the shopper's browser — including English, Spanish, German, French, Italian, Portuguese and Dutch. One store, every shopper in their own language." }
-		},
-		{
-			"@type": "Question",
-			"name": "Is it GDPR-friendly?",
-			"acceptedAnswer": { "@type": "Answer", "text": "Yes. Conversations are stored in your WordPress database, not sold or used to train outside models. There's a built-in consent notice, data export, and one-click deletion." }
-		},
-		{
-			"@type": "Question",
-			"name": "What's the difference between the three plans?",
-			"acceptedAnswer": { "@type": "Answer", "text": "Starter is one store, billed yearly. Forever is the same single store but you pay once and own it — updates for life. Unlimited covers as many stores or client sites as you want, billed yearly. All three have every feature." }
-		}
-	]
+<?php
+$faq_entities = array();
+foreach ( $faqs as $faq ) {
+	$faq_entities[] = array(
+		'@type'          => 'Question',
+		'name'           => $faq[0],
+		'acceptedAnswer' => array( '@type' => 'Answer', 'text' => $faq[1] ),
+	);
 }
+echo wp_json_encode(
+	array(
+		'@context'   => 'https://schema.org',
+		'@type'      => 'FAQPage',
+		'mainEntity' => $faq_entities,
+	),
+	JSON_UNESCAPED_UNICODE
+);
+?>
 </script>
 <?php wp_head(); ?>
 </head>
 <body <?php body_class( 'bg-paper font-body text-tx-dark antialiased' ); ?>>
+<?php wp_body_open(); ?>
 
 <a class="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[100] focus:rounded-lg focus:bg-acc focus:px-4 focus:py-2 focus:font-bold focus:text-tx-dark" href="#main">Skip to content</a>
 
@@ -144,20 +125,20 @@
 	<div aria-hidden="true" class="pointer-events-none absolute -right-44 -top-44 h-[560px] w-[560px] rounded-full" style="background:radial-gradient(circle, rgba(139,92,246,0.32), transparent 70%)"></div>
 	<div class="relative z-10 mx-auto grid max-w-[1180px] items-center gap-16 px-6 sm:px-8 lg:grid-cols-[1.05fr_0.95fr]">
 		<div>
-			<span class="reveal mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 px-4 py-2 text-[13px] font-semibold uppercase tracking-wider text-tx-light/65">
+			<span class="mb-7 inline-flex items-center gap-2 rounded-full border border-white/20 px-4 py-2 text-[13px] font-semibold uppercase tracking-wider text-tx-light/65">
 				<span class="h-2 w-2 rounded-full bg-acc"></span> Built for WooCommerce
 			</span>
-			<h1 class="reveal text-[clamp(44px,5.4vw,76px)] font-bold leading-[1.02]" style="--reveal-delay:80ms">
+			<h1 class="text-[clamp(44px,5.4vw,76px)] font-bold leading-[1.02]">
 				More WooCommerce <span class="hl">sales.</span><br>Zero extra <span class="hl">work.</span>
 			</h1>
-			<p class="reveal mb-9 mt-7 max-w-[480px] text-[19px] leading-relaxed text-tx-light/65" style="--reveal-delay:160ms">
+			<p class="mb-9 mt-7 max-w-[480px] text-[19px] leading-relaxed text-tx-light/65">
 				CartScout chats with your shoppers, finds the right product, and adds it to their cart — 24/7, in 12 languages. No API keys, no monthly fees.
 			</p>
-			<div class="reveal mb-[22px] flex flex-wrap gap-3.5" style="--reveal-delay:240ms">
+			<div class="mb-[22px] flex flex-wrap gap-3.5">
 				<a class="btn-press inline-flex items-center gap-2.5 rounded-full bg-acc px-[30px] py-4 font-display text-[17px] font-bold text-tx-dark shadow-acc" href="#pricing">See pricing</a>
 				<a class="btn-press inline-flex items-center gap-2.5 rounded-full border-[1.5px] border-white/30 px-[30px] py-4 font-display text-[17px] font-bold text-tx-light" href="#compare">Why it's cheaper →</a>
 			</div>
-			<p class="reveal flex flex-wrap gap-x-[18px] gap-y-2 text-[13.5px] text-tx-light/65" style="--reveal-delay:300ms">
+			<p class="flex flex-wrap gap-x-[18px] gap-y-2 text-[13.5px] text-tx-light/65">
 				<span class="inline-flex items-center gap-1.5"><b class="text-acc">✓</b> 30-day guarantee</span>
 				<span class="inline-flex items-center gap-1.5"><b class="text-acc">✓</b> No API keys</span>
 				<span class="inline-flex items-center gap-1.5"><b class="text-acc">✓</b> 5-minute setup</span>
@@ -166,7 +147,7 @@
 		</div>
 
 		<!-- Live animated chat demo (built by main.js initChatDemo). -->
-		<div class="reveal w-full max-w-[420px] justify-self-center overflow-hidden rounded-[22px] bg-card shadow-chat lg:justify-self-end" style="--reveal-delay:200ms" aria-hidden="true">
+		<div class="w-full max-w-[420px] justify-self-center overflow-hidden rounded-[22px] bg-card shadow-chat lg:justify-self-end" aria-hidden="true">
 			<div class="flex items-center gap-3 bg-acc2 px-5 py-4 text-white">
 				<span class="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full bg-acc font-display text-base font-extrabold text-tx-dark">S</span>
 				<div>
@@ -217,9 +198,9 @@
 <!-- ════════════════════════════════ FEATURES ════════════════════════════════ -->
 <section id="features" class="bg-paper py-26">
 	<div class="mx-auto max-w-[1180px] px-6 sm:px-8">
-		<div class="reveal mx-auto mb-16 max-w-[640px] text-center lg:mb-[84px]">
+		<div class="reveal section-head">
 			<span class="kicker">What it does</span>
-			<h2 class="my-[18px] text-[clamp(36px,4.2vw,58px)] font-bold leading-[1.06]">Watch it <span class="hl">sell.</span></h2>
+			<h2 class="my-[18px] section-title">Watch it <span class="hl">sell.</span></h2>
 			<p class="text-lg leading-relaxed text-tx-dark/65">The five features that make stores money.</p>
 		</div>
 
@@ -230,15 +211,15 @@
 				<h3 class="mb-4 mt-3.5 text-[clamp(28px,2.8vw,40px)] font-bold leading-[1.1]">From "just browsing" to checkout. One chat.</h3>
 				<p class="mb-[22px] max-w-[440px] text-[16.5px] leading-relaxed text-tx-dark/65">Shoppers say what they want. CartScout shows real products from your catalog, adds the right one to the cart — size, color and all — and drops a one-tap checkout button.</p>
 				<div class="flex flex-wrap gap-2">
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Real catalog search</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Stock &amp; variations</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">One-tap checkout</span>
+					<span class="feat-chip">Real catalog search</span>
+					<span class="feat-chip">Stock &amp; variations</span>
+					<span class="feat-chip">One-tap checkout</span>
 				</div>
 			</div>
-			<div class="relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-ink p-[30px] shadow-visual" data-shot="sell">
+			<div class="feat-visual" data-shot="sell">
 				<!-- TODO: swap this mock for an <img> when product shots are ready -->
-				<span class="pointer-events-none absolute -bottom-7 right-[18px] font-display text-[140px] font-extrabold leading-none text-tx-light/[0.06]" aria-hidden="true">01</span>
-				<div class="relative z-10 w-full max-w-[360px] overflow-hidden rounded-[14px] bg-white text-[12.5px] shadow-mock">
+				<span class="feat-numeral" aria-hidden="true">01</span>
+				<div class="feat-mock">
 					<div class="flex flex-col gap-2.5 p-4">
 						<div class="mini-msg mini-user">Waterproof jacket, women's M, under $150</div>
 						<div class="mini-msg mini-bot">Two in stock that fit the bill:</div>
@@ -261,15 +242,15 @@
 				<h3 class="mb-4 mt-3.5 text-[clamp(28px,2.8vw,40px)] font-bold leading-[1.1]">It closes the "which one?" moment.</h3>
 				<p class="mb-[22px] max-w-[440px] text-[16.5px] leading-relaxed text-tx-dark/65">Side-by-side comparison tables with real specs and live prices — and an add-to-cart button right in the table. Shoppers decide and buy in the same breath.</p>
 				<div class="flex flex-wrap gap-2">
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Compare 2–4 products</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Real-time prices</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Buy from the table</span>
+					<span class="feat-chip">Compare 2–4 products</span>
+					<span class="feat-chip">Real-time prices</span>
+					<span class="feat-chip">Buy from the table</span>
 				</div>
 			</div>
-			<div class="relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-ink p-[30px] shadow-visual lg:order-1" data-shot="compare">
+			<div class="feat-visual lg:order-1" data-shot="compare">
 				<!-- TODO: swap this mock for an <img> when product shots are ready -->
-				<span class="pointer-events-none absolute -bottom-7 right-[18px] font-display text-[140px] font-extrabold leading-none text-tx-light/[0.06]" aria-hidden="true">02</span>
-				<div class="relative z-10 w-full max-w-[360px] overflow-hidden rounded-[14px] bg-white text-[12.5px] shadow-mock">
+				<span class="feat-numeral" aria-hidden="true">02</span>
+				<div class="feat-mock">
 					<div class="flex flex-col gap-2.5 p-4">
 						<div class="mini-msg mini-user">Ridgerunner vs Skyline?</div>
 						<table class="mini-table w-full border-collapse">
@@ -293,15 +274,15 @@
 				<h3 class="mb-4 mt-3.5 text-[clamp(28px,2.8vw,40px)] font-bold leading-[1.1]">It makes the first move.</h3>
 				<p class="mb-[22px] max-w-[440px] text-[16.5px] leading-relaxed text-tx-dark/65">A perfectly timed hello invites shoppers in. Today's deals and coupon codes surface on request, and every add-to-cart gets one smart cross-sell suggestion.</p>
 				<div class="flex flex-wrap gap-2">
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Page-targeted greeting</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Coupon surfacing</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Cross-sells</span>
+					<span class="feat-chip">Page-targeted greeting</span>
+					<span class="feat-chip">Coupon surfacing</span>
+					<span class="feat-chip">Cross-sells</span>
 				</div>
 			</div>
-			<div class="relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-ink p-[30px] shadow-visual" data-shot="proactive">
+			<div class="feat-visual" data-shot="proactive">
 				<!-- TODO: swap this mock for an <img> when product shots are ready -->
-				<span class="pointer-events-none absolute -bottom-7 right-[18px] font-display text-[140px] font-extrabold leading-none text-tx-light/[0.06]" aria-hidden="true">03</span>
-				<div class="relative z-10 w-full max-w-[360px] overflow-hidden rounded-[14px] bg-white text-[12.5px] shadow-mock">
+				<span class="feat-numeral" aria-hidden="true">03</span>
+				<div class="feat-mock">
 					<div class="flex flex-col gap-2.5 p-4">
 						<div class="mini-msg mini-bot">That jacket pairs well with the Trailhead Beanie — $19, and it ships in the same box. Want it?</div>
 						<div class="mini-msg mini-user">Any discounts running?</div>
@@ -319,15 +300,15 @@
 				<h3 class="mb-4 mt-3.5 text-[clamp(28px,2.8vw,40px)] font-bold leading-[1.1]">Mission control, inside wp-admin.</h3>
 				<p class="mb-[22px] max-w-[440px] text-[16.5px] leading-relaxed text-tx-dark/65">Chats → carts → checkouts, week over week. Full transcripts of every conversation. And a report of searches that found nothing — your next bestseller, spelled out.</p>
 				<div class="flex flex-wrap gap-2">
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Weekly trends</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Chat logs</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Unmet-demand report</span>
+					<span class="feat-chip">Weekly trends</span>
+					<span class="feat-chip">Chat logs</span>
+					<span class="feat-chip">Unmet-demand report</span>
 				</div>
 			</div>
-			<div class="relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-ink p-[30px] shadow-visual lg:order-1" data-shot="insights">
+			<div class="feat-visual lg:order-1" data-shot="insights">
 				<!-- TODO: swap this mock for an <img> when product shots are ready -->
-				<span class="pointer-events-none absolute -bottom-7 right-[18px] font-display text-[140px] font-extrabold leading-none text-tx-light/[0.06]" aria-hidden="true">04</span>
-				<div class="relative z-10 w-full max-w-[360px] overflow-hidden rounded-[14px] bg-white text-[12.5px] shadow-mock">
+				<span class="feat-numeral" aria-hidden="true">04</span>
+				<div class="feat-mock">
 					<div class="flex gap-[5px] border-b border-tx-dark/10 px-3 py-2.5"><i class="h-2 w-2 rounded-full bg-tx-dark/15"></i><i class="h-2 w-2 rounded-full bg-tx-dark/15"></i><i class="h-2 w-2 rounded-full bg-tx-dark/15"></i></div>
 					<div class="flex flex-col gap-2.5 p-4">
 						<div class="flex gap-2">
@@ -357,15 +338,15 @@
 				<h3 class="mb-4 mt-3.5 text-[clamp(28px,2.8vw,40px)] font-bold leading-[1.1]">Support tickets answer themselves.</h3>
 				<p class="mb-[22px] max-w-[440px] text-[16.5px] leading-relaxed text-tx-dark/65">Order status by email lookup, shipping and policy answers quoted from your own pages, and a human handoff that lands with the full conversation attached.</p>
 				<div class="flex flex-wrap gap-2">
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Order tracking</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Policy answers</span>
-					<span class="rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65">Human handoff</span>
+					<span class="feat-chip">Order tracking</span>
+					<span class="feat-chip">Policy answers</span>
+					<span class="feat-chip">Human handoff</span>
 				</div>
 			</div>
-			<div class="relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-ink p-[30px] shadow-visual" data-shot="support">
+			<div class="feat-visual" data-shot="support">
 				<!-- TODO: swap this mock for an <img> when product shots are ready -->
-				<span class="pointer-events-none absolute -bottom-7 right-[18px] font-display text-[140px] font-extrabold leading-none text-tx-light/[0.06]" aria-hidden="true">05</span>
-				<div class="relative z-10 w-full max-w-[360px] overflow-hidden rounded-[14px] bg-white text-[12.5px] shadow-mock">
+				<span class="feat-numeral" aria-hidden="true">05</span>
+				<div class="feat-mock">
 					<div class="flex flex-col gap-2.5 p-4">
 						<div class="mini-msg mini-user">Where's my order? anna@mail.com</div>
 						<div class="mini-msg mini-bot">Order <b>#4182</b> shipped Tuesday — arriving <b>tomorrow</b> via DHL. 📦</div>
@@ -381,9 +362,9 @@
 <!-- ════════════════════════════════ SETUP STEPS ════════════════════════════════ -->
 <section class="bg-ink py-26 text-tx-light">
 	<div class="mx-auto max-w-[1180px] px-6 sm:px-8">
-		<div class="reveal mx-auto mb-16 max-w-[640px] text-center lg:mb-[84px]">
+		<div class="reveal section-head">
 			<span class="kicker text-tx-light">Setup</span>
-			<h2 class="my-[18px] text-[clamp(36px,4.2vw,58px)] font-bold leading-[1.06]">Live before your <span class="hl">coffee cools.</span></h2>
+			<h2 class="my-[18px] section-title">Live before your <span class="hl">coffee cools.</span></h2>
 			<p class="text-lg leading-relaxed text-tx-light/65">If you've installed a WordPress plugin, you already know how.</p>
 		</div>
 		<div class="grid gap-[22px] lg:grid-cols-3" data-reveal-group>
@@ -412,9 +393,9 @@
 <!-- ════════════════════════════════ COMPARISON ════════════════════════════════ -->
 <section id="compare" class="bg-paper py-26">
 	<div class="mx-auto max-w-[1180px] px-6 sm:px-8">
-		<div class="reveal mx-auto mb-16 max-w-[640px] text-center lg:mb-[84px]">
+		<div class="reveal section-head">
 			<span class="kicker">The math</span>
-			<h2 class="my-[18px] text-[clamp(36px,4.2vw,58px)] font-bold leading-[1.06]">Stop <span class="hl">renting</span> your chatbot.</h2>
+			<h2 class="my-[18px] section-title">Stop <span class="hl">renting</span> your chatbot.</h2>
 			<p class="text-lg leading-relaxed text-tx-dark/65">Most AI chatbots bill monthly, per seat, or per conversation — and aren't built for WooCommerce. CartScout is one flat price. Everything included.</p>
 		</div>
 		<div class="reveal overflow-x-auto">
@@ -475,9 +456,9 @@
 <!-- ════════════════════════════════ PRICING ════════════════════════════════ -->
 <section id="pricing" class="bg-ink py-26 text-tx-light">
 	<div class="mx-auto max-w-[1180px] px-6 sm:px-8">
-		<div class="reveal mx-auto mb-16 max-w-[640px] text-center lg:mb-[84px]">
+		<div class="reveal section-head">
 			<span class="kicker text-tx-light">Pricing</span>
-			<h2 class="my-[18px] text-[clamp(36px,4.2vw,58px)] font-bold leading-[1.06]">One price. <span class="hl">Everything included.</span></h2>
+			<h2 class="my-[18px] section-title">One price. <span class="hl">Everything included.</span></h2>
 			<p class="text-lg leading-relaxed text-tx-light/65">Every feature. The AI. All updates. No meter running.</p>
 		</div>
 		<div class="grid items-stretch gap-[22px] lg:grid-cols-3" data-reveal-group>
@@ -488,12 +469,12 @@
 				<div class="font-display text-[54px] font-bold leading-none">$99</div>
 				<div class="mb-[26px] mt-2 text-sm text-tx-light/65">per year · 1 store</div>
 				<ul class="mb-8 flex flex-1 flex-col gap-3 text-[14.5px] leading-snug">
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">Every feature, AI included — no usage fees</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">12 languages, auto-detected</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">Updates &amp; support while active</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">30-day money-back guarantee</li>
+					<li class="plan-tick">Every feature, AI included — no usage fees</li>
+					<li class="plan-tick">12 languages, auto-detected</li>
+					<li class="plan-tick">Updates &amp; support while active</li>
+					<li class="plan-tick">30-day money-back guarantee</li>
 				</ul>
-				<a class="btn-press js-buy rounded-full border-[1.5px] border-white/30 px-6 py-3.5 text-center font-display text-[15px] font-bold text-tx-light" href="#"><?php /* TODO: Freemius checkout link */ ?>Get started</a>
+				<a class="btn-press js-buy btn-ghost" href="#"><?php /* TODO: Freemius checkout link */ ?>Get started</a>
 			</div>
 
 			<!-- Forever (most popular) -->
@@ -504,10 +485,10 @@
 				<div class="font-display text-[54px] font-bold leading-none">$299</div>
 				<div class="mb-[26px] mt-2 text-sm text-white/75">one-time · 1 store · lifetime updates</div>
 				<ul class="mb-8 flex flex-1 flex-col gap-3 text-[14.5px] leading-snug">
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">Everything in Starter</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">Pay once — keeps working even if you never spend another cent</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">Lifetime updates &amp; AI included</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">Priority email support</li>
+					<li class="plan-tick">Everything in Starter</li>
+					<li class="plan-tick">Pay once — keeps working even if you never spend another cent</li>
+					<li class="plan-tick">Lifetime updates &amp; AI included</li>
+					<li class="plan-tick">Priority email support</li>
 				</ul>
 				<a class="btn-press js-buy rounded-full bg-acc px-6 py-3.5 text-center font-display text-[15px] font-bold text-tx-dark shadow-acc" href="#"><?php /* TODO: Freemius checkout link */ ?>Get Forever — $299</a>
 			</div>
@@ -519,12 +500,12 @@
 				<div class="font-display text-[54px] font-bold leading-none">$499</div>
 				<div class="mb-[26px] mt-2 text-sm text-tx-light/65">per year · unlimited stores</div>
 				<ul class="mb-8 flex flex-1 flex-col gap-3 text-[14.5px] leading-snug">
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">Everything in Forever</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">Unlimited stores &amp; client sites</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">All updates &amp; priority support</li>
-					<li class="relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']">30-day money-back guarantee</li>
+					<li class="plan-tick">Everything in Forever</li>
+					<li class="plan-tick">Unlimited stores &amp; client sites</li>
+					<li class="plan-tick">All updates &amp; priority support</li>
+					<li class="plan-tick">30-day money-back guarantee</li>
 				</ul>
-				<a class="btn-press js-buy rounded-full border-[1.5px] border-white/30 px-6 py-3.5 text-center font-display text-[15px] font-bold text-tx-light" href="#"><?php /* TODO: Freemius checkout link */ ?>Get started</a>
+				<a class="btn-press js-buy btn-ghost" href="#"><?php /* TODO: Freemius checkout link */ ?>Get started</a>
 			</div>
 		</div>
 		<p class="reveal mt-9 text-center text-sm text-tx-light/65">All plans: 30-day money-back guarantee · the AI runs on us — thousands of shopper conversations a month included.</p>
@@ -534,25 +515,12 @@
 <!-- ════════════════════════════════ FAQ ════════════════════════════════ -->
 <section id="faq" class="bg-paper py-26">
 	<div class="mx-auto max-w-[1180px] px-6 sm:px-8">
-		<div class="reveal mx-auto mb-16 max-w-[640px] text-center lg:mb-[84px]">
+		<div class="reveal section-head">
 			<span class="kicker">FAQ</span>
-			<h2 class="mt-[18px] text-[clamp(36px,4.2vw,58px)] font-bold leading-[1.06]">Fair questions.</h2>
+			<h2 class="mt-[18px] section-title">Fair questions.</h2>
 		</div>
 		<div class="reveal mx-auto flex max-w-[780px] flex-col gap-3">
-			<?php
-			$faqs = array(
-				array( 'Why is there no monthly fee?', 'We charge one flat yearly price — or once, with Forever. No per-seat fees, no per-conversation fees, no AI credits. The AI is included: every plan covers thousands of shopper conversations a month, which is far more than a typical store uses.' ),
-				array( 'Do I need an OpenAI account or API key?', "No. CartScout ships with the AI built in. Install the plugin, activate it, and it works — there's nothing to sign up for and no key to paste anywhere." ),
-				array( 'Will it make things up about my products?', "CartScout only answers from your actual catalog, your pages and your policies. If it doesn't know, it says so and offers a human handoff — it never invents prices, stock or shipping promises." ),
-				array( 'Can it actually add products to the cart?', "Yes — it's built on WooCommerce's own cart. It handles variations (size, color), respects stock levels, and drops the shopper at your normal checkout. Nothing about your order flow changes." ),
-				array( 'Will it slow down my store?', 'No. The widget is a few kilobytes and loads after your page does. The AI runs on our servers, not yours — your hosting does no extra work.' ),
-				array( 'What happens if CartScout shuts down?', 'Your store keeps working — the plugin degrades gracefully and never breaks your site. Forever licenses include a guarantee: if we ever wind down, we ship a final self-hosted release.' ),
-				array( 'What languages does it support?', "Twelve, auto-detected from the shopper's browser — including English, Spanish, German, French, Italian, Portuguese and Dutch. One store, every shopper in their own language." ),
-				array( 'Is it GDPR-friendly?', "Yes. Conversations are stored in your WordPress database, not sold or used to train outside models. There's a built-in consent notice, data export, and one-click deletion." ),
-				array( "What's the difference between the three plans?", 'Starter is one store, billed yearly. Forever is the same single store but you pay once and own it — updates for life. Unlimited covers as many stores or client sites as you want, billed yearly. All three have every feature.' ),
-			);
-			foreach ( $faqs as $i => $faq ) :
-			?>
+			<?php foreach ( $faqs as $i => $faq ) : ?>
 			<details class="faq-item overflow-hidden rounded-[14px] border border-tx-dark/[0.08] bg-card" <?php echo 0 === $i ? 'open' : ''; ?>>
 				<summary class="flex items-center justify-between gap-4 px-6 py-5 font-display text-[16.5px] font-bold">
 					<?php echo esc_html( $faq[0] ); ?>

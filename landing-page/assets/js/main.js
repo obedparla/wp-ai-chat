@@ -71,7 +71,7 @@
 		return n;
 	}
 
-	function renderMessage(body, step) {
+	function renderMessage(step) {
 		if (step.type === 'bot' || step.type === 'user') {
 			return el('div', 'cd-msg cd-' + step.type, step.text);
 		}
@@ -104,7 +104,7 @@
 		if (reducedMotion) {
 			SCRIPT.forEach(function (step) {
 				if (step.type === 'typing') return;
-				var node = renderMessage(body, step);
+				var node = renderMessage(step);
 				if (node) body.appendChild(node);
 			});
 			body.scrollTop = body.scrollHeight;
@@ -153,7 +153,7 @@
 				timer = setTimeout(function () { t.remove(); timer = null; step(); }, s.ms || 900);
 				return;
 			}
-			var node = renderMessage(body, s);
+			var node = renderMessage(s);
 			if (node) add(node);
 			tick(s.type === 'user' ? 750 : 1250);
 		}

@@ -245,6 +245,20 @@
 	.mini-btn  { @apply self-start rounded-full bg-acc px-4 py-2 text-center font-display font-bold text-tx-dark; }
 	.mini-atc  { @apply rounded-md bg-acc px-2 py-1 text-center font-display text-[10.5px] font-bold text-tx-dark; }
 	.mini-tag  { @apply inline-block rounded-[5px] bg-[#EFECF8] px-[7px] py-0.5 text-[10.5px] font-bold text-acc2; }
+
+	/* Section heads */
+	.section-head  { @apply mx-auto mb-16 max-w-[640px] text-center lg:mb-[84px]; }
+	.section-title { @apply text-[clamp(36px,4.2vw,58px)] font-bold leading-[1.06]; }
+
+	/* Feature rows — .feat-visual is the documented image swap-point (see index.php header). */
+	.feat-chip    { @apply rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65; }
+	.feat-visual  { @apply relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-ink p-[30px] shadow-visual; }
+	.feat-numeral { @apply pointer-events-none absolute -bottom-7 right-[18px] font-display text-[140px] font-extrabold leading-none text-tx-light/[0.06]; }
+	.feat-mock    { @apply relative z-10 w-full max-w-[360px] overflow-hidden rounded-[14px] bg-white text-[12.5px] shadow-mock; }
+
+	/* Pricing */
+	.plan-tick { @apply relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']; }
+	.btn-ghost { @apply rounded-full border-[1.5px] border-white/30 px-6 py-3.5 text-center font-display text-[15px] font-bold text-tx-light; }
 }
 .mini-table th,
 .mini-table td {
@@ -287,6 +301,7 @@ body.admin-bar header.site-nav { top: 32px; }
 	.reveal { opacity: 1; transform: none; transition: none; }
 	.marquee-track { animation: none; }
 	.cd-in { animation: none; }
+	.cd-typing span { animation: none; }
 	[class*="animate-"] { animation: none !important; }
 	.btn-press, .btn-press:hover { transform: none; }
 }
