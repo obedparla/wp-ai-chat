@@ -176,6 +176,16 @@ class WPAIC_Cart {
 		}
 
 		WPAIC_Events::record( $conversation_id, WPAIC_Events::CART_CONFIRMATION, $event_data );
+
+		// Tag the WooCommerce session so a later completed order can be
+		// attributed to this conversation (WPAIC_Attribution reads it on
+		// woocommerce_payment_complete). Only successful bot adds count.
+		if ( 'add' === $action && 'completed' === $outcome && function_exists( 'WC' ) ) {
+			$wc = WC();
+			if ( is_object( $wc ) && isset( $wc->session ) && is_object( $wc->session ) ) {
+				$wc->session->set( 'wpaic_conversation_id', $conversation_id );
+			}
+		}
 	}
 
 	/**

@@ -59,6 +59,7 @@ class WPAIC_Admin {
 		// stable page-slug suffix instead of the full title-derived hook.
 		$allowed_hook_suffixes = array(
 			'toplevel_page_wp-ai-chatbot',
+			'_page_wp-ai-chatbot-analytics',
 			'_page_wp-ai-chatbot-logs',
 			'_page_wp-ai-chatbot-support',
 		);
@@ -72,6 +73,7 @@ class WPAIC_Admin {
 		if ( ! $is_plugin_page ) {
 			return;
 		}
+		$is_analytics = str_ends_with( $hook, '_page_wp-ai-chatbot-analytics' );
 
 		wp_enqueue_style(
 			'wpaic-google-fonts',
@@ -183,8 +185,64 @@ class WPAIC_Admin {
 						'proactiveMessage' => $settings['proactive_message'] ?? '',
 					) );
 				}
+
+				if ( $is_analytics && is_array( $manifest ) && isset( $manifest['src/admin-analytics.tsx'] ) ) {
+					$analytics_entry = $manifest['src/admin-analytics.tsx'];
+					$analytics_css   = array();
+					if ( ! empty( $analytics_entry['css'] ) ) {
+						$analytics_css = array_merge( $analytics_css, (array) $analytics_entry['css'] );
+					}
+					if ( ! empty( $analytics_entry['imports'] ) ) {
+						foreach ( (array) $analytics_entry['imports'] as $import_key ) {
+							if ( isset( $manifest[ $import_key ]['css'] ) ) {
+								$analytics_css = array_merge( $analytics_css, (array) $manifest[ $import_key ]['css'] );
+							}
+						}
+					}
+					foreach ( $analytics_css as $index => $css_file ) {
+						wp_enqueue_style(
+							'wpaic-admin-analytics-css-' . $index,
+							WPAIC_PLUGIN_URL . 'frontend/dist/' . $css_file,
+							array(),
+							WPAIC_VERSION
+						);
+					}
+					wp_enqueue_script(
+						'wpaic-admin-analytics',
+						WPAIC_PLUGIN_URL . 'frontend/dist/' . $analytics_entry['file'],
+						array(),
+						WPAIC_VERSION,
+						true
+					);
+					add_filter( 'script_loader_tag', function ( string $tag, string $handle ) {
+						if ( 'wpaic-admin-analytics' === $handle ) {
+							return str_replace( '<script ', '<script type="module" ', $tag );
+						}
+						return $tag;
+					}, 10, 2 );
+					// Inject as raw JSON (not wp_localize_script, which casts
+					// top-level scalars to strings — breaking numeric formatting
+					// and the WooCommerce-active boolean).
+					wp_add_inline_script(
+						'wpaic-admin-analytics',
+						'window.wpaicAnalytics = ' . wp_json_encode( $this->get_analytics_payload() ) . ';',
+						'before'
+					);
+				}
 			}
 		}
+	}
+
+	/**
+	 * Build the localized analytics blob for the current range selection.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function get_analytics_payload(): array {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only range selector.
+		$range     = isset( $_GET['wpaic_range'] ) ? sanitize_text_field( wp_unslash( $_GET['wpaic_range'] ) ) : WPAIC_Analytics::normalize_range( '30' );
+		$analytics = new WPAIC_Analytics( $this->logs );
+		return $analytics->get_dashboard_data( $range );
 	}
 
 	public function add_admin_menu(): void {
@@ -220,6 +278,15 @@ class WPAIC_Admin {
 			'manage_options',
 			'wp-ai-chatbot',
 			array( $this, 'render_settings_page' )
+		);
+
+		add_submenu_page(
+			'wp-ai-chatbot',
+			__( 'Analytics', 'wp-ai-chatbot' ),
+			__( 'Analytics', 'wp-ai-chatbot' ),
+			'manage_options',
+			'wp-ai-chatbot-analytics',
+			array( $this, 'render_analytics_page' )
 		);
 
 		add_submenu_page(
@@ -1726,6 +1793,50 @@ A: Yes, we ship to over 50 countries."><?php echo esc_textarea( $faq_text ); ?><
 		<?php
 	}
 
+
+	public function render_analytics_page(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only range selector.
+		$range     = isset( $_GET['wpaic_range'] ) ? sanitize_text_field( wp_unslash( $_GET['wpaic_range'] ) ) : WPAIC_Analytics::normalize_range( '30' );
+		$analytics = new WPAIC_Analytics( $this->logs );
+		$data      = $analytics->get_dashboard_data( $range );
+		$active    = $data['range']['preset'];
+		$caption   = $data['range']['caption'];
+		$options   = $data['range']['options'];
+		?>
+		<div class="wpaic-admin-wrap" style="margin-left: -20px;">
+			<div class="bg-surface border-b border-line">
+				<div class="max-w-[1100px] mx-auto px-8 pt-5 pb-5 flex items-end justify-between gap-5 flex-wrap">
+					<div>
+						<h1 class="text-[22px] font-semibold tracking-tight text-ink" style="font-family: var(--font-display);"><?php esc_html_e( 'Analytics', 'wp-ai-chatbot' ); ?></h1>
+						<p class="text-muted text-sm mt-1">
+							<?php esc_html_e( 'How your chatbot is driving sales and conversations', 'wp-ai-chatbot' ); ?>
+							<span class="text-muted-2"> · <?php echo esc_html( $caption ); ?></span>
+						</p>
+					</div>
+					<nav class="inline-flex items-center bg-surface border border-line rounded-[10px] p-[3px] gap-0.5" aria-label="<?php esc_attr_e( 'Date range', 'wp-ai-chatbot' ); ?>">
+						<?php foreach ( $options as $option ) : ?>
+							<?php $on = $option['value'] === $active; ?>
+							<a href="<?php echo esc_url( $option['url'] ); ?>"
+								class="px-3.5 py-1.5 rounded-[7px] text-[13px] font-semibold no-underline transition-colors <?php echo $on ? 'bg-accent text-white' : 'text-muted hover:text-ink'; ?>"
+								<?php echo $on ? 'aria-current="page"' : ''; ?>>
+								<?php echo esc_html( $option['label'] ); ?>
+							</a>
+						<?php endforeach; ?>
+					</nav>
+				</div>
+			</div>
+
+			<div class="max-w-[1100px] mx-auto px-8 py-8">
+				<div id="wpaic-analytics-root"></div>
+				<noscript><p class="text-muted text-sm"><?php esc_html_e( 'Analytics require JavaScript to be enabled.', 'wp-ai-chatbot' ); ?></p></noscript>
+			</div>
+		</div>
+		<?php
+	}
 
 	public function render_logs_page(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {

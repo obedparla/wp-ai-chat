@@ -22,6 +22,12 @@ class WPAIC_Events {
 	 * action (add|remove|clear), outcome (completed|failed|cancelled), name?.
 	 */
 	public const CART_CONFIRMATION     = 'cart_confirmation';
+	/**
+	 * A completed WooCommerce order attributed to a conversation (the bot touched
+	 * the cart in that session). Recorded once, on payment, by WPAIC_Attribution.
+	 * event_data: order_id, total (gross), currency.
+	 */
+	public const ORDER_COMPLETED       = 'order_completed';
 
 	/**
 	 * Record an event for a conversation.
@@ -276,6 +282,16 @@ class WPAIC_Events {
 
 			case self::HANDOFF_CREATED:
 				return __( 'Handoff request created', 'wp-ai-chatbot' );
+
+			case self::ORDER_COMPLETED:
+				$total    = isset( $event_data['total'] ) && is_numeric( $event_data['total'] ) ? (float) $event_data['total'] : 0.0;
+				$currency = isset( $event_data['currency'] ) && is_string( $event_data['currency'] ) ? $event_data['currency'] : '';
+				return sprintf(
+					/* translators: 1: order total, 2: currency code */
+					__( 'Order completed — %1$s %2$s', 'wp-ai-chatbot' ),
+					number_format_i18n( $total, 2 ),
+					$currency
+				);
 
 			default:
 				return $event_type;

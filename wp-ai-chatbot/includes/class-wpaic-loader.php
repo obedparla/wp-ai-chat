@@ -12,6 +12,7 @@ class WPAIC_Loader {
 		$this->init_frontend();
 		$this->init_api();
 		$this->init_cart();
+		$this->init_attribution();
 		$this->init_search_index();
 		$this->init_content_index();
 	}
@@ -31,6 +32,8 @@ class WPAIC_Loader {
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-events.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-transcript-renderer.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-cart.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-attribution.php';
+		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-analytics.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-singular-stemmer.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-query-expander.php';
 		require_once WPAIC_PLUGIN_DIR . 'includes/class-wpaic-search-index.php';
@@ -62,6 +65,11 @@ class WPAIC_Loader {
 	private function init_cart(): void {
 		$cart = new WPAIC_Cart();
 		$cart->init();
+	}
+
+	private function init_attribution(): void {
+		$attribution = new WPAIC_Attribution();
+		$attribution->init();
 	}
 
 	private function init_content_index(): void {

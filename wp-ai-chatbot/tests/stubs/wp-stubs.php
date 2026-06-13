@@ -1072,6 +1072,12 @@ if ( ! function_exists( 'current_time' ) ) {
 	}
 }
 
+if ( ! function_exists( 'date_i18n' ) ) {
+	function date_i18n( string $format, int|false $timestamp = false ): string {
+		return gmdate( $format, false === $timestamp ? time() : $timestamp );
+	}
+}
+
 if ( ! function_exists( 'wp_generate_uuid4' ) ) {
 	function wp_generate_uuid4(): string {
 		return sprintf(
@@ -1303,6 +1309,44 @@ class MockWpdb {
 			return null;
 		}
 
+		// Distinct conversations with an event of a type in range (funnel stages).
+		if ( preg_match( "/SELECT\s+COUNT\(DISTINCT\s+conversation_id\)\s+FROM\s+\S+wpaic_events\s+WHERE\s+event_type\s*=\s*'([^']+)'/i", $query, $matches ) ) {
+			$event_type = $matches[1];
+			$ids        = array();
+			foreach ( $this->tables['wp_wpaic_events'] as $row ) {
+				if ( ( $row['event_type'] ?? '' ) === $event_type && $this->row_matches_created_at_bounds( $row, $query ) ) {
+					$ids[ (int) ( $row['conversation_id'] ?? 0 ) ] = true;
+				}
+			}
+			return (string) count( $ids );
+		}
+
+		// Messages joined to conversations created in range (avg messages).
+		if ( preg_match( '/COUNT\(\*\)\s+FROM\s+\S+wpaic_messages\s+m\s+INNER\s+JOIN\s+\S+wpaic_conversations\s+c/i', $query ) ) {
+			$count = 0;
+			foreach ( $this->tables['wp_wpaic_messages'] as $msg ) {
+				$conv = $this->tables['wp_wpaic_conversations'][ (int) ( $msg['conversation_id'] ?? 0 ) ] ?? null;
+				if ( null !== $conv && $this->row_matches_created_at_bounds( $conv, $query ) ) {
+					++$count;
+				}
+			}
+			return (string) $count;
+		}
+
+		// Earliest activity timestamp across conversations + events ("all time").
+		if ( preg_match( '/MIN\(created_at\)\s+FROM\s*\(/i', $query ) ) {
+			$min = null;
+			foreach ( array( 'wp_wpaic_conversations', 'wp_wpaic_events' ) as $table ) {
+				foreach ( $this->tables[ $table ] as $row ) {
+					$created_at = (string) ( $row['created_at'] ?? '' );
+					if ( '' !== $created_at && ( null === $min || strcmp( $created_at, $min ) < 0 ) ) {
+						$min = $created_at;
+					}
+				}
+			}
+			return $min;
+		}
+
 		if ( preg_match( '/SELECT\s+COUNT\(\*\)\s+FROM\s+\S+wpaic_conversations/i', $query ) ) {
 			return (string) count( $this->filter_conversation_rows( $query ) );
 		}
@@ -1400,6 +1444,55 @@ class MockWpdb {
 	 * @return array<int, object>|null
 	 */
 	public function get_results( string $query ): ?array {
+		// Busiest-times heatmap: conversations grouped by day-of-week + hour.
+		if ( preg_match( '/FROM\s+\S+wpaic_conversations/i', $query ) && false !== stripos( $query, 'DAYOFWEEK' ) ) {
+			$grid = array();
+			foreach ( $this->tables['wp_wpaic_conversations'] as $row ) {
+				if ( ! $this->row_matches_created_at_bounds( $row, $query ) ) {
+					continue;
+				}
+				$ts = strtotime( (string) ( $row['created_at'] ?? '' ) );
+				if ( false === $ts ) {
+					continue;
+				}
+				$dow = ( (int) gmdate( 'N', $ts ) ) - 1; // Monday=0 .. Sunday=6.
+				$h   = (int) gmdate( 'G', $ts );
+				$key = $dow . '-' . $h;
+				if ( ! isset( $grid[ $key ] ) ) {
+					$grid[ $key ] = array(
+						'dow' => $dow,
+						'h'   => $h,
+						'c'   => 0,
+					);
+				}
+				++$grid[ $key ]['c'];
+			}
+			return array_map( static fn( $g ) => (object) $g, array_values( $grid ) );
+		}
+
+		// Conversations grouped by calendar day (revenue/conversation series).
+		if ( preg_match( '/FROM\s+\S+wpaic_conversations/i', $query ) && false !== stripos( $query, 'GROUP BY DATE' ) ) {
+			$by_day = array();
+			foreach ( $this->tables['wp_wpaic_conversations'] as $row ) {
+				if ( ! $this->row_matches_created_at_bounds( $row, $query ) ) {
+					continue;
+				}
+				$day = substr( (string) ( $row['created_at'] ?? '' ), 0, 10 );
+				if ( '' === $day ) {
+					continue;
+				}
+				$by_day[ $day ] = ( $by_day[ $day ] ?? 0 ) + 1;
+			}
+			$results = array();
+			foreach ( $by_day as $day => $count ) {
+				$results[] = (object) array(
+					'd' => $day,
+					'c' => $count,
+				);
+			}
+			return $results;
+		}
+
 		if ( preg_match( '/FROM\s+\S+wpaic_conversations/i', $query ) ) {
 			$results = array();
 			foreach ( $this->filter_conversation_rows( $query ) as $row ) {
@@ -2204,6 +2297,18 @@ if ( ! class_exists( 'MockWCOrder' ) ) {
 		public function get_meta( string $key ): mixed {
 			return $this->meta[ $key ] ?? '';
 		}
+
+		public function update_meta_data( string $key, mixed $value ): void {
+			$this->meta[ $key ] = $value;
+		}
+
+		public function save(): int {
+			return (int) ( $this->data['id'] ?? 0 );
+		}
+
+		public function get_currency(): string {
+			return (string) ( $this->data['currency'] ?? 'USD' );
+		}
 	}
 }
 
@@ -2644,8 +2749,22 @@ if ( ! class_exists( 'MockWCCart' ) ) {
 	}
 }
 
+class MockWCSession {
+	/** @var array<string, mixed> */
+	private array $data = array();
+
+	public function get( string $key, mixed $default = null ): mixed {
+		return $this->data[ $key ] ?? $default;
+	}
+
+	public function set( string $key, mixed $value ): void {
+		$this->data[ $key ] = $value;
+	}
+}
+
 class MockWooCommerce {
 	public ?MockWCCart $cart;
+	public MockWCSession $session;
 	private MockWCCart $persisted_cart;
 	private bool $can_initialize_cart;
 
@@ -2653,6 +2772,7 @@ class MockWooCommerce {
 		$this->persisted_cart      = new MockWCCart();
 		$this->cart                = $autoload_cart ? $this->persisted_cart : null;
 		$this->can_initialize_cart = $can_initialize_cart;
+		$this->session             = new MockWCSession();
 	}
 
 	public function initialize_session(): void {}

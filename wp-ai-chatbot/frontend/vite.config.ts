@@ -17,6 +17,7 @@ export default defineConfig({
         main: 'index.html',
         admin: 'admin.html',
         'admin-preview': 'src/admin-preview.tsx',
+        'admin-analytics': 'src/admin-analytics.tsx',
         loader: 'src/loader.ts',
       },
     },
