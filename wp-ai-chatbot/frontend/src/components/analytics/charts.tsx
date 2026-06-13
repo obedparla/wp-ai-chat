@@ -29,6 +29,23 @@ function useMeasure(): [RefObject<HTMLDivElement>, number] {
   return [ref, width]
 }
 
+/** Visually-hidden data table so chart values are available to assistive tech. */
+function SrData({ caption, rows }: { caption: string; rows: Array<[string, string]> }) {
+  return (
+    <table className="sr-only">
+      <caption>{caption}</caption>
+      <tbody>
+        {rows.map(([label, value], i) => (
+          <tr key={i}>
+            <th scope="row">{label}</th>
+            <td>{value}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 function ChartTip({ x, y, children }: { x: number; y: number; children: ReactNode }) {
   return (
     <div
@@ -50,10 +67,12 @@ export function LineArea({
   data,
   height = 200,
   fmt = (v) => String(v),
+  ariaLabel = 'Chart',
 }: {
   data: LinePoint[]
   height?: number
   fmt?: (value: number) => string
+  ariaLabel?: string
 }) {
   const [ref, width] = useMeasure()
   const [hi, setHi] = useState<number | null>(null)
@@ -97,6 +116,8 @@ export function LineArea({
           width={width}
           height={height}
           className="block overflow-visible"
+          role="img"
+          aria-label={ariaLabel}
           onMouseMove={onMove}
           onMouseLeave={() => setHi(null)}
         >
@@ -132,6 +153,7 @@ export function LineArea({
           <div className="font-semibold">{fmt(data[hi].value)}</div>
         </ChartTip>
       )}
+      <SrData caption={ariaLabel} rows={data.map((d) => [d.sub || d.label, fmt(d.value)])} />
     </div>
   )
 }
@@ -140,10 +162,12 @@ export function Bars({
   data,
   height = 200,
   fmt = (v) => String(v),
+  ariaLabel = 'Chart',
 }: {
   data: LinePoint[]
   height?: number
   fmt?: (value: number) => string
+  ariaLabel?: string
 }) {
   const [ref, width] = useMeasure()
   const [hi, setHi] = useState<number | null>(null)
@@ -160,7 +184,7 @@ export function Bars({
   return (
     <div ref={ref} className="relative w-full text-accent">
       {width > 0 && (
-        <svg width={width} height={height} className="block">
+        <svg width={width} height={height} className="block" role="img" aria-label={ariaLabel}>
           {data.map((d, i) => {
             const bx = i * slot + (slot - bw) / 2
             const h = barHeight(d.value)
@@ -194,6 +218,7 @@ export function Bars({
           <div className="font-semibold">{fmt(data[hi].value)}</div>
         </ChartTip>
       )}
+      <SrData caption={ariaLabel} rows={data.map((d) => [d.sub || d.label, fmt(d.value)])} />
     </div>
   )
 }
@@ -267,17 +292,35 @@ export interface FunnelStageDatum {
   value: number
 }
 
-export function Heatmap({ heat }: { heat: { dow: string[]; data: number[][]; max: number } }) {
+export function Heatmap({
+  heat,
+  ariaLabel = 'Conversations by day of week and hour',
+}: {
+  heat: { dow: string[]; data: number[][]; max: number }
+  ariaLabel?: string
+}) {
   const [hi, setHi] = useState<{ d: number; h: number; v: number } | null>(null)
   const hours = Array.from({ length: 24 }, (_, h) => h)
   const labelHours = [0, 6, 12, 18, 23]
   const max = Math.max(1, heat.max)
   const hourLabel = (h: number) => (h === 0 ? '12a' : h === 12 ? '12p' : h < 12 ? h + 'a' : h - 12 + 'p')
   const hourFull = (h: number) => (h === 0 ? '12am' : h < 12 ? h + 'am' : h === 12 ? '12pm' : h - 12 + 'pm')
+  const dayStats = heat.data.map((row, di) => {
+    const total = row.reduce((sum, v) => sum + v, 0)
+    let peakHour = 0
+    let peakValue = 0
+    row.forEach((v, h) => {
+      if (v > peakValue) {
+        peakValue = v
+        peakHour = h
+      }
+    })
+    return { dow: heat.dow[di], total, peakHour, peakValue }
+  })
 
   return (
     <div className="relative">
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" role="img" aria-label={ariaLabel}>
         {heat.data.map((row, di) => (
           <div key={di} className="flex items-center gap-2">
             <div className="w-[30px] shrink-0 text-[11.5px] text-muted-2">{heat.dow[di]}</div>
@@ -285,6 +328,7 @@ export function Heatmap({ heat }: { heat: { dow: string[]; data: number[][]; max
               {row.map((v, h) => (
                 <div
                   key={h}
+                  title={`${heat.dow[di]} ${hourFull(h)} · ${v} chats`}
                   onMouseEnter={() => setHi({ d: di, h, v })}
                   onMouseLeave={() => setHi(null)}
                   className="aspect-square rounded-[3px] transition-transform duration-100"
@@ -301,8 +345,8 @@ export function Heatmap({ heat }: { heat: { dow: string[]; data: number[][]; max
           </div>
         ))}
       </div>
-      <div className="mt-[7px] flex pl-[38px]">
-        <div className="grid flex-1 grid-cols-24 gap-[3px]">
+      <div className="mt-[7px] flex pl-[38px]" aria-hidden="true">
+        <div className="grid flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[3px]">
           {hours.map((h) => (
             <div key={h} className="text-center text-[10px] text-muted-2">
               {labelHours.includes(h) ? hourLabel(h) : ''}
@@ -315,6 +359,13 @@ export function Heatmap({ heat }: { heat: { dow: string[]; data: number[][]; max
           {heat.dow[hi.d]} {hourFull(hi.h)} · <b>{hi.v}</b> chats
         </div>
       )}
+      <SrData
+        caption={ariaLabel}
+        rows={dayStats.map((s) => [
+          s.dow,
+          s.peakValue > 0 ? `${s.total} conversations, busiest ${hourFull(s.peakHour)}` : `${s.total} conversations`,
+        ])}
+      />
     </div>
   )
 }
@@ -326,6 +377,7 @@ export function Donut({
   label,
   colorClass = 'text-accent',
   trackClass = 'text-line',
+  ariaLabel = 'Share of store revenue',
 }: {
   value: number
   size?: number
@@ -333,13 +385,14 @@ export function Donut({
   label: string
   colorClass?: string
   trackClass?: string
+  ariaLabel?: string
 }) {
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
   const off = c * (1 - value / 100)
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={size} height={size} className="-rotate-90" role="img" aria-label={ariaLabel}>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} stroke="currentColor" className={trackClass} />
         <circle
           cx={size / 2}

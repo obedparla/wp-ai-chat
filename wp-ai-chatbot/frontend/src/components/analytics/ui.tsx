@@ -20,7 +20,7 @@ export function Card({
     <div className={cn('rounded-[16px] border border-line bg-surface', pad, className)}>
       {(title || subtitle) && (
         <div className="mb-4">
-          {title && <div className="text-[16px] font-semibold tracking-[-0.2px] text-ink">{title}</div>}
+          {title && <h3 className="text-[16px] font-semibold tracking-[-0.2px] text-ink">{title}</h3>}
           {subtitle && <div className="mt-[3px] text-[13px] text-muted-2">{subtitle}</div>}
         </div>
       )}
@@ -31,7 +31,7 @@ export function Card({
 
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-4 mt-1 text-[13px] font-bold uppercase tracking-[0.4px] text-muted-2">{children}</div>
+    <h2 className="mb-4 mt-1 text-[13px] font-bold uppercase tracking-[0.4px] text-muted-2">{children}</h2>
   )
 }
 

@@ -25,8 +25,13 @@ class WPAIC_Logs {
 				'session_id' => $session_id,
 				'user_id'    => $user_id > 0 ? $user_id : null,
 				'user_ip'    => $user_ip,
+				// Stamp in WP-local time (not the MySQL CURRENT_TIMESTAMP default,
+				// which resolves in the DB server's zone) so conversation rows line
+				// up with the event table and the analytics range bounds, both of
+				// which use current_time( 'mysql' ).
+				'created_at' => current_time( 'mysql' ),
 			),
-			array( '%s', '%d', '%s' )
+			array( '%s', '%d', '%s', '%s' )
 		);
 
 		if ( false === $result ) {

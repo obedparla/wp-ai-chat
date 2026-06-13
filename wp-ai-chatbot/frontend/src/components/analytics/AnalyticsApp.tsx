@@ -59,7 +59,7 @@ function Dashboard({ data, f }: { data: AnalyticsData; f: Formatters }) {
           </div>
           <div>
             <div className="mb-2 text-[13px] font-semibold text-muted">Revenue over time</div>
-            <LineArea data={revSeries} height={224} fmt={f.usd} />
+            <LineArea data={revSeries} height={224} fmt={f.usd} ariaLabel="Revenue over time" />
           </div>
         </div>
       </div>
@@ -98,7 +98,7 @@ function Dashboard({ data, f }: { data: AnalyticsData; f: Formatters }) {
           {data.topProducts.length ? (
             <ListPanel items={data.topProducts.map((p) => ({ label: p.name, value: p.count }))} fmt={f.num} />
           ) : (
-            <EmptyHint>Products recommended by the chatbot will rank here.</EmptyHint>
+            <EmptyHint icon={bagIcon}>Products recommended by the chatbot will rank here.</EmptyHint>
           )}
         </Card>
         <Card title="Top searches" subtitle="Most-run queries">
@@ -119,7 +119,7 @@ function Dashboard({ data, f }: { data: AnalyticsData; f: Formatters }) {
           )}
         </Card>
         <Card title="Conversations" subtitle="Volume per day">
-          <Bars data={convSeries} height={172} fmt={(v) => `${f.num(v)} chats`} />
+          <Bars data={convSeries} height={172} fmt={(v) => `${f.num(v)} chats`} ariaLabel="Conversations per day" />
         </Card>
       </div>
 
@@ -166,7 +166,7 @@ function ChatOnlyDashboard({ data, f }: { data: AnalyticsData; f: Formatters }) 
 
       <div className="mb-8">
         <Card title="Conversations" subtitle="Volume per day">
-          <Bars data={convSeries} height={200} fmt={(v) => `${f.num(v)} chats`} />
+          <Bars data={convSeries} height={200} fmt={(v) => `${f.num(v)} chats`} ariaLabel="Conversations per day" />
         </Card>
       </div>
 
@@ -223,7 +223,7 @@ function EmptyState({ data, f }: { data: AnalyticsData; f: Formatters }) {
         </div>
         <div className="flex flex-col items-center justify-center rounded-[18px] border border-line bg-surface p-7 text-center">
           <div className="mb-[18px] text-[13px] font-semibold text-muted">Share of store revenue</div>
-          <Donut value={0} label="—" colorClass="text-line" trackClass="text-line-2" />
+          <Donut value={0} label="—" colorClass="text-line" trackClass="text-line-2" ariaLabel="Share of store revenue: no data yet" />
           <div className="mt-[18px] text-[13px] text-muted-2">No attributed orders yet</div>
         </div>
       </div>
@@ -251,7 +251,7 @@ function EmptyState({ data, f }: { data: AnalyticsData; f: Formatters }) {
         </Card>
         <div className="flex flex-col gap-4">
           <Card title="Top products">
-            <EmptyHint>Products recommended by the chatbot will rank here.</EmptyHint>
+            <EmptyHint icon={bagIcon}>Products recommended by the chatbot will rank here.</EmptyHint>
           </Card>
           <Card title="Top searches">
             <EmptyHint>Shopper search queries will show up once chats begin.</EmptyHint>
@@ -298,14 +298,24 @@ function EmptyTile({ label, unit }: { label: string; unit: string }) {
   )
 }
 
-function EmptyHint({ children }: { children: ReactNode }) {
+const searchIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b5b5b1" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="7" />
+    <path d="M21 21l-4-4" />
+  </svg>
+)
+
+const bagIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b5b5b1" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 2L3 6v14a1 1 0 001 1h16a1 1 0 001-1V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" />
+  </svg>
+)
+
+function EmptyHint({ children, icon = searchIcon }: { children: ReactNode; icon?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2.5 px-2 py-[34px] text-center">
-      <div className="flex h-[42px] w-[42px] items-center justify-center rounded-[12px] bg-canvas">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b5b5b1" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="11" cy="11" r="7" />
-          <path d="M21 21l-4-4" />
-        </svg>
+      <div aria-hidden="true" className="flex h-[42px] w-[42px] items-center justify-center rounded-[12px] bg-canvas">
+        {icon}
       </div>
       <span className="max-w-[240px] text-[13px] leading-relaxed text-muted-2">{children}</span>
     </div>

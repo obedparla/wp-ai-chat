@@ -11,6 +11,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Ranges are half-open [since, until) in site-local time, consistent with the
  * existing WPAIC_Events / WPAIC_Logs range helpers.
+ *
+ * Accepted v1 limits:
+ * - Store revenue (get_store_revenue) hydrates paid orders via wc_get_orders;
+ *   on very large stores the uncached "all" range is O(orders). Bounded by the
+ *   ~5 min transient. A SQL-layer aggregate (HPOS-aware) is the future fix.
+ * - Period deltas compare a partial current day against full prior days, so the
+ *   hero delta chips read slightly pessimistic early in the day and settle as it
+ *   fills — a standard dashboard tradeoff; absolute totals are unaffected.
  */
 class WPAIC_Analytics {
 	/** @var array<int, string> */
@@ -19,9 +27,6 @@ class WPAIC_Analytics {
 	private const DEFAULT_RANGE = '30';
 	private const CACHE_TTL      = 300;
 	private const MAX_BUCKETS    = 90;
-
-	/** Day-of-week labels, Monday-first (matches the (DAYOFWEEK+5)%7 index). */
-	private const DOW = array( 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun' );
 
 	private WPAIC_Logs $logs;
 
@@ -437,7 +442,9 @@ class WPAIC_Analytics {
 		$top = array();
 		foreach ( array_slice( $counts, 0, $limit, true ) as $name => $count ) {
 			$top[] = array(
-				'name'    => $name,
+				// Cast: a product literally named e.g. "2024" becomes an int array
+				// key in PHP, which would break the string `name` contract.
+				'name'    => (string) $name,
 				'count'   => $count,
 				'revenue' => round( $revenue[ $name ], 2 ),
 			);
@@ -586,10 +593,27 @@ class WPAIC_Analytics {
 		}
 
 		return array(
-			'dow'  => self::DOW,
+			'dow'  => $this->dow_labels(),
 			'data' => $grid,
 			'max'  => $max,
 		);
+	}
+
+	/**
+	 * Monday-first weekday abbreviations in the site locale (matches the
+	 * (DAYOFWEEK+5)%7 grid index used by build_heatmap), built with date_i18n
+	 * like the time-series labels rather than hardcoded English.
+	 *
+	 * @return array<int, string>
+	 */
+	private function dow_labels(): array {
+		// 1970-01-05 was a Monday; offset gives each weekday in order.
+		$monday = 4 * DAY_IN_SECONDS;
+		$labels = array();
+		for ( $i = 0; $i < 7; $i++ ) {
+			$labels[] = date_i18n( 'D', $monday + $i * DAY_IN_SECONDS );
+		}
+		return $labels;
 	}
 
 	/**

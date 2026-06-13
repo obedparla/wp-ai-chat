@@ -2324,6 +2324,56 @@ if ( ! function_exists( 'wc_get_order' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wc_get_is_paid_statuses' ) ) {
+	/**
+	 * @return array<int, string>
+	 */
+	function wc_get_is_paid_statuses(): array {
+		return array( 'processing', 'completed' );
+	}
+}
+
+if ( ! function_exists( 'get_woocommerce_currency_symbol' ) ) {
+	function get_woocommerce_currency_symbol( string $currency = '' ): string {
+		return WPAICTestHelper::get_option( 'woocommerce_currency_symbol', '$' );
+	}
+}
+
+if ( ! function_exists( 'wc_get_orders' ) ) {
+	/**
+	 * Minimal mock honoring 'status' (array) and a 'date_created' => 'after...before'
+	 * unix-timestamp range against seeded MockWCOrders.
+	 *
+	 * @param array<string, mixed> $args
+	 * @return array<int, MockWCOrder|int>
+	 */
+	function wc_get_orders( array $args = array() ): array {
+		$statuses = isset( $args['status'] ) ? (array) $args['status'] : array();
+		$after    = null;
+		$before   = null;
+		if ( isset( $args['date_created'] ) && is_string( $args['date_created'] ) && str_contains( $args['date_created'], '...' ) ) {
+			list( $after, $before ) = array_map( 'intval', explode( '...', $args['date_created'] ) );
+		}
+		$return  = $args['return'] ?? 'objects';
+		$results = array();
+		foreach ( WPAICTestHelper::$mock_orders as $order ) {
+			if ( ! empty( $statuses ) && ! in_array( $order->get_status(), $statuses, true ) ) {
+				continue;
+			}
+			$created = $order->get_date_created();
+			$ts      = $created instanceof DateTimeInterface ? $created->getTimestamp() : null;
+			if ( null !== $ts && null !== $after && $ts < $after ) {
+				continue;
+			}
+			if ( null !== $ts && null !== $before && $ts > $before ) {
+				continue;
+			}
+			$results[] = 'ids' === $return ? (int) $order->get_order_number() : $order;
+		}
+		return $results;
+	}
+}
+
 if ( ! function_exists( 'wc_get_order_status_name' ) ) {
 	/**
 	 * Get readable order status name.

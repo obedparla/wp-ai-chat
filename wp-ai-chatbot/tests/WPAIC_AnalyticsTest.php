@@ -271,4 +271,84 @@ class WPAIC_AnalyticsTest extends TestCase {
 		$this->assertSame( 3, $data['totals']['conversations'] );
 		$this->assertSame( 1, $data['handoffs'] );
 	}
+
+	public function test_store_revenue_share_and_aov_from_woocommerce_orders(): void {
+		$this->seed_dataset(); // bot: revenue 300, orders 2
+		$at  = $this->recent( 2 );
+		$old = gmdate( 'Y-m-d H:i:s', (int) strtotime( current_time( 'mysql' ) ) - 60 * DAY_IN_SECONDS );
+		WPAICTestHelper::add_mock_order( array( 'id' => 101, 'total' => 600.0, 'status' => 'completed', 'date_created' => $at ) );
+		WPAICTestHelper::add_mock_order( array( 'id' => 102, 'total' => 400.0, 'status' => 'processing', 'date_created' => $at ) );
+		WPAICTestHelper::add_mock_order( array( 'id' => 103, 'total' => 999.0, 'status' => 'pending', 'date_created' => $at ) );    // unpaid -> excluded
+		WPAICTestHelper::add_mock_order( array( 'id' => 104, 'total' => 999.0, 'status' => 'completed', 'date_created' => $old ) ); // out of range -> excluded
+
+		$data = $this->analytics->get_dashboard_data( '30', false );
+
+		$this->assertSame( 1000.0, $data['storeRevenue'] );
+		$this->assertSame( 500.0, $data['storeAov'] );                   // 1000 / 2 paid orders
+		$this->assertEqualsWithDelta( 30.0, $data['pctOfStore'], 0.05 ); // 300 bot / 1000 store
+	}
+
+	public function test_pct_of_store_caps_at_100(): void {
+		$at = $this->recent( 2 );
+		$this->seed_conversation( 1, $at );
+		$this->seed_event( 1, WPAIC_Events::ORDER_COMPLETED, array( 'order_id' => 1, 'total' => 500 ), $at );
+		WPAICTestHelper::add_mock_order( array( 'id' => 9, 'total' => 100.0, 'status' => 'completed', 'date_created' => $at ) );
+
+		$data = $this->analytics->get_dashboard_data( '30', false );
+
+		$this->assertSame( 100.0, $data['pctOfStore'] ); // 500/100 capped at 100
+	}
+
+	public function test_period_deltas_numeric_path(): void {
+		// Current 7-day window.
+		$current = $this->recent( 1 );
+		foreach ( array( 1, 2, 3 ) as $id ) {
+			$this->seed_conversation( $id, $current );
+		}
+		$this->seed_event( 1, WPAIC_Events::ORDER_COMPLETED, array( 'order_id' => 1, 'total' => 200 ), $current );
+		$this->seed_event( 2, WPAIC_Events::ORDER_COMPLETED, array( 'order_id' => 2, 'total' => 100 ), $current );
+
+		// Immediately-preceding 7-day window.
+		$prior = $this->recent( 9 );
+		foreach ( array( 4, 5 ) as $id ) {
+			$this->seed_conversation( $id, $prior );
+		}
+		$this->seed_event( 4, WPAIC_Events::ORDER_COMPLETED, array( 'order_id' => 3, 'total' => 100 ), $prior );
+
+		$deltas = $this->analytics->get_dashboard_data( '7', false )['deltas'];
+
+		$this->assertEqualsWithDelta( 200.0, $deltas['revenue'], 0.05 );      // 300 vs 100
+		$this->assertEqualsWithDelta( 100.0, $deltas['orders'], 0.05 );       // 2 vs 1
+		$this->assertEqualsWithDelta( 50.0, $deltas['conversations'], 0.05 ); // 3 vs 2
+		$this->assertEqualsWithDelta( 50.0, $deltas['aov'], 0.05 );           // 150 vs 100
+	}
+
+	public function test_half_open_boundary_inclusive_since_exclusive_before_since(): void {
+		$now_ts      = (int) strtotime( current_time( 'mysql' ) );
+		$today_start = $now_ts - ( $now_ts % DAY_IN_SECONDS );
+		$since_ts    = $today_start - 6 * DAY_IN_SECONDS; // range '7'
+
+		$this->seed_event( 1, WPAIC_Events::ORDER_COMPLETED, array( 'order_id' => 1, 'total' => 10 ), gmdate( 'Y-m-d H:i:s', $since_ts ) );     // at since -> included
+		$this->seed_event( 2, WPAIC_Events::ORDER_COMPLETED, array( 'order_id' => 2, 'total' => 10 ), gmdate( 'Y-m-d H:i:s', $since_ts - 1 ) ); // before since -> excluded
+		$this->seed_event( 3, WPAIC_Events::ORDER_COMPLETED, array( 'order_id' => 3, 'total' => 10 ), gmdate( 'Y-m-d H:i:s', $now_ts ) );       // now -> included
+
+		$data = $this->analytics->get_dashboard_data( '7', false );
+
+		$this->assertSame( 2, $data['totals']['orders'] );
+	}
+
+	public function test_heatmap_monday_first_mapping_pinned_to_known_weekdays(): void {
+		// Fixed historical dates with known weekdays; the 'all' range includes them.
+		// Asserts literal Monday-first grid indices (not the gmdate formula the mock reuses).
+		$this->seed_conversation( 1, '2024-01-01 12:00:00' ); // Monday   -> index 0
+		$this->seed_conversation( 2, '2024-01-06 12:00:00' ); // Saturday -> index 5
+		$this->seed_conversation( 3, '2024-01-07 12:00:00' ); // Sunday   -> index 6
+
+		$grid = $this->analytics->get_dashboard_data( 'all', false )['heat']['data'];
+
+		$this->assertSame( 1, array_sum( $grid[0] ) ); // Monday
+		$this->assertSame( 0, array_sum( $grid[1] ) ); // Tuesday
+		$this->assertSame( 1, array_sum( $grid[5] ) ); // Saturday
+		$this->assertSame( 1, array_sum( $grid[6] ) ); // Sunday
+	}
 }

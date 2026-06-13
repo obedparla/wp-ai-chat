@@ -64,6 +64,11 @@ class WPAIC_Attribution {
 				'currency' => $order->get_currency(),
 			)
 		);
+
+		// Consume the tag so a later order in the same (long-lived) WC session
+		// isn't attributed unless the bot touches the cart again. Without this a
+		// repeat buyer's subsequent non-bot order would inflate revenue/orders.
+		$this->clear_session_conversation_id();
 	}
 
 	/**
@@ -79,5 +84,15 @@ class WPAIC_Attribution {
 			return 0;
 		}
 		return (int) $wc->session->get( self::SESSION_KEY, 0 );
+	}
+
+	private function clear_session_conversation_id(): void {
+		if ( ! function_exists( 'WC' ) ) {
+			return;
+		}
+		$wc = WC();
+		if ( is_object( $wc ) && isset( $wc->session ) && is_object( $wc->session ) ) {
+			$wc->session->set( self::SESSION_KEY, null );
+		}
 	}
 }

@@ -80,4 +80,31 @@ class WPAIC_AttributionTest extends TestCase {
 
 		$this->assertCount( 0, WPAIC_Events::get_for_conversation( 7 ) );
 	}
+
+	public function test_second_order_in_same_session_not_attributed_without_retag(): void {
+		WC()->session->set( 'wpaic_conversation_id', 7 );
+		WPAICTestHelper::add_mock_order( array( 'id' => 1, 'total' => 100.0, 'currency' => 'USD' ) );
+		WPAICTestHelper::add_mock_order( array( 'id' => 2, 'total' => 200.0, 'currency' => 'USD' ) );
+
+		$this->attribution->on_payment_complete( 1 );
+		// A later, unrelated order in the same long-lived WC session — the bot did
+		// not touch the cart, so the tag was consumed and order 2 is NOT attributed.
+		$this->attribution->on_payment_complete( 2 );
+
+		$this->assertCount( 1, WPAIC_Events::get_for_conversation( 7 ) );
+	}
+
+	public function test_second_order_attributed_after_bot_retags_session(): void {
+		WPAICTestHelper::add_mock_order( array( 'id' => 1, 'total' => 100.0, 'currency' => 'USD' ) );
+		WPAICTestHelper::add_mock_order( array( 'id' => 2, 'total' => 200.0, 'currency' => 'USD' ) );
+
+		WC()->session->set( 'wpaic_conversation_id', 7 );
+		$this->attribution->on_payment_complete( 1 );
+
+		// The bot drives another purchase later — cart-add re-tags the session.
+		WC()->session->set( 'wpaic_conversation_id', 7 );
+		$this->attribution->on_payment_complete( 2 );
+
+		$this->assertCount( 2, WPAIC_Events::get_for_conversation( 7 ) );
+	}
 }
