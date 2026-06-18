@@ -55,6 +55,7 @@ Everything currently implemented.
 - Session persistence in sessionStorage across page reloads; executed cart actions are persisted too, so restored conversations never re-fire historical adds/removes
 - Mobile: full-height via 100dvh (iOS dynamic toolbar safe), body scroll lock while open, offset below the WP admin bar, safe-area insets respected
 - Accessibility: message list announced as an aria-live log, focus-trapped dialogs with Cancel focused by default, focus returned to the launcher on close, keyboard-visible carousel arrows
+- Caching-plugin resilient: config ships as a `<script type="application/json">` data island (not `wp_localize_script`) so JS-combine/Delay-JS optimizers (LiteSpeed, WP Rocket) can't relocate it behind the eager loader; REST requests self-heal a stale nonce frozen by full-page caches (WP Super Cache/W3TC/etc.) by refetching a fresh nonce from an uncached `/nonce` endpoint and retrying once on 403. Verified against WP Super Cache, W3 Total Cache, LiteSpeed Cache
 
 ### Product Display
 - Product cards: image, name, short description, humanized category caption, price, SALE badge with strikethrough

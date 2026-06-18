@@ -85,6 +85,18 @@ class WPAIC_APITest extends TestCase {
 		$this->assertTrue( $result );
 	}
 
+	public function test_get_nonce_returns_fresh_nonce_with_no_store_headers(): void {
+		$response = $this->api->get_nonce();
+
+		$this->assertInstanceOf( WP_REST_Response::class, $response );
+		$data = $response->get_data();
+		$this->assertSame( 'test_nonce_wp_rest', $data['nonce'] );
+
+		$headers = $response->get_headers();
+		$this->assertSame( 'no-store, no-cache, must-revalidate, max-age=0', $headers['Cache-Control'] );
+		$this->assertArrayHasKey( 'Expires', $headers );
+	}
+
 	public function test_sanitize_page_context_keeps_allowed_fields_and_strips_query_args(): void {
 		$reflection = new ReflectionClass( $this->api );
 		$method     = $reflection->getMethod( 'sanitize_page_context' );

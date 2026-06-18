@@ -78,11 +78,6 @@ class WPAIC_Frontend {
 			}
 		}
 
-		wp_localize_script(
-			'wpaic-chatbot',
-			'wpaicConfig',
-			$this->build_frontend_config( $settings )
-		);
 	}
 
 	/**
@@ -274,5 +269,16 @@ class WPAIC_Frontend {
 		}
 
 		echo '<div id="wpaic-chatbot-root"></div>';
+
+		// Emit config as a JSON data island rather than wp_localize_script's
+		// executable inline script. Optimizers (LiteSpeed/WP Rocket) combine and
+		// defer executable inline JS, which would relocate the config behind the
+		// eager `type=module` loader and leave it undefined at init. Data scripts
+		// are left untouched. JSON_HEX_TAG prevents a `</script>` breakout.
+		printf(
+			'<script type="application/json" id="wpaic-config">%s</script>',
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON_HEX_TAG handles script-context escaping.
+			wp_json_encode( $this->build_frontend_config( $settings ), JSON_HEX_TAG )
+		);
 	}
 }

@@ -162,6 +162,28 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 		public function get_status(): int {
 			return $this->status;
 		}
+
+		/** @var array<string, string> */
+		private array $headers = array();
+
+		public function header( string $name, string $value ): void {
+			$this->headers[ $name ] = $value;
+		}
+
+		/** @return array<string, string> */
+		public function get_headers(): array {
+			return $this->headers;
+		}
+	}
+}
+
+if ( ! function_exists( 'wp_get_nocache_headers' ) ) {
+	/** @return array<string, string> */
+	function wp_get_nocache_headers(): array {
+		return array(
+			'Expires'       => 'Wed, 11 Jan 1984 05:00:00 GMT',
+			'Cache-Control' => 'no-cache, must-revalidate, max-age=0',
+		);
 	}
 }
 

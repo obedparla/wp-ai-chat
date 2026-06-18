@@ -174,6 +174,21 @@ export function initLoader(
   document.body.appendChild(container)
 }
 
+// Config ships as a `<script type="application/json">` data island (see
+// WPAIC_Frontend::render_chatbot_container) so JS-combining optimizers can't
+// relocate it. Parse it into window.wpaicConfig before anything reads it.
+export function hydrateConfig(): void {
+  if (window.wpaicConfig) return
+  const el = document.getElementById('wpaic-config')
+  if (!el?.textContent) return
+  try {
+    window.wpaicConfig = JSON.parse(el.textContent)
+  } catch {
+    // Malformed config; leave undefined so consumers fall back to defaults.
+  }
+}
+
 if (!import.meta.env.TEST) {
+  hydrateConfig()
   initLoader()
 }

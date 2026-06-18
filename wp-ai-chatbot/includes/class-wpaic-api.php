@@ -68,6 +68,16 @@ class WPAIC_API {
 
 		register_rest_route(
 			'wpaic/v1',
+			'/nonce',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_nonce' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		register_rest_route(
+			'wpaic/v1',
 			'/send-transcript',
 			array(
 				'methods'             => 'POST',
@@ -95,6 +105,27 @@ class WPAIC_API {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Vend a fresh `wp_rest` nonce. The widget bakes a nonce into the page, but
+	 * full-page caching plugins freeze it; once it ages past the nonce tick
+	 * (12-24h) it 403s for cached anonymous visitors. The frontend fetches this
+	 * (uncached) endpoint to recover. Must never be cached by page/CDN layers.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function get_nonce(): WP_REST_Response {
+		$response = new WP_REST_Response( array( 'nonce' => wp_create_nonce( 'wp_rest' ) ) );
+
+		foreach ( wp_get_nocache_headers() as $name => $value ) {
+			if ( '' !== $value ) {
+				$response->header( $name, $value );
+			}
+		}
+		$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+
+		return $response;
 	}
 
 	/**

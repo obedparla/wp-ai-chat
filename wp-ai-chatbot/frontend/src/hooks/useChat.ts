@@ -8,6 +8,7 @@ import { CheckoutAction } from '../components/CheckoutButton'
 import { isProductTool } from './tools'
 import { clearStoredClearCartStatuses } from './useClearCart'
 import { clearStoredAddToCartStatuses, markAddToCartToolCallsRestored } from './useAddToCart'
+import { fetchWithNonce } from '../lib/nonce'
 
 export interface AddToCartIntent {
   toolCallId: string
@@ -419,9 +420,7 @@ export function useChat() {
     }
     return new DefaultChatTransport({
       api: `${config.apiUrl}/chat/stream`,
-      headers: {
-        'X-WP-Nonce': config.nonce,
-      },
+      fetch: fetchWithNonce,
       body,
     })
   }, [config, sessionId])

@@ -26,6 +26,32 @@ class WPAIC_FrontendTest extends TestCase {
 		parent::tearDown();
 	}
 
+	public function test_render_chatbot_container_outputs_json_config_island(): void {
+		update_option( 'wpaic_settings', array( 'enabled' => true ) );
+		$license  = new class extends WPAIC_License_Manager {
+			public function can_render_chat(): bool {
+				return true;
+			}
+		};
+		$frontend = new WPAIC_Frontend( $license );
+
+		ob_start();
+		$frontend->render_chatbot_container();
+		$html = (string) ob_get_clean();
+
+		$this->assertStringContainsString( '<div id="wpaic-chatbot-root"></div>', $html );
+		// Config must ship as a non-executable data island so JS-combining cache
+		// plugins can't relocate it behind the eager loader.
+		$this->assertStringContainsString( '<script type="application/json" id="wpaic-config">', $html );
+		$this->assertStringNotContainsString( 'var wpaicConfig', $html );
+
+		preg_match( '#<script type="application/json" id="wpaic-config">(.*?)</script>#s', $html, $matches );
+		$data = json_decode( $matches[1], true );
+		$this->assertIsArray( $data );
+		$this->assertArrayHasKey( 'nonce', $data );
+		$this->assertArrayHasKey( 'apiUrl', $data );
+	}
+
 	public function test_build_frontend_config_uses_manual_conversation_starters(): void {
 		$frontend = new WPAIC_Frontend();
 		$config   = $frontend->build_frontend_config(

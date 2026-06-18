@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { initLoader } from './loader'
+import { initLoader, hydrateConfig } from './loader'
 
 type ImportWidgetModule = Parameters<typeof initLoader>[0]
 
@@ -217,5 +217,41 @@ describe('loader', () => {
 
     expect(mountWidget).toHaveBeenCalledTimes(1)
     expect(mountWidget).toHaveBeenCalledWith({ openOnMount: true, viaProactiveTeaser: false })
+  })
+})
+
+describe('hydrateConfig', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('parses the JSON data island into window.wpaicConfig', () => {
+    window.wpaicConfig = undefined
+    document.body.innerHTML =
+      '<script type="application/json" id="wpaic-config">{"apiUrl":"/wp-json/wpaic/v1","nonce":"abc","themeColor":"#0d9488","greeting":"Hi"}</script>'
+
+    hydrateConfig()
+
+    expect(window.wpaicConfig?.nonce).toBe('abc')
+    expect(window.wpaicConfig?.themeColor).toBe('#0d9488')
+  })
+
+  it('leaves config undefined when the data island is missing', () => {
+    window.wpaicConfig = undefined
+    document.body.innerHTML = '<div id="wpaic-chatbot-root"></div>'
+
+    hydrateConfig()
+
+    expect(window.wpaicConfig).toBeUndefined()
+  })
+
+  it('does not overwrite an already-present config', () => {
+    window.wpaicConfig = { apiUrl: '/x', nonce: 'existing', greeting: '' }
+    document.body.innerHTML =
+      '<script type="application/json" id="wpaic-config">{"apiUrl":"/y","nonce":"other","greeting":""}</script>'
+
+    hydrateConfig()
+
+    expect(window.wpaicConfig?.nonce).toBe('existing')
   })
 })

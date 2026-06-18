@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Message } from '../hooks/useChat'
 import { getOrCreateSessionId } from '../hooks/useChat'
+import { fetchWithNonce } from '../lib/nonce'
 import DialogShell from './DialogShell'
 
 interface SendTranscriptDialogProps {
@@ -48,11 +49,10 @@ export default function SendTranscriptDialog({ messages, onClose }: SendTranscri
     setDialogState('sending')
 
     try {
-      const response = await fetch(`${config?.apiUrl}/send-transcript`, {
+      const response = await fetchWithNonce(`${config?.apiUrl}/send-transcript`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-WP-Nonce': config?.nonce || '',
         },
         body: JSON.stringify({
           email: trimmed,
