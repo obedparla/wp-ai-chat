@@ -183,6 +183,7 @@ Licensing tab:
 - `.local` / `.test` / staging installs work against the provider in local development
 - Provider rejections surface the exact reason in the chat stream
 - Lifecycle hygiene: `uninstall.php` drops all plugin tables and options
+- Release packaging: `bin/build-release.sh` builds a Freemius-ready ZIP — bundles the (gitignored) Freemius SDK/composer deps + built frontend, guards against version drift across the header/constant/package.json, and refuses to ship a package missing any load-bearing file
 
 ### WP-CLI
 - `wp wpaic import-dummyjson` — import demo WooCommerce products from dummyjson.com (`--limit`, `--skip`, `--purge`, `--dry-run`); maps images, categories (slug names humanized for display), brand, SKU, dimensions, prices, stock, ratings

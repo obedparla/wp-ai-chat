@@ -4,6 +4,7 @@
  * Plugin URI: https://github.com/obedmarquez/wp-ai-chatbot
  * Description: AI-powered chatbot widget with product knowledge and tool calling capabilities.
  * Version: 1.0.0
+ * Update URI: false
  * Author: Obed Marquez
  * Author URI: https://obedmarquez.com
  * License: GPL v2 or later
