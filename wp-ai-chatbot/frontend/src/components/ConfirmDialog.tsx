@@ -22,11 +22,17 @@ export default function ConfirmDialog({
   destructive = false,
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
 
-  // Default-focus the safe action, never the (potentially destructive) confirm.
+  // Focus confirm so Enter confirms; for destructive actions focus the safe
+  // cancel instead, so Enter can't trigger the destructive action by accident.
   useEffect(() => {
-    cancelRef.current?.focus()
-  }, [])
+    if (destructive) {
+      cancelRef.current?.focus()
+    } else {
+      confirmRef.current?.focus()
+    }
+  }, [destructive])
 
   return (
     <DialogShell
@@ -51,6 +57,7 @@ export default function ConfirmDialog({
           {cancelLabel.toUpperCase()}
         </button>
         <button
+          ref={confirmRef}
           type="button"
           onClick={onConfirm}
           className={cn(

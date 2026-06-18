@@ -19,9 +19,14 @@ function renderDialog(overrides: Partial<React.ComponentProps<typeof ConfirmDial
 }
 
 describe('ConfirmDialog', () => {
-  it('focuses the cancel button by default, not the confirm', () => {
+  it('focuses the cancel button for destructive dialogs', () => {
     renderDialog({ destructive: true })
     expect(screen.getByRole('button', { name: 'CANCEL' })).toHaveFocus()
+  })
+
+  it('focuses the confirm button for non-destructive dialogs so Enter confirms', () => {
+    renderDialog()
+    expect(screen.getByRole('button', { name: 'START NEW' })).toHaveFocus()
   })
 
   it('traps Tab inside the dialog (wraps from confirm back to cancel)', () => {
