@@ -1,49 +1,71 @@
 @import "tailwindcss";
 
 @theme {
-	/* ── Electric palette ── */
-	--color-ink: #120B2E;          /* deepest background */
-	--color-ink2: #1B1142;         /* raised panels on dark */
-	--color-paper: #F7F6FB;        /* light section background + body */
+	/* ── White-modern palette (cream · emerald · tangerine) — exact design hexes ── */
+	--color-paper: #FBF8F1;        /* warm cream page background */
+	--color-paper2: #F4EEE1;       /* deeper cream panels — trust bar, demo, pricing, how-it-works */
+	--color-paper3: #ECE4D3;       /* card tint */
 	--color-card: #FFFFFF;
-	--color-acc: #D9FF3D;          /* electric lime (highlighter) */
-	--color-acc2: #8B5CF6;         /* secondary violet */
-	--color-tx-dark: #16102F;
-	--color-tx-light: #F4F2FC;
-	--color-line: rgba(22, 16, 47, 0.12);
-	--color-green: #15803D;        /* cart / sale / "yes" cues */
+	--color-ink: #15140F;          /* warm near-black — ROI section / stats bar */
+	--color-ink2: #062A20;         /* near-black green — problem strip, AI-model panel, footer */
+	--color-acc: #EE5A2A;          /* tangerine — PRIMARY CTA + manifesto section bg */
+	--color-acc-h: #D44A1E;        /* coral-700 hover */
+	--color-acc-tint: #FBE3D6;     /* coral wash */
+	--color-acc2: #0E5A40;         /* deep emerald — BRAND / secondary buttons / final CTA bg */
+	--color-acc2-700: #0A4632;
+	--color-acc2-tint: #E4EEE6;    /* pale green wash — comparison "us" column, guarantee box */
+	--color-butter: #F2C14E;       /* warm yellow — highlight / eyebrow on dark sections */
+	--color-tx-dark: #15140F;      /* primary text on cream */
+	--color-tx-mid: #5A554A;       /* muted body text on cream */
+	--color-tx-faint: #908A7C;     /* captions */
+	--color-tx-light: #FBF8F1;     /* text on dark sections */
+	--color-line: rgba(21, 20, 15, 0.12);
+	--color-line-on-dark: rgba(255, 255, 255, 0.14);
+	--color-green: #0E5A40;        /* cart / sale / "yes" cues */
+	--color-green-900: #062A20;
 	--color-danger: #B91C1C;
-	--color-online: #6EE7A0;
+	--color-online: #34D399;
 
-	--font-display: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
-	--font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+	--font-display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+	--font-body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
+	--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-	--shadow-chat: 0 40px 90px rgba(0, 0, 0, 0.45);
-	--shadow-card: 0 18px 50px rgba(18, 11, 46, 0.1);
-	--shadow-visual: 0 24px 60px rgba(18, 11, 46, 0.22);
-	--shadow-mock: 0 16px 40px rgba(0, 0, 0, 0.35);
-	--shadow-pop: 0 10px 26px rgba(0, 0, 0, 0.3);
-	--shadow-plan: 0 30px 70px rgba(0, 0, 0, 0.4);
-	--shadow-acc: 0 8px 28px rgba(217, 255, 61, 0.35);
+	--shadow-chat: 0 30px 70px rgba(9, 42, 31, 0.18);
+	--shadow-card: 0 14px 40px rgba(9, 42, 31, 0.08);
+	--shadow-visual: 0 20px 50px rgba(9, 42, 31, 0.14);
+	--shadow-mock: 0 14px 36px rgba(9, 42, 31, 0.16);
+	--shadow-pop: 0 10px 26px rgba(9, 42, 31, 0.2);
+	--shadow-plan: 0 26px 60px rgba(9, 42, 31, 0.16);
+	--shadow-acc: 0 8px 26px rgba(239, 89, 39, 0.3);
 
 	--animate-marquee: marquee 28s linear infinite;
 	--animate-pulse-dot: pulse-dot 2.2s ease-in-out infinite;
 }
 
 /* ---------------------------------------------------------------- fonts */
+/* display */
 @font-face {
-	font-family: "Space Grotesk";
+	font-family: "Bricolage Grotesque";
 	font-style: normal;
-	font-weight: 300 700;
+	font-weight: 200 800;
 	font-display: swap;
-	src: url("__THEME_URI__/assets/fonts/space-grotesk-var.woff2") format("woff2");
+	src: url("__THEME_URI__/assets/fonts/bricolage-var.woff2") format("woff2");
 }
+/* body */
 @font-face {
-	font-family: "Archivo";
+	font-family: "Hanken Grotesk";
+	font-style: normal;
+	font-weight: 300 800;
+	font-display: swap;
+	src: url("__THEME_URI__/assets/fonts/hanken-var.woff2") format("woff2");
+}
+/* mono — small-caps eyebrows / labels */
+@font-face {
+	font-family: "JetBrains Mono";
 	font-style: normal;
 	font-weight: 400 700;
 	font-display: swap;
-	src: url("__THEME_URI__/assets/fonts/archivo-var.woff2") format("woff2");
+	src: url("__THEME_URI__/assets/fonts/jetbrains-mono-var.woff2") format("woff2");
 }
 
 /* ---------------------------------------------------------------- base */
@@ -65,40 +87,52 @@
 	}
 	::selection {
 		background: var(--color-acc);
-		color: var(--color-tx-dark);
+		color: #fff;
 	}
 }
 
-/* ---------------------------------------------------------------- highlighter */
-/* Solid lime swipe behind key words, tilted like a marker pass. */
+/* ---------------------------------------------------------------- highlight */
+/* Key words sit in forest green with a hand-drawn orange marker underline. */
 .hl {
-	background: var(--color-acc);
-	color: var(--color-tx-dark);
-	padding: 0 0.18em;
-	border-radius: 4px;
+	color: var(--color-acc2);
+	background-image: linear-gradient(var(--color-acc), var(--color-acc));
+	background-repeat: no-repeat;
+	background-position: 0 88%;
+	background-size: 100% 0.16em;
+	padding-bottom: 0.04em;
 	box-decoration-break: clone;
 	-webkit-box-decoration-break: clone;
-	display: inline-block;
-	transform: rotate(-1deg);
+}
+/* On dark sections the word flips to cream so it stays legible. */
+.hl-light {
+	color: var(--color-tx-light);
+	background-image: linear-gradient(var(--color-acc), var(--color-acc));
+	background-repeat: no-repeat;
+	background-position: 0 88%;
+	background-size: 100% 0.16em;
+	padding-bottom: 0.04em;
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
 }
 
-/* Eyebrow / kicker label with a short accent bar. */
+/* Eyebrow / kicker label (mono small-caps) with a small coral dot. */
 .kicker {
 	display: inline-flex;
 	align-items: center;
-	gap: 8px;
-	font-family: var(--font-display);
-	font-weight: 700;
-	font-size: 13px;
-	letter-spacing: 0.14em;
+	gap: 9px;
+	font-family: var(--font-mono);
+	font-weight: 600;
+	font-size: 12px;
+	letter-spacing: 0.16em;
 	text-transform: uppercase;
+	color: var(--color-tx-mid);
 }
 .kicker::before {
 	content: "";
-	width: 22px;
-	height: 3px;
-	background: var(--color-acc2);
-	border-radius: 2px;
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	background: var(--color-acc);
 }
 
 /* ---------------------------------------------------------------- motion */
@@ -107,8 +141,8 @@
 	to   { transform: translateX(-50%); }
 }
 @keyframes pulse-dot {
-	0%, 100% { box-shadow: 0 0 0 0 rgba(110, 231, 160, 0.6); }
-	60% { box-shadow: 0 0 0 6px rgba(110, 231, 160, 0); }
+	0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6); }
+	60% { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
 }
 @keyframes typing-dot {
 	0%, 100% { opacity: 0.3; }
@@ -118,6 +152,26 @@
 	from { opacity: 0; transform: translateY(12px); }
 	to   { opacity: 1; transform: none; }
 }
+@keyframes float-chip {
+	0%, 100% { transform: translateY(0); }
+	50% { transform: translateY(-8px); }
+}
+
+/* Floating hero chips — white cards that hover around the chat widget. */
+.hero-chip {
+	position: absolute;
+	z-index: 20;
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	border-radius: 13px;
+	border: 1px solid var(--color-line);
+	background: var(--color-card);
+	padding: 10px 13px;
+	box-shadow: var(--shadow-card);
+	animation: float-chip 4.5s ease-in-out infinite;
+}
+.hero-chip:nth-of-type(2) { animation-delay: 1.6s; }
 
 /* Scroll-triggered reveals (JS adds .is-visible). */
 .reveal {
@@ -160,13 +214,13 @@
 	line-height: 1.45;
 }
 .cd-bot {
-	background: #EFECF8;
+	background: #F1EFE6;
 	color: var(--color-tx-dark);
 	border-bottom-left-radius: 5px;
 	align-self: flex-start;
 }
 .cd-user {
-	background: var(--color-ink2);
+	background: var(--color-acc2);
 	color: var(--color-tx-light);
 	border-bottom-right-radius: 5px;
 	align-self: flex-end;
@@ -181,7 +235,7 @@
 	width: 7px;
 	height: 7px;
 	border-radius: 50%;
-	background: rgba(22, 16, 47, 0.35);
+	background: rgba(26, 28, 20, 0.35);
 	animation: typing-dot 1s infinite;
 }
 .cd-typing span:nth-child(2) { animation-delay: 0.18s; }
@@ -193,7 +247,7 @@
 }
 .cd-card {
 	background: #fff;
-	border: 1px solid rgba(22, 16, 47, 0.1);
+	border: 1px solid rgba(26, 28, 20, 0.1);
 	border-radius: 12px;
 	padding: 8px;
 	width: 104px;
@@ -204,15 +258,15 @@
 	position: relative;
 	margin-bottom: 7px;
 }
-.cd-tone1 { background: linear-gradient(135deg, var(--color-acc2), #5B3FD4); }
-.cd-tone2 { background: linear-gradient(135deg, #34B3E4, #2563EB); }
-.cd-tone3 { background: linear-gradient(135deg, #F59E0B, #EF4444); }
+.cd-tone1 { background: linear-gradient(135deg, #0B593F, #09422F); }
+.cd-tone2 { background: linear-gradient(135deg, #D98A4B, #C26A2E); }
+.cd-tone3 { background: linear-gradient(135deg, #5E8B6F, #3F6B50); }
 .cd-badge {
 	position: absolute;
 	top: 5px;
 	left: 5px;
 	background: var(--color-acc);
-	color: var(--color-tx-dark);
+	color: #fff;
 	font-size: 9.5px;
 	font-weight: 800;
 	padding: 2px 6px;
@@ -220,12 +274,12 @@
 	font-family: var(--font-display);
 }
 .cd-name { font-size: 11.5px; font-weight: 700; }
-.cd-price { font-size: 11px; color: rgba(22, 16, 47, 0.64); }
+.cd-price { font-size: 11px; color: rgba(26, 28, 20, 0.64); }
 .cd-cta {
 	align-self: flex-start;
 	background: var(--color-acc);
 	border: none;
-	color: var(--color-tx-dark);
+	color: #fff;
 	font-family: var(--font-display);
 	font-weight: 700;
 	font-size: 14px;
@@ -238,38 +292,38 @@
 /* Composed utility classes for the repeated chat/table atoms inside the feature visuals. */
 @layer components {
 	.mini-msg  { @apply max-w-[85%] rounded-[11px] px-3 py-2 leading-snug; }
-	.mini-bot  { @apply self-start rounded-bl-[4px] bg-[#EFECF8] text-tx-dark; }
-	.mini-user { @apply self-end rounded-br-[4px] bg-ink2 text-tx-light; }
+	.mini-bot  { @apply self-start rounded-bl-[4px] bg-[#F1EFE6] text-tx-dark; }
+	.mini-user { @apply self-end rounded-br-[4px] bg-acc2 text-tx-light; }
 	.mini-card { @apply flex-1 rounded-[9px] border border-tx-dark/10 p-1.5; }
 	.mini-thumb { @apply mb-[5px] h-11 rounded-md; }
-	.mini-btn  { @apply self-start rounded-full bg-acc px-4 py-2 text-center font-display font-bold text-tx-dark; }
-	.mini-atc  { @apply rounded-md bg-acc px-2 py-1 text-center font-display text-[10.5px] font-bold text-tx-dark; }
-	.mini-tag  { @apply inline-block rounded-[5px] bg-[#EFECF8] px-[7px] py-0.5 text-[10.5px] font-bold text-acc2; }
+	.mini-btn  { @apply self-start rounded-full bg-acc px-4 py-2 text-center font-display font-bold text-white; }
+	.mini-atc  { @apply rounded-md bg-acc2 px-2 py-1 text-center font-display text-[10.5px] font-bold text-white; }
+	.mini-tag  { @apply inline-block rounded-[5px] bg-acc2-tint px-[7px] py-0.5 text-[10.5px] font-bold text-acc2; }
 
 	/* Section heads */
-	.section-head  { @apply mx-auto mb-16 max-w-[640px] text-center lg:mb-[84px]; }
-	.section-title { @apply text-[clamp(36px,4.2vw,58px)] font-bold leading-[1.06]; }
+	.section-head  { @apply mx-auto mb-16 max-w-[660px] text-center lg:mb-[84px]; }
+	.section-title { @apply text-[clamp(34px,4.2vw,56px)] font-bold leading-[1.06]; }
 
 	/* Feature rows — .feat-visual is the documented image swap-point (see index.php header). */
-	.feat-chip    { @apply rounded-full border border-tx-dark/15 px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-dark/65; }
-	.feat-visual  { @apply relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-ink p-[30px] shadow-visual; }
-	.feat-numeral { @apply pointer-events-none absolute -bottom-7 right-[18px] font-display text-[140px] font-extrabold leading-none text-tx-light/[0.06]; }
+	.feat-chip    { @apply rounded-full border border-tx-dark/15 bg-paper px-[13px] py-1.5 text-[12.5px] font-semibold text-tx-mid; }
+	.feat-visual  { @apply relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[18px] bg-ink2 p-[30px] shadow-visual; }
+	.feat-numeral { @apply pointer-events-none absolute -bottom-7 right-[18px] font-display text-[140px] font-extrabold leading-none text-white/[0.06]; }
 	.feat-mock    { @apply relative z-10 w-full max-w-[360px] overflow-hidden rounded-[14px] bg-white text-[12.5px] shadow-mock; }
 
 	/* Pricing */
-	.plan-tick { @apply relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:text-acc before:content-['✓']; }
-	.btn-ghost { @apply rounded-full border-[1.5px] border-white/30 px-6 py-3.5 text-center font-display text-[15px] font-bold text-tx-light; }
+	.plan-tick { @apply relative pl-[26px] before:absolute before:left-0 before:font-extrabold before:content-['✓']; }
+	.btn-ghost { @apply rounded-full border-[1.5px] border-tx-dark/25 px-6 py-3.5 text-center font-display text-[15px] font-bold text-tx-dark; }
 }
 .mini-table th,
 .mini-table td {
 	text-align: left;
 	padding: 7px 9px;
-	border-bottom: 1px solid rgba(22, 16, 47, 0.07);
+	border-bottom: 1px solid rgba(26, 28, 20, 0.07);
 	font-size: 11.5px;
 }
 .mini-table th {
 	font-weight: 700;
-	font-family: var(--font-display);
+	font-family: var(--font-mono);
 }
 
 /* ---------------------------------------------------------------- FAQ accordion */
@@ -282,7 +336,7 @@
 	content: "+";
 	font-size: 22px;
 	line-height: 1;
-	color: var(--color-acc2);
+	color: var(--color-acc);
 	flex-shrink: 0;
 	transition: transform 0.2s ease;
 }

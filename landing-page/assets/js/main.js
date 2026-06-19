@@ -49,19 +49,20 @@
 	/* ------------------------------------------------ hero chat demo */
 	// Builds a looping fake shopper conversation inside #hero-chat.
 	var SCRIPT = [
-		{ type: 'bot', text: "Hi! I'm Scout — ask me anything about the store." },
-		{ type: 'user', text: 'Trail running shoes under $120?' },
+		{ type: 'user', text: 'Looking for a gift for a coffee lover, under $50 ☕' },
 		{ type: 'typing', ms: 950 },
-		{ type: 'bot', text: 'In stock and ready to ship — three great picks:' },
+		{ type: 'bot', text: "Great choice — here are my top picks under $50:" },
 		{ type: 'products', items: [
-			{ name: 'Ridgerunner 2', price: '$89', badge: 'Sale', tone: 1 },
-			{ name: 'Skyline Trail', price: '$112', tone: 2 },
-			{ name: 'Cascade GTX', price: '$118', tone: 3 }
+			{ name: 'Pour-Over Set', price: '$42', tone: 1 },
+			{ name: 'Coffee Grinder', price: '$38', badge: 'Sale', tone: 2 }
 		] },
-		{ type: 'user', text: 'Add the Ridgerunner 2, size 10' },
+		{ type: 'user', text: 'Does the pour-over come in white?' },
 		{ type: 'typing', ms: 800 },
-		{ type: 'bot', text: 'Done — Ridgerunner 2 (US 10) is in your cart.' },
-		{ type: 'cta', label: 'Checkout — $89.00' }
+		{ type: 'bot', text: 'Yes — in Matte White and Slate, both in stock and ready to ship.' },
+		{ type: 'user', text: "Perfect, I'll take the white one" },
+		{ type: 'typing', ms: 750 },
+		{ type: 'bot', text: 'Added the Matte White pour-over to your cart. Ready to check out?' },
+		{ type: 'cta', label: 'Checkout · $42.00 →' }
 	];
 
 	function el(tag, cls, html) {
